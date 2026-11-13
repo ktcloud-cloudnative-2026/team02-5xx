@@ -8,8 +8,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
@@ -32,6 +34,17 @@ public class GlobalExceptionHandler {
             .orElse(ErrorCode.INVALID_REQUEST.message());
     return ResponseEntity.status(ErrorCode.INVALID_REQUEST.status())
         .body(ApiResponse.fail(ErrorCode.INVALID_REQUEST.name(), message));
+  }
+
+  @ExceptionHandler({
+    MissingRequestHeaderException.class,
+    MethodArgumentTypeMismatchException.class
+  })
+  public ResponseEntity<ApiResponse<Void>> handleBadParameter(Exception e) {
+    return ResponseEntity.status(ErrorCode.INVALID_REQUEST.status())
+        .body(
+            ApiResponse.fail(
+                ErrorCode.INVALID_REQUEST.name(), ErrorCode.INVALID_REQUEST.message()));
   }
 
   @ExceptionHandler(HttpMessageNotReadableException.class)
