@@ -26,7 +26,7 @@
 | DB              | PostgreSQL                               |
 | DB 구성         | 서비스별 6개, dev/prod 총 12개           |
 | DB 마이그레이션 | Flyway                                   |
-| 메시징          | RabbitMQ                                 |
+| 메시징          | RabbitMQ 4.4                                |
 | API 문서화      | springdoc-openapi + Swagger UI           |
 | CI              | GitHub Actions                           |
 | CD              | Argo CD                                  |
