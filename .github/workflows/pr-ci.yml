@@ -16,6 +16,8 @@ jobs:
     outputs:
       registered_count: ${{ steps.services.outputs.registered_count }}
       ready_services: ${{ steps.services.outputs.ready_services }}
+      java_count: ${{ steps.services.outputs.java_count }}
+      node_count: ${{ steps.services.outputs.node_count }}
     steps:
       - name: Checkout PR
         id: checkout
@@ -38,9 +40,65 @@ jobs:
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' && steps.node.outcome == 'success' }}
         run: node .github/ci/check-services.mjs
 
+  java_ci:
+    name: Java service CI
+    needs: [readiness]
+    if: ${{ needs.readiness.result == 'success' && needs.readiness.outputs.java_count != '0' && needs.readiness.outputs.java_count != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      service_results: ${{ steps.checks.outputs.service_results }}
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Select runner Java 21
+        shell: bash
+        run: |
+          java_home="${JAVA_HOME_21_X64:?Runner Java 21 is required}"
+          "$java_home/bin/java" -XshowSettings:properties -version 2>&1 | grep -E 'java.specification.version = 21$'
+          echo "JAVA_HOME=$java_home" >> "$GITHUB_ENV"
+          echo "$java_home/bin" >> "$GITHUB_PATH"
+
+      - name: Check registered Java services
+        id: checks
+        run: node .github/ci/run-services.mjs java
+
+  react_ci:
+    name: React service CI
+    needs: [readiness]
+    if: ${{ needs.readiness.result == 'success' && needs.readiness.outputs.node_count != '0' && needs.readiness.outputs.node_count != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      service_results: ${{ steps.checks.outputs.service_results }}
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Check registered React services
+        id: checks
+        run: node .github/ci/run-services.mjs node
+
   final:
     name: CI Final
-    needs: [readiness]
+    needs: [readiness, java_ci, react_ci]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
