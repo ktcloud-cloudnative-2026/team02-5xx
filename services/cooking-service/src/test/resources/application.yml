@@ -1,0 +1,12 @@
+# 테스트 전용 설정: 외부 DB·RabbitMQ·환경 변수 없이 컨텍스트 로딩을 검증한다.
+# DB가 필요한 테스트(Entity·Repository·Flyway)가 생기면 Testcontainers 도입을 팀과 논의한다.
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+      - org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration
+      - org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration
+      - org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration
+  rabbitmq:
+    username: test
+    password: test
