@@ -1,4 +1,25 @@
+# Dependencies and generated output
 node_modules/
+.gradle/
+build/
+dist/
+coverage/
+*.class
+
+# Local environment and logs
 .env
+.env.*
+!.env.example
 *.log
+
+# Local editor / OS files
+.idea/
+*.iml
 .DS_Store
+Thumbs.db
+
+# Local Kubernetes credentials
+.kube/
+kubeconfig
+kubeconfig.*
+admin.conf

@@ -2,17 +2,21 @@
 
 [← README](../../README.md)
 
-> 채울 항목의 예입니다. 팀 프로젝트에 맞게 항목을 더하거나 빼도 됩니다.
+> 공통 DB 규칙은 [CLAUDE.md](../../CLAUDE.md#3-db-규칙)를 따릅니다. 아래 ERD 그림은 형식 예시이며 실제 업무 설계가 아닙니다.
 >
 > 외부 도구로 써도 됩니다(추천: [dbdiagram.io](https://dbdiagram.io), [ERDCloud](https://www.erdcloud.com)). 그 경우 이 파일에는 링크와 한 줄 요약만 남깁니다.
 
-- 서비스마다 자기 DB를 가집니다. 다른 서비스의 DB는 직접 읽지 않고 API를 호출합니다
+- Auth·Menu·Inventory·Order·Payment·Cooking은 각각 독립 DB를 가집니다. dev 6개 + prod 6개 = 총 12개이며 스키마 분리로 대체하지 않습니다.
+- 다른 서비스의 DB에 직접 접근하지 않습니다.
+- 테이블은 복수형 snake_case, 컬럼은 snake_case를 사용합니다.
+- DB 구조 변경은 Flyway 마이그레이션으로만 수행합니다. 수동 DDL이나 ddl-auto로 스키마를 변경하지 않습니다.
+- DB 구조·마이그레이션 변경 PR은 필수 리뷰 대상입니다.
 - [dbdiagram.io](https://dbdiagram.io)의 DBML 또는 아래처럼 Mermaid로 씁니다
 
 ## <서비스 A>
 ```mermaid
 erDiagram
-  ITEM {
+  items {
     int id PK
     string status
     datetime created_at
@@ -22,5 +26,5 @@ erDiagram
 ## DB 테이블 변경 · 시드 데이터
 | 항목 | 방법 |
 |---|---|
-| 테이블 변경 | <서비스 시작 때 생성 / migrations 스크립트> |
+| 테이블 변경 | Flyway 마이그레이션 |
 | 시드 데이터 | <scripts/seed 실행 방법> |

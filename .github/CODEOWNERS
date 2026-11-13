@@ -1,6 +1,38 @@
-# 서비스 폴더마다 담당자를 적으면 그 폴더를 바꾼 PR에 리뷰어로 자동 지정됩니다
-# 예:
-# /services/seat/      @<GitHub 아이디>
-# /services/booking/   @<GitHub 아이디>
-# /deploy/             @<클러스터 · GitOps 담당>
-# /.github/workflows/  @<CI/CD 담당>
+# 역할 원본: /docs/roles.md
+# 현재 서비스 코드·배포 YAML은 없음. 아래 패턴은 해당 파일 추가 시 적용.
+# 서비스 코드 디렉터리 이름을 새로 확정하지 않고 auth / auth-service 형태를 포괄.
+/services/auth/              @lth1202
+/services/auth-service/      @lth1202
+/services/menu/              @MyaNiss
+/services/menu-service/      @MyaNiss
+/services/cooking/           @ekimje
+/services/cooking-service/   @ekimje
+/services/inventory/         @namgyuri
+/services/inventory-service/ @namgyuri
+/services/payment/           @jjh970830-beep
+/services/payment-service/   @jjh970830-beep
+/services/order/             @kiwoom2002
+/services/order-service/     @kiwoom2002
+
+# 프론트엔드 전체: 코드 경로는 미확정, 아래 후보 경로를 포괄.
+/frontend/                   @MyaNiss
+/web-frontend/               @MyaNiss
+/services/web-frontend/      @MyaNiss
+
+# CLAUDE.md에 확정된 서비스별 Kustomize 경로.
+/deploy/apps/auth-service/      @lth1202
+/deploy/apps/menu-service/      @MyaNiss
+/deploy/apps/cooking-service/   @ekimje
+/deploy/apps/inventory-service/ @namgyuri
+/deploy/apps/payment-service/   @jjh970830-beep
+/deploy/apps/order-service/     @kiwoom2002
+/deploy/apps/web-frontend/      @MyaNiss
+
+# CI/CD · Argo CD · GitOps
+/.github/workflows/          @lth1202
+/deploy/argocd/              @lth1202
+# 기존 클러스터 구축 기록 경로
+/deploy/cluster/             @jjh970830-beep
+# 공통 인프라의 세부 경로가 정해지기 전에는 역할 담당자를 공동 지정.
+# 클러스터·네트워크·Gateway / DB·Redis·스토리지 / RabbitMQ·관측 / HPA·자원 / GitOps
+/deploy/platform/            @jjh970830-beep @namgyuri @ekimje @kiwoom2002 @lth1202
