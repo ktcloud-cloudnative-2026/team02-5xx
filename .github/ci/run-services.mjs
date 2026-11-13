@@ -87,15 +87,19 @@ function stepResult(outcome, task) {
     };
   }
   // Gradle can exit successfully without executing a required task.
+  const taskName = task === "spotlessCheck" ? "spotless[^\\s:]*Check" : task;
   const taskLine = new RegExp(
-    "^> Task (?::[^\\s:]+)*:" + task + "(?: (\\S+))?\\s*$",
+    "^> Task (?::[^\\s:]+)*:(" + taskName + ")(?:[ \\t]+(\\S+))?[ \\t]*\\r?$",
     "gm",
   );
-  const states = [...(outcome.stdout ?? "").matchAll(taskLine)].map(
-    (match) => match[1] ?? "EXECUTED",
-  );
-  if (task === "test" && states.length === 0) {
-    return { status: "unknown", reason: "Gradle 테스트 실행 기록 확인 불가" };
+  const states = [...(outcome.stdout ?? "").matchAll(taskLine)]
+    .filter((match) => task !== "spotlessCheck" || match[1] !== "spotlessCheck")
+    .map((match) => match[2] ?? "EXECUTED");
+  if (["test", "spotlessCheck"].includes(task) && states.length === 0) {
+    return {
+      status: "unknown",
+      reason: "Gradle " + task + " 실제 검사 작업의 실행 기록 확인 불가",
+    };
   }
   if (
     states.length > 0 &&

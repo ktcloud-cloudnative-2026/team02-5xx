@@ -522,7 +522,14 @@ function successfulCommand(command, args) {
   return {
     status: 0,
     stdout:
-      command === "sh" ? "> Task :" + args.at(-1) + "\nBUILD SUCCESSFUL\n" : "",
+      command === "sh"
+        ? (args.at(-1) === "spotlessCheck"
+            ? "> Task :spotlessJavaCheck\n"
+            : "") +
+          "> Task :" +
+          args.at(-1) +
+          "\nBUILD SUCCESSFUL\n"
+        : "",
     stderr: "",
   };
 }
@@ -1049,6 +1056,141 @@ test("정상 생략은 준비 검사 출력이 일치할 때만 허용한다", a
       const needs = serviceNeeds(root);
       change(needs);
       assert.equal(finalCheck(root, needs).status, 1);
+    });
+  }
+});
+
+test("Spotless 집계와 실제 하위 검사 결과를 구분한다", async (t) => {
+  const cases = [
+    [
+      "실제 검사 성공",
+      0,
+      "> Task :spotlessJavaCheck\n> Task :spotlessCheck UP-TO-DATE\n",
+      "success",
+      false,
+    ],
+    [
+      "실제 검사 실패",
+      1,
+      "> Task :spotlessJavaCheck FAILED\n",
+      "failure",
+      true,
+    ],
+    [
+      "실제 검사 모두 생략",
+      0,
+      "> Task :spotlessJavaCheck SKIPPED\n> Task :spotlessCheck UP-TO-DATE\n",
+      "not_run",
+      true,
+    ],
+    [
+      "실제 검사 소스 없음",
+      0,
+      "> Task :spotlessJavaCheck NO-SOURCE\n> Task :spotlessCheck\n",
+      "not_run",
+      true,
+    ],
+    [
+      "집계 작업만 있음",
+      0,
+      "> Task :spotlessCheck UP-TO-DATE\n",
+      "unknown",
+      true,
+    ],
+    [
+      "하위 모듈 검사",
+      0,
+      "> Task :app:spotlessJavaCheck\n> Task :app:spotlessCheck\n> Task :spotlessCheck\n",
+      "success",
+      false,
+    ],
+    [
+      "실제 검사 결과 재사용",
+      0,
+      "> Task :spotlessJavaCheck UP-TO-DATE\n> Task :spotlessCheck\n",
+      "reused",
+      false,
+    ],
+    [
+      "여러 실제 검사 모두 생략",
+      0,
+      "> Task :spotlessJavaCheck SKIPPED\n> Task :spotlessGroovyGradleCheck SKIPPED\n> Task :spotlessCheck\n",
+      "not_run",
+      true,
+    ],
+  ];
+  for (const [name, status, stdout, expectedStatus, failed] of cases) {
+    await t.test(name, (t) => {
+      const root = serviceFixture(t, ["java"]);
+      const report = runServices(root, "java", (command, args) =>
+        args.at(-1) === "spotlessCheck"
+          ? { status, stdout, stderr: "" }
+          : successfulCommand(command, args),
+      );
+      assert.equal(report.results[0].format.status, expectedStatus);
+      assert.equal(report.failed, failed);
+      const needs = serviceNeeds(root);
+      needs.java_ci = {
+        result: failed ? "failure" : "success",
+        outputs: { service_results: JSON.stringify(report.results) },
+      };
+      assert.equal(finalCheck(root, needs).status, failed ? 1 : 0);
+    });
+  }
+});
+
+test("등록된 서비스의 필수 검사가 전부 미실행이면 성공 작업 결과도 최종 실패다", async (t) => {
+  for (const kinds of [["java"], ["node"], ["java", "node"]]) {
+    await t.test(kinds.join("+"), (t) => {
+      const root = serviceFixture(t, kinds);
+      const needs = serviceNeeds(root);
+      for (const id of ["java_ci", "react_ci"]) {
+        if (needs[id].result === "skipped") continue;
+        const report = JSON.parse(needs[id].outputs.service_results);
+        for (const result of report) {
+          for (const step of ["install", "format", "test", "build"]) {
+            result[step] = {
+              status: "not_run",
+              reason: "회귀 검증 — 필수 검사 전체 생략",
+            };
+          }
+        }
+        needs[id].outputs.service_results = JSON.stringify(report);
+      }
+      const final = finalCheck(root, needs);
+      assert.equal(final.status, 1);
+      assert.match(final.stdout, /필수 검사 전체 생략/);
+      assert.match(final.stdout, /검사 실패/);
+    });
+  }
+});
+
+test("등록된 종류의 작업이 모두 skipped면 최종 검사는 실패한다", async (t) => {
+  for (const kinds of [["java"], ["node"], ["java", "node"]]) {
+    await t.test(kinds.join("+"), (t) => {
+      const root = serviceFixture(t, kinds);
+      const needs = serviceNeeds(root);
+      for (const [kind, id] of [
+        ["java", "java_ci"],
+        ["node", "react_ci"],
+      ]) {
+        if (!kinds.includes(kind)) continue;
+        needs[id] = { result: "skipped", outputs: {} };
+      }
+      const final = finalCheck(root, needs);
+      assert.equal(final.status, 1);
+      assert.match(final.stdout, /검사 실패/);
+      assert.match(final.stdout, /미실행/);
+      for (const [kind, id] of [
+        ["java", "java_ci"],
+        ["node", "react_ci"],
+      ]) {
+        if (!kinds.includes(kind)) continue;
+        assert.doesNotMatch(
+          final.stdout,
+          new RegExp("\\| " + id + " \\| skipped \\| 정상 생략"),
+        );
+      }
     });
   }
 });

@@ -112,6 +112,7 @@ sh ./gradlew --no-daemon --console=plain build
 CI는 Gradle 버전, 빌드 정의 또는 Wrapper 파일을 변경하지 않습니다.
 `sh ./gradlew` 실행은 Wrapper 파일의 실행 권한에 의존하지 않습니다.
 `spotlessCheck`, `test`, `build`는 현재 확인한 서비스의 표준 작업명입니다.
+Spotless는 집계 작업과 실제 하위 `spotless*Check` 작업의 결과를 함께 확인합니다. 하위 검사 기록 누락은 확인 불가, 하위 검사 전체 생략은 미실행으로 실패 처리합니다.
 Spotless 작업이 없으면 설정 오류로 실패합니다. 다른 작업명·다중 모듈 구성이 필요한 서비스는 등록 전에 담당자와 실행 계약을 확인합니다.
 
 단계 실패 시 해당 서비스의 나머지 단계는 미실행으로 기록됩니다.
