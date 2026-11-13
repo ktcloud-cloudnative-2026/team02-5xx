@@ -16,6 +16,7 @@ import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
+import { runServices, runCommand } from "./run-services.mjs";
 
 const checker = fileURLToPath(new URL("./check-services.mjs", import.meta.url));
 const finalChecker = fileURLToPath(
@@ -54,8 +55,34 @@ function check(root) {
   });
 }
 
+function readinessOutputs(root) {
+  check(root);
+  return Object.fromEntries(
+    readFileSync(join(root, "outputs.txt"), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => {
+        const separator = line.indexOf("=");
+        return [line.slice(0, separator), line.slice(separator + 1)];
+      }),
+  );
+}
+
 function finalCheck(root, needs) {
-  return spawnSync(process.execPath, [finalChecker], {
+  // Existing fixtures gain the two newly required service jobs.
+  if (
+    typeof needs === "object" &&
+    needs?.readiness &&
+    !needs.readiness.outputs
+  ) {
+    needs = {
+      java_ci: { result: "skipped" },
+      react_ci: { result: "skipped" },
+      ...needs,
+      readiness: { ...needs.readiness, outputs: readinessOutputs(root) },
+    };
+  }
+  return spawnSync(process.execPath, [finalChecker, root], {
     encoding: "utf8",
     env: {
       ...process.env,
@@ -468,4 +495,702 @@ test("대소문자가 다른 경로도 같은 실제 디렉터리이면 실패�
   const result = check(root);
   assert.equal(result.status, 1);
   assert.match(result.stdout, /실제 서비스 디렉터리를 중복 등록/);
+});
+
+function serviceFixture(t, kinds = []) {
+  const services = [];
+  if (kinds.includes("java"))
+    services.push({ id: "auth", path: "services/auth" });
+  if (kinds.includes("node"))
+    services.push({ id: "web-frontend", path: "frontend" });
+  const root = fixture(t, { services });
+  if (kinds.includes("java")) javaFiles(root, "services/auth");
+  if (kinds.includes("node")) {
+    write(
+      root,
+      "frontend/package.json",
+      JSON.stringify({
+        scripts: { "format:check": "prettier . --check", build: "vite build" },
+      }),
+    );
+    write(root, "frontend/package-lock.json", "{}");
+  }
+  return root;
+}
+
+function successfulCommand(command, args) {
+  return {
+    status: 0,
+    stdout:
+      command === "sh"
+        ? (args.at(-1) === "spotlessCheck"
+            ? "> Task :spotlessJavaCheck\n"
+            : "") +
+          "> Task :" +
+          args.at(-1) +
+          "\nBUILD SUCCESSFUL\n"
+        : "",
+    stderr: "",
+  };
+}
+
+function serviceNeeds(root) {
+  const outputs = readinessOutputs(root);
+  const needs = { readiness: { result: "success", outputs } };
+  for (const [kind, id] of [
+    ["java", "java_ci"],
+    ["node", "react_ci"],
+  ]) {
+    const report = runServices(root, kind, successfulCommand);
+    needs[id] = {
+      result:
+        report.results.length === 0
+          ? "skipped"
+          : report.failed
+            ? "failure"
+            : "success",
+      outputs: { service_results: JSON.stringify(report.results) },
+    };
+  }
+  return needs;
+}
+
+test("서비스 종류 조합별 선택과 최종 집계", async (t) => {
+  for (const kinds of [[], ["java"], ["node"], ["java", "node"]]) {
+    await t.test(kinds.join("+") || "등록 0개", (t) => {
+      const root = serviceFixture(t, kinds);
+      const needs = serviceNeeds(root);
+      assert.equal(
+        needs.readiness.outputs.java_count,
+        kinds.includes("java") ? "1" : "0",
+      );
+      assert.equal(
+        needs.readiness.outputs.node_count,
+        kinds.includes("node") ? "1" : "0",
+      );
+      const final = finalCheck(root, needs);
+      assert.equal(final.status, 0, final.stdout + final.stderr);
+      assert.match(final.stdout, /검사 통과/);
+      if (kinds.length === 0) {
+        assert.match(final.stdout, /\| java_ci \| skipped \| 정상 생략/);
+        assert.match(final.stdout, /\| react_ci \| skipped \| 정상 생략/);
+        assert.match(final.stdout, /서비스 빌드 — 미실행/);
+        assert.equal(
+          final.stdout.match(
+            /^\| (auth|menu|inventory|order|payment|cooking|web-frontend) \|/gm,
+          ).length,
+          7,
+        );
+      }
+      if (kinds.includes("node"))
+        assert.match(final.stdout, /프론트엔드 테스트 단계 미설정/);
+    });
+  }
+});
+
+test("서비스 실행기는 Wrapper와 npm 명령 및 실제 서비스 경로를 사용한다", (t) => {
+  const root = serviceFixture(t, ["java", "node"]);
+  write(
+    root,
+    "services/auth/gradle/wrapper/gradle-wrapper.properties",
+    "service-owned-version",
+  );
+  const calls = [];
+  const execute = (command, args, cwd) => {
+    calls.push({ command, args, cwd });
+    return successfulCommand(command, args);
+  };
+  assert.equal(runServices(root, "java", execute).failed, false);
+  assert.equal(runServices(root, "node", execute).failed, false);
+  assert.deepEqual(
+    calls.slice(0, 3).map((call) => [call.command, call.args]),
+    [
+      ["sh", ["./gradlew", "--no-daemon", "--console=plain", "spotlessCheck"]],
+      ["sh", ["./gradlew", "--no-daemon", "--console=plain", "test"]],
+      ["sh", ["./gradlew", "--no-daemon", "--console=plain", "build"]],
+    ],
+  );
+  assert.deepEqual(
+    calls.slice(3).map((call) => [call.command, call.args]),
+    [
+      ["npm", ["ci"]],
+      ["npm", ["run", "format:check"]],
+      ["npm", ["run", "build"]],
+    ],
+  );
+  assert.ok(
+    calls.slice(0, 3).every((call) => call.cwd === join(root, "services/auth")),
+  );
+  assert.ok(
+    calls.slice(3).every((call) => call.cwd === join(root, "frontend")),
+  );
+  assert.equal(
+    readFileSync(
+      join(root, "services/auth/gradle/wrapper/gradle-wrapper.properties"),
+      "utf8",
+    ),
+    "service-owned-version",
+  );
+});
+
+test("등록 0개 실행기는 외부 명령을 호출하지 않고 미실행을 출력한다", (t) => {
+  const root = serviceFixture(t);
+  const report = runServices(root, "java", () =>
+    assert.fail("No command expected"),
+  );
+  assert.deepEqual(report, { results: [], failed: false });
+  const outcome = spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL("./run-services.mjs", import.meta.url)),
+      "java",
+      root,
+    ],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GITHUB_OUTPUT: join(root, "runner-output.txt"),
+        GITHUB_STEP_SUMMARY: join(root, "runner-summary.md"),
+      },
+    },
+  );
+  assert.equal(outcome.status, 0, outcome.stderr);
+  assert.match(outcome.stdout, /대상 없음·미실행/);
+  assert.equal(
+    readFileSync(join(root, "runner-output.txt"), "utf8"),
+    "service_results=[]\n",
+  );
+  assert.equal(
+    readFileSync(join(root, "runner-summary.md"), "utf8"),
+    outcome.stdout.trimEnd() + "\n",
+  );
+});
+
+test("실행 직전에도 필수 파일 누락을 차단한다", (t) => {
+  const root = serviceFixture(t, ["java"]);
+  unlinkSync(join(root, "services/auth/gradlew"));
+  const report = runServices(root, "java", () =>
+    assert.fail("No command expected"),
+  );
+  assert.equal(report.failed, true);
+  assert.match(report.results[0].setup.reason, /설정 오류/);
+  assert.equal(report.results[0].build.status, "not_run");
+});
+
+test("npm 필수 스크립트 누락·빈 값·잘못된 JSON을 설정 오류로 처리한다", async (t) => {
+  for (const manifest of [
+    "{}",
+    '{"scripts":{"build":"vite build"}}',
+    '{"scripts":{"format:check":"prettier . --check"}}',
+    '{"scripts":{"format:check":" ","build":"vite build"}}',
+    "{",
+  ]) {
+    await t.test(manifest, (t) => {
+      const root = serviceFixture(t, ["node"]);
+      write(root, "frontend/package.json", manifest);
+      const report = runServices(root, "node", () =>
+        assert.fail("No command expected"),
+      );
+      assert.equal(report.failed, true);
+      assert.equal(report.results[0].setup.status, "failure");
+      assert.equal(report.results[0].install.status, "not_run");
+    });
+  }
+});
+
+test("필수 Gradle 작업 누락은 설정 오류와 최종 실패로 표시한다", (t) => {
+  const root = serviceFixture(t, ["java"]);
+  const report = runServices(root, "java", () => ({
+    status: 1,
+    stdout: "",
+    stderr: "Task 'spotlessCheck' not found in root project",
+  }));
+  assert.equal(report.failed, true);
+  assert.match(report.results[0].format.reason, /설정 오류/);
+  const needs = serviceNeeds(root);
+  needs.java_ci = {
+    result: "failure",
+    outputs: { service_results: JSON.stringify(report.results) },
+  };
+  const final = finalCheck(root, needs);
+  assert.equal(final.status, 1);
+  assert.match(final.stdout, /설정 오류/);
+});
+
+test("설치·포맷·테스트·빌드 실패와 이후 단계 미실행을 전파한다", async (t) => {
+  const cases = [
+    ["java", "spotlessCheck", "format"],
+    ["java", "test", "test"],
+    ["java", "build", "build"],
+    ["node", "ci", "install"],
+    ["node", "format:check", "format"],
+    ["node", "build", "build"],
+  ];
+  for (const [kind, task, step] of cases) {
+    await t.test(kind + "/" + task, (t) => {
+      const root = serviceFixture(t, [kind]);
+      const calls = [];
+      const report = runServices(root, kind, (command, args) => {
+        calls.push(args.at(-1));
+        return args.at(-1) === task
+          ? { status: 1, stdout: "", stderr: "intentional failure" }
+          : successfulCommand(command, args);
+      });
+      assert.equal(report.failed, true);
+      assert.equal(report.results[0][step].status, "failure");
+      assert.equal(calls.at(-1), task);
+      const needs = serviceNeeds(root);
+      needs[kind === "java" ? "java_ci" : "react_ci"] = {
+        result: "failure",
+        outputs: { service_results: JSON.stringify(report.results) },
+      };
+      const final = finalCheck(root, needs);
+      assert.equal(final.status, 1);
+      assert.match(final.stdout, /검사 실패/);
+    });
+  }
+});
+
+test("Gradle NO-SOURCE·SKIPPED와 기존 결과 재사용을 구분한다", async (t) => {
+  for (const state of ["NO-SOURCE", "SKIPPED", "UP-TO-DATE", "FROM-CACHE"]) {
+    await t.test(state, (t) => {
+      const root = serviceFixture(t, ["java"]);
+      const report = runServices(root, "java", (command, args) =>
+        args.at(-1) === "test"
+          ? { status: 0, stdout: "> Task :test " + state + "\n", stderr: "" }
+          : successfulCommand(command, args),
+      );
+      const notRun = ["NO-SOURCE", "SKIPPED"].includes(state);
+      assert.equal(report.failed, notRun);
+      assert.equal(
+        report.results[0].test.status,
+        notRun ? "not_run" : "reused",
+      );
+      if (notRun) assert.equal(report.results[0].build.status, "not_run");
+    });
+  }
+});
+
+test("프로세스 실행 오류·시그널·타임아웃을 실패로 처리한다", async (t) => {
+  for (const outcome of [
+    { status: null, error: new Error("ENOENT") },
+    { status: null, signal: "SIGTERM" },
+    { status: null, error: new Error("ETIMEDOUT") },
+  ]) {
+    await t.test(outcome.error?.message ?? outcome.signal, (t) => {
+      const root = serviceFixture(t, ["java"]);
+      const report = runServices(root, "java", () => outcome);
+      assert.equal(report.failed, true);
+      assert.equal(report.results[0].format.status, "failure");
+    });
+  }
+});
+
+test("한 Java 서비스 실패 후에도 다른 등록 서비스의 결과를 수집한다", (t) => {
+  const root = serviceFixture(t, ["java"]);
+  write(
+    root,
+    ".github/ci/services.json",
+    JSON.stringify({
+      services: [
+        { id: "auth", path: "services/auth" },
+        { id: "menu", path: "services/menu" },
+      ],
+    }),
+  );
+  javaFiles(root, "services/menu");
+  const report = runServices(root, "java", (command, args, cwd) =>
+    cwd === join(root, "services/auth")
+      ? { status: 1, stdout: "", stderr: "" }
+      : successfulCommand(command, args),
+  );
+  assert.equal(report.failed, true);
+  assert.equal(report.results.length, 2);
+  assert.equal(report.results[0].format.status, "failure");
+  assert.equal(report.results[1].build.status, "success");
+});
+
+test("선행 작업 실패·취소와 등록 대상의 비정상 생략은 최종 실패다", async (t) => {
+  for (const job of ["readiness", "java_ci", "react_ci"]) {
+    for (const state of ["failure", "cancelled", "skipped"]) {
+      await t.test(job + "/" + state, (t) => {
+        const root = serviceFixture(t, ["java", "node"]);
+        const needs = serviceNeeds(root);
+        needs[job].result = state;
+        assert.equal(finalCheck(root, needs).status, 1);
+      });
+    }
+  }
+});
+
+test("최종 집계에서 결과 누락·변조·미실행을 성공으로 인정하지 않는다", async (t) => {
+  const mutations = [
+    (needs) => {
+      delete needs.java_ci;
+    },
+    (needs) => {
+      delete needs.java_ci.outputs;
+    },
+    (needs) => {
+      needs.java_ci.outputs.service_results = "{";
+    },
+    (needs) => {
+      needs.java_ci.outputs.service_results = "[]";
+    },
+    (needs) => {
+      needs.java_ci.outputs.service_results = "null";
+    },
+    (needs) => {
+      needs.readiness.outputs.ready_services = "[]";
+    },
+    (needs) => {
+      needs.readiness.outputs.java_count = "0";
+    },
+    (needs) => {
+      needs.readiness.outputs.registered_count = "0";
+    },
+    (needs) => {
+      const report = JSON.parse(needs.java_ci.outputs.service_results);
+      report[0].id = "menu";
+      needs.java_ci.outputs.service_results = JSON.stringify(report);
+    },
+    (needs) => {
+      const report = JSON.parse(needs.java_ci.outputs.service_results);
+      report[0].path = "../outside";
+      needs.java_ci.outputs.service_results = JSON.stringify(report);
+    },
+    (needs) => {
+      const report = JSON.parse(needs.java_ci.outputs.service_results);
+      report[0].test.status = "not_run";
+      needs.java_ci.outputs.service_results = JSON.stringify(report);
+    },
+    (needs) => {
+      const report = JSON.parse(needs.java_ci.outputs.service_results);
+      report[0].build.status = "failure";
+      needs.java_ci.outputs.service_results = JSON.stringify(report);
+    },
+    (needs) => {
+      const report = JSON.parse(needs.java_ci.outputs.service_results);
+      report[0].format.status = "typo";
+      needs.java_ci.outputs.service_results = JSON.stringify(report);
+    },
+  ];
+  for (const [index, mutate] of mutations.entries()) {
+    await t.test(String(index + 1), (t) => {
+      const root = serviceFixture(t, ["java"]);
+      const needs = serviceNeeds(root);
+      mutate(needs);
+      assert.equal(finalCheck(root, needs).status, 1);
+    });
+  }
+});
+
+test("대상 0개 종류의 실제 작업 실행을 정상 생략으로 오인하지 않는다", (t) => {
+  const root = serviceFixture(t);
+  const needs = serviceNeeds(root);
+  needs.java_ci = { result: "success", outputs: { service_results: "[]" } };
+  assert.equal(finalCheck(root, needs).status, 1);
+});
+
+test("실행기에서도 외부 등록 파일과 서비스 경로를 차단한다", (t) => {
+  const root = serviceFixture(t, ["java"]);
+  const outside = serviceFixture(t, ["java"]);
+  unlinkSync(join(root, ".github/ci/services.json"));
+  rmdirSync(join(root, ".github/ci"));
+  symlinkSync(
+    join(outside, ".github/ci"),
+    join(root, ".github/ci"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  assert.throws(
+    () => runServices(root, "java", () => assert.fail("No command expected")),
+    /저장소 내부의 일반 파일/,
+  );
+});
+
+test("실제 자식 프로세스의 종료 코드와 출력을 보존한다", (t) => {
+  const root = fixture(t);
+  const success = runCommand(
+    process.execPath,
+    ["-e", 'process.stdout.write("child-ok")'],
+    root,
+  );
+  assert.equal(success.status, 0);
+  assert.equal(success.stdout, "child-ok");
+  const failure = runCommand(process.execPath, ["-e", "process.exit(3)"], root);
+  assert.equal(failure.status, 3);
+});
+
+test("워크플로의 서비스 조건과 최종 의존성을 검증한다", async (t) => {
+  const workflow = readFileSync(
+    new URL("../workflows/pr-ci.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(workflow, /needs: \[readiness, java_ci, react_ci\]/);
+  assert.match(workflow, /JAVA_HOME_21_X64/);
+  assert.match(workflow, /java\.specification\.version = 21/);
+  assert.doesNotMatch(workflow, /continue-on-error/);
+  for (const [id, countName] of [
+    ["java_ci", "java_count"],
+    ["react_ci", "node_count"],
+  ]) {
+    const job = workflow.split("\n  " + id + ":")[1].split(/\n {2}(?=\S)/)[0];
+    const expression = job.match(/if: \$\{\{([\s\S]+?)\}\}/)?.[1];
+    assert.ok(expression, id);
+    for (const [state, count, expected] of [
+      ["success", "0", false],
+      ["success", "1", true],
+      ["success", "", false],
+      ["failure", "1", false],
+      ["cancelled", "1", false],
+    ]) {
+      await t.test(id + "/" + state + "/" + count, () => {
+        const actual = runInNewContext(expression, {
+          needs: {
+            readiness: { result: state, outputs: { [countName]: count } },
+          },
+        });
+        assert.equal(actual, expected);
+      });
+    }
+  }
+});
+test("Gradle 테스트 실행 기록이 없으면 확인 불가와 최종 실패로 표시한다", (t) => {
+  const root = serviceFixture(t, ["java"]);
+  const report = runServices(root, "java", (command, args) =>
+    args.at(-1) === "test"
+      ? { status: 0, stdout: "BUILD SUCCESSFUL\n", stderr: "" }
+      : successfulCommand(command, args),
+  );
+  assert.equal(report.failed, true);
+  assert.equal(report.results[0].test.status, "unknown");
+  const needs = serviceNeeds(root);
+  needs.java_ci = {
+    result: "success",
+    outputs: { service_results: JSON.stringify(report.results) },
+  };
+  assert.equal(finalCheck(root, needs).status, 1);
+});
+
+test("두 Java 서비스의 결과에서 같은 서비스 중복 보고를 차단한다", (t) => {
+  const root = serviceFixture(t, ["java"]);
+  write(
+    root,
+    ".github/ci/services.json",
+    JSON.stringify({
+      services: [
+        { id: "auth", path: "services/auth" },
+        { id: "menu", path: "services/menu" },
+      ],
+    }),
+  );
+  javaFiles(root, "services/menu");
+  const needs = serviceNeeds(root);
+  const report = JSON.parse(needs.java_ci.outputs.service_results);
+  needs.java_ci.outputs.service_results = JSON.stringify([
+    report[0],
+    report[0],
+  ]);
+  assert.equal(finalCheck(root, needs).status, 1);
+});
+
+test("실행기에서 중복 실제 디렉터리와 외부 서비스 경로도 재검증한다", (t) => {
+  const root = serviceFixture(t, ["java"]);
+  write(
+    root,
+    ".github/ci/services.json",
+    JSON.stringify({
+      services: [
+        { id: "auth", path: "services/auth" },
+        { id: "menu", path: "services/menu" },
+      ],
+    }),
+  );
+  symlinkSync(
+    join(root, "services/auth"),
+    join(root, "services/menu"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  assert.throws(
+    () => runServices(root, "java", () => assert.fail("No command expected")),
+    /실제 서비스 디렉터리를 중복 등록/,
+  );
+  const outside = fixture(t);
+  javaFiles(outside, ".");
+  const externalRoot = fixture(t, {
+    services: [{ id: "auth", path: "services/external" }],
+  });
+  mkdirSync(join(externalRoot, "services"));
+  symlinkSync(
+    outside,
+    join(externalRoot, "services/external"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  const report = runServices(externalRoot, "java", () =>
+    assert.fail("No command expected"),
+  );
+  assert.equal(report.failed, true);
+});
+
+test("정상 생략은 준비 검사 출력이 일치할 때만 허용한다", async (t) => {
+  for (const change of [
+    (needs) => {
+      delete needs.readiness.outputs.ready_services;
+    },
+    (needs) => {
+      needs.readiness.outputs.ready_services = "[";
+    },
+    (needs) => {
+      needs.readiness.outputs.node_count = "1";
+    },
+    (needs) => {
+      needs.react_ci.result = "cancelled";
+    },
+    (needs) => {
+      delete needs.react_ci;
+    },
+  ]) {
+    await t.test(String(change), (t) => {
+      const root = serviceFixture(t);
+      const needs = serviceNeeds(root);
+      change(needs);
+      assert.equal(finalCheck(root, needs).status, 1);
+    });
+  }
+});
+
+test("Spotless 집계와 실제 하위 검사 결과를 구분한다", async (t) => {
+  const cases = [
+    [
+      "실제 검사 성공",
+      0,
+      "> Task :spotlessJavaCheck\n> Task :spotlessCheck UP-TO-DATE\n",
+      "success",
+      false,
+    ],
+    [
+      "실제 검사 실패",
+      1,
+      "> Task :spotlessJavaCheck FAILED\n",
+      "failure",
+      true,
+    ],
+    [
+      "실제 검사 모두 생략",
+      0,
+      "> Task :spotlessJavaCheck SKIPPED\n> Task :spotlessCheck UP-TO-DATE\n",
+      "not_run",
+      true,
+    ],
+    [
+      "실제 검사 소스 없음",
+      0,
+      "> Task :spotlessJavaCheck NO-SOURCE\n> Task :spotlessCheck\n",
+      "not_run",
+      true,
+    ],
+    [
+      "집계 작업만 있음",
+      0,
+      "> Task :spotlessCheck UP-TO-DATE\n",
+      "unknown",
+      true,
+    ],
+    [
+      "하위 모듈 검사",
+      0,
+      "> Task :app:spotlessJavaCheck\n> Task :app:spotlessCheck\n> Task :spotlessCheck\n",
+      "success",
+      false,
+    ],
+    [
+      "실제 검사 결과 재사용",
+      0,
+      "> Task :spotlessJavaCheck UP-TO-DATE\n> Task :spotlessCheck\n",
+      "reused",
+      false,
+    ],
+    [
+      "여러 실제 검사 모두 생략",
+      0,
+      "> Task :spotlessJavaCheck SKIPPED\n> Task :spotlessGroovyGradleCheck SKIPPED\n> Task :spotlessCheck\n",
+      "not_run",
+      true,
+    ],
+  ];
+  for (const [name, status, stdout, expectedStatus, failed] of cases) {
+    await t.test(name, (t) => {
+      const root = serviceFixture(t, ["java"]);
+      const report = runServices(root, "java", (command, args) =>
+        args.at(-1) === "spotlessCheck"
+          ? { status, stdout, stderr: "" }
+          : successfulCommand(command, args),
+      );
+      assert.equal(report.results[0].format.status, expectedStatus);
+      assert.equal(report.failed, failed);
+      const needs = serviceNeeds(root);
+      needs.java_ci = {
+        result: failed ? "failure" : "success",
+        outputs: { service_results: JSON.stringify(report.results) },
+      };
+      assert.equal(finalCheck(root, needs).status, failed ? 1 : 0);
+    });
+  }
+});
+
+test("등록된 서비스의 필수 검사가 전부 미실행이면 성공 작업 결과도 최종 실패다", async (t) => {
+  for (const kinds of [["java"], ["node"], ["java", "node"]]) {
+    await t.test(kinds.join("+"), (t) => {
+      const root = serviceFixture(t, kinds);
+      const needs = serviceNeeds(root);
+      for (const id of ["java_ci", "react_ci"]) {
+        if (needs[id].result === "skipped") continue;
+        const report = JSON.parse(needs[id].outputs.service_results);
+        for (const result of report) {
+          for (const step of ["install", "format", "test", "build"]) {
+            result[step] = {
+              status: "not_run",
+              reason: "회귀 검증 — 필수 검사 전체 생략",
+            };
+          }
+        }
+        needs[id].outputs.service_results = JSON.stringify(report);
+      }
+      const final = finalCheck(root, needs);
+      assert.equal(final.status, 1);
+      assert.match(final.stdout, /필수 검사 전체 생략/);
+      assert.match(final.stdout, /검사 실패/);
+    });
+  }
+});
+
+test("등록된 종류의 작업이 모두 skipped면 최종 검사는 실패한다", async (t) => {
+  for (const kinds of [["java"], ["node"], ["java", "node"]]) {
+    await t.test(kinds.join("+"), (t) => {
+      const root = serviceFixture(t, kinds);
+      const needs = serviceNeeds(root);
+      for (const [kind, id] of [
+        ["java", "java_ci"],
+        ["node", "react_ci"],
+      ]) {
+        if (!kinds.includes(kind)) continue;
+        needs[id] = { result: "skipped", outputs: {} };
+      }
+      const final = finalCheck(root, needs);
+      assert.equal(final.status, 1);
+      assert.match(final.stdout, /검사 실패/);
+      assert.match(final.stdout, /미실행/);
+      for (const [kind, id] of [
+        ["java", "java_ci"],
+        ["node", "react_ci"],
+      ]) {
+        if (!kinds.includes(kind)) continue;
+        assert.doesNotMatch(
+          final.stdout,
+          new RegExp("\\| " + id + " \\| skipped \\| 정상 생략"),
+        );
+      }
+    });
+  }
 });
