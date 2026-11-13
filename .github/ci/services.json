@@ -1,1 +1,8 @@
-{ "services": [] }
+{
+  "services": [
+    {
+      "id": "menu",
+      "path": "services/menu-service"
+    }
+  ]
+}

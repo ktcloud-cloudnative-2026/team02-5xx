@@ -72,6 +72,32 @@ jobs:
         id: checks
         run: node .github/ci/run-services.mjs java
 
+      # Validation-only evidence for Issue #37.
+      - name: Verify Menu test count
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          reports = sorted(Path("services/menu-service/build/test-results/test").glob("TEST-*.xml"))
+          if not reports:
+              raise SystemExit("Menu JUnit XML report is missing")
+          totals = dict.fromkeys(("tests", "failures", "errors", "skipped"), 0)
+          for report in reports:
+              suite = ET.parse(report).getroot()
+              for key in totals:
+                  totals[key] += int(suite.get(key, "0"))
+          expected = {"tests": 3, "failures": 0, "errors": 0, "skipped": 0}
+          if totals != expected:
+              raise SystemExit(f"Unexpected Menu test results: {totals}")
+          summary = "### Menu 테스트 실행 검증\n\n테스트 3개 실행 · 실패 0개 · 오류 0개 · 생략 0개\n"
+          print(summary)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
+              output.write(summary)
+          PY
+
   react_ci:
     name: React service CI
     needs: [readiness]
