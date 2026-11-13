@@ -39,7 +39,7 @@ spec:
     spec:
       containers:
         - name: rabbitmq
-          image: rabbitmq:3.13-management   # latest 금지 → 버전 고정
+          image: rabbitmq:4.3.7-management   # latest 금지 → 버전 고정
           ports:
             - containerPort: 5672
             - containerPort: 15672
