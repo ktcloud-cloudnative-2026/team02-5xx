@@ -9,6 +9,9 @@ spring:
     hibernate:
       ddl-auto: none # 스키마 변경은 Flyway 마이그레이션으로만 한다
     open-in-view: false
+    properties:
+      hibernate:
+        default_batch_fetch_size: 50
   flyway:
     enabled: true
   rabbitmq:
@@ -26,3 +29,9 @@ management:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+clients:
+  menu:
+    base-url: ${MENU_SERVICE_URL:http://localhost:8081}
+  inventory:
+    base-url: ${INVENTORY_SERVICE_URL:http://localhost:8082}
