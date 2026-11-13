@@ -1,7 +1,6 @@
 name: 트러블슈팅
-description: 장애 · 에러 · 예상과 다른 동작. 해결 과정을 남겨 런북의 재료로 씀
+description: 장애 · 에러 · 예상과 다른 동작. 종류·영역 라벨은 CLAUDE.md 기준으로 선택
 title: "[Bug] "
-labels: ["bug"]
 body:
   - type: textarea
     id: summary

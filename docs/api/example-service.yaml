@@ -1,56 +1,59 @@
+# 형식 예시이며 실제 서비스 계약이 아닙니다.
 openapi: 3.0.3
 info:
-  title: <서비스 이름> API
+  title: 예시 서비스 API
   version: 0.1.0
-  description: <서비스 설명> — 담당 <이름>
+  description: CLAUDE.md의 경로·공통 JSON 응답 형식 예시
 paths:
-  /health:
+  /api/v1/items/{id}:
     get:
-      summary: 상태 확인
-      responses:
-        "200":
-          description: 정상
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  ok:
-                    type: boolean
-  /items/{id}:
-    get:
-      summary: <항목 조회>
-      description: US-01
+      summary: 항목 조회 예시
+      description: 실제 요구사항·ID 타입·업무 모델은 서비스별 설계에서 확정합니다.
       parameters:
         - name: id
           in: path
           required: true
           schema:
-            type: integer
+            type: string
+          description: 설명용 타입이며 공통 ID 정책이 아닙니다.
       responses:
         "200":
           description: 조회 성공
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Item"
+                $ref: "#/components/schemas/SuccessResponse"
         "404":
-          description: 없는 항목
+          description: 항목 없음
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
-    Item:
+    SuccessResponse:
       type: object
+      required: [success, data, message]
       properties:
-        id:
-          type: integer
-        status:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          description: 실제 데이터 모델은 서비스별 명세에서 정의합니다.
+        message:
           type: string
-    Error:
+    ErrorResponse:
       type: object
+      required: [success, data, message, errorCode]
       properties:
-        error:
+        success:
+          type: boolean
+          enum: [false]
+        data:
+          nullable: true
+          description: 실패 시 데이터의 상세 정책은 별도 설계에서 정의합니다.
+        message:
+          type: string
+        errorCode:
           type: string

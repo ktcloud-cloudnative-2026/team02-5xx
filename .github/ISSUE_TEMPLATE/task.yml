@@ -1,7 +1,6 @@
 name: 일감
-description: 기능 개발 · 인프라 구성 · 문서 등 하루 안에 끝낼 작업
+description: 기능 개발 · 인프라 구성 · 문서 작업. 종류·영역 라벨은 CLAUDE.md 기준으로 선택
 title: "[Task] "
-labels: ["task"]
 body:
   - type: textarea
     id: goal

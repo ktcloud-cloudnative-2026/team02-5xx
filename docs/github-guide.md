@@ -8,15 +8,15 @@
 2. 저장소를 받고 이름과 이메일을 설정합니다. 이메일은 GitHub 계정에 등록된 것이어야 커밋이 본인 기여로 잡힙니다.
 
 ```bash
-git clone https://github.com/ktcloud-cloudnative-2026/team0N.git
-cd team0N
+git clone https://github.com/ktcloud-cloudnative-2026/team02-5xx.git
+cd team02-5xx
 git config user.name "이름"
 git config user.email "GitHub 계정 이메일"
 ```
 
 ## 팀 첫날 설정
 
-저장소에는 main 보호 규칙(PR 필수)이 기본으로 걸려 있습니다. 리뷰 승인은 필수가 아닙니다. 팀에 맞게 바꿔도 됩니다. 아래는 첫날 해 두면 좋은 일입니다.
+main에 직접 push하지 않고 Issue → 별도 브랜치 → PR로 작업합니다. 확정 규칙은 [CLAUDE.md](../CLAUDE.md#6-github-협업)를 따릅니다. 일반 변경은 리뷰 선택이며 중요 변경은 작성자 외 팀원 1명 승인이 필수입니다. 아래는 초기 설정 확인 항목입니다.
 
 - [ ] README 맨 위 `<팀 이름> — <서비스 이름>`과 한 줄 소개를 바꿈
 - [ ] [역할](roles.md)에 팀원, GitHub 아이디, 맡은 서비스, 공통 영역 적기
@@ -54,7 +54,7 @@ git push -u origin feat/12-seat-list
 ```
 
 5. 저장소 화면의 Compare & pull request 버튼으로 PR을 엽니다. 본문에 `Closes #12`를 적습니다.
-6. Squash and merge 합니다(팀원 리뷰는 선택). 이슈가 닫히고 보드 카드가 Done으로 이동합니다.
+6. GitHub Actions 검사 통과와 필요한 리뷰 승인을 확인한 뒤 Squash and merge 합니다. AI는 사용자 승인 없이 병합하지 않습니다. 이슈는 닫히며 보드 상태는 Projects 설정에 따라 갱신합니다.
 7. main으로 돌아와 정리합니다.
 
 ```bash
@@ -67,7 +67,7 @@ git branch -D feat/12-seat-list
 
 1. PR의 Files changed 탭에서 바뀐 내용을 봅니다.
 2. 궁금한 줄에 댓글을 답니다.
-3. Review changes에서 Approve 또는 Request changes를 고릅니다(리뷰는 선택, 승인 없이도 병합됨).
+3. Review changes에서 Approve 또는 Request changes를 고릅니다. 일반 변경은 리뷰 선택이며, DB·서비스 간 계약·인증·결제/재고 정합성·공통 인프라·여러 서비스의 공통 코드 변경은 작성자 외 팀원 1명 승인이 필수입니다.
 
 ## 자주 생기는 일
 
