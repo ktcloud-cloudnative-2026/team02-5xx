@@ -8,12 +8,21 @@
 
 ## 실행
 
-```bash
-# 로컬 PostgreSQL / RabbitMQ (비밀값은 .env 에서 주입, .env 는 커밋하지 않음)
-cp .env.example .env   # 값 채움
-docker compose up -d
+로컬에는 PostgreSQL 16과 RabbitMQ 4.3이 필요하다. 접속 정보는 환경 변수로 주입하며, 비밀값은 저장소에 기록하지 않는다.
+(`docker compose` 구성과 `.env.example`은 별도 PR로 추가할 예정이다.)
 
-set -a && . ./.env && set +a
+```bash
+# 1) 로컬 PostgreSQL / RabbitMQ (<...> 는 본인이 정한 값으로 바꾼다)
+docker run -d --name order-db -p 127.0.0.1:5432:5432 \
+  -e POSTGRES_DB=order_db -e POSTGRES_USER=<사용자> -e POSTGRES_PASSWORD=<비밀번호> \
+  postgres:16-alpine
+docker run -d --name order-rabbitmq -p 127.0.0.1:5672:5672 -p 127.0.0.1:15672:15672 \
+  -e RABBITMQ_DEFAULT_USER=<사용자> -e RABBITMQ_DEFAULT_PASS=<비밀번호> \
+  rabbitmq:4.3-management-alpine
+
+# 2) 같은 값을 환경 변수로 주입하고 실행
+export DB_USER=<사용자> DB_PASSWORD=<비밀번호>
+export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 ./gradlew bootRun
 ```
 
@@ -23,6 +32,8 @@ set -a && . ./.env && set +a
 ## 빌드·테스트
 
 ```bash
+./gradlew spotlessCheck   # 포맷 검사 (google-java-format). 적용: ./gradlew spotlessApply
+./gradlew test
 ./gradlew build
 ```
 
