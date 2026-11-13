@@ -1,4 +1,6 @@
 spring:
+  config:
+    import: optional:file:.env[.properties] # 로컬 .env 읽기 (없으면 무시, 실제 환경 변수가 우선)
   application:
     name: cooking-service
   datasource:
