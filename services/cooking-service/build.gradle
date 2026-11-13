@@ -1,0 +1,46 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.1.2'
+	id 'io.spring.dependency-management' version '1.1.7'
+	id 'com.diffplug.spotless' version '8.11.0'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'      // REST API
+	implementation 'org.springframework.boot:spring-boot-starter-validation'  // 요청 검증
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'    // DB 접근
+	implementation 'org.springframework.boot:spring-boot-starter-flyway'      // 마이그레이션
+	implementation 'org.flywaydb:flyway-database-postgresql'
+	implementation 'org.springframework.boot:spring-boot-starter-amqp'        // RabbitMQ
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'    // health, metrics
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0'  // Swagger UI
+	runtimeOnly 'org.postgresql:postgresql'
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'                // /actuator/prometheus
+
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+spotless {
+	java {
+		googleJavaFormat()      // 예시. 팀에서 정한 스타일로 바꾸세요
+		removeUnusedImports()
+	}
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
