@@ -1,0 +1,62 @@
+name: PR CI
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    name: Service readiness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      registered_count: ${{ steps.services.outputs.registered_count }}
+      ready_services: ${{ steps.services.outputs.ready_services }}
+    steps:
+      - name: Checkout PR
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        id: node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Test CI foundation
+        run: node --test .github/ci/ci.test.mjs
+
+      - name: Check service registration and required files
+        id: services
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && steps.node.outcome == 'success' }}
+        run: node .github/ci/check-services.mjs
+
+  final:
+    name: CI Final
+    needs: [readiness]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Evaluate all required jobs
+        env:
+          CI_NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node .github/ci/final-check.mjs
