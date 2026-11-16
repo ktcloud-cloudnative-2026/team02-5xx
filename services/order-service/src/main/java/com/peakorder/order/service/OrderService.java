@@ -131,6 +131,9 @@ public class OrderService {
       throw new BusinessException(ErrorCode.HOLD_EXPIRED);
     }
 
+    // 결제 전에 Menu에서 조리 시간을 받아 둔다. 여기서 실패하면 아직 결제하지 않았으므로 돈이 나가지 않는다.
+    List<ValidatedMenu> menus = fetchCookTimes(orderId, target);
+
     PaymentResult payment =
         paymentClient.pay(orderId, target.totalAmount(), idempotencyKey(orderId));
     if (!payment.isSuccess()) {
@@ -150,7 +153,7 @@ public class OrderService {
       }
       throw e;
     }
-    return txService.confirmOrder(orderId, payment.paymentId());
+    return txService.confirmOrder(orderId, payment.paymentId(), menus);
   }
 
   /** OR-03 본인 주문 목록. 확정되지 않은 주문(CREATED, FAILED)은 제외한다. */
@@ -177,6 +180,53 @@ public class OrderService {
         .findByIdAndUserId(orderId, userId)
         .map(OrderDetailResponse::from)
         .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+  }
+
+  /**
+   * 결제 직전 Menu 재조회(MI-01). 주문 항목과 같은 순서의 조리 시간을 돌려준다. 그 사이 판매가 중지된 메뉴가 있으면 주문을 종료하고 재고를 반환한다. Menu에
+   * 연결할 수 없으면 주문을 그대로 두고 오류만 돌려준다(결제 전이므로 안전).
+   */
+  private List<ValidatedMenu> fetchCookTimes(Long orderId, PaymentTarget target) {
+    List<ValidatedMenu> menus;
+    try {
+      menus = menuClient.validatePurchase(target.lines());
+    } catch (BusinessException e) {
+      if (e.errorCode() == ErrorCode.MENU_NOT_AVAILABLE) {
+        txService.markFailed(orderId, "MENU_NOT_AVAILABLE");
+        releaseQuietly(target.holdId());
+      }
+      throw e;
+    }
+    if (menus == null || menus.size() != target.lines().size()) {
+      throw new BusinessException(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+    }
+    for (int i = 0; i < menus.size(); i++) {
+      PurchaseLine line = target.lines().get(i);
+      ValidatedMenu menu = menus.get(i);
+      if (menu == null
+          || !line.menuId().equals(menu.menuId())
+          || menu.cookTimeSec() == null
+          || menu.cookTimeSec() < 0
+          || !hasExactOptions(line, menu)) {
+        throw new BusinessException(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+      }
+    }
+    return menus;
+  }
+
+  private static boolean hasExactOptions(PurchaseLine line, ValidatedMenu menu) {
+    List<ValidatedOption> options = menu.options() == null ? List.of() : menu.options();
+    Set<Long> returned = new HashSet<>();
+    for (ValidatedOption o : options) {
+      if (o == null
+          || o.optionId() == null
+          || o.extraCookTimeSec() == null
+          || o.extraCookTimeSec() < 0) {
+        return false;
+      }
+      returned.add(o.optionId());
+    }
+    return returned.equals(new HashSet<>(line.optionIds())) && returned.size() == options.size();
   }
 
   private static String idempotencyKey(Long orderId) {

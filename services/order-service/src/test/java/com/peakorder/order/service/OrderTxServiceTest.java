@@ -8,6 +8,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.peakorder.order.client.MenuClient.ValidatedMenu;
+import com.peakorder.order.client.MenuClient.ValidatedOption;
 import com.peakorder.order.dto.OrderDetailResponse;
 import com.peakorder.order.entity.Order;
 import com.peakorder.order.entity.OrderItemOption;
@@ -52,6 +54,12 @@ class OrderTxServiceTest {
             Clock.fixed(now.toInstant(), ZoneId.of("Asia/Seoul")));
   }
 
+  private List<ValidatedMenu> menus() {
+    return List.of(
+        new ValidatedMenu(
+            1L, "아메리카노", 3000, 120, List.of(new ValidatedOption(10L, "샷 추가", 500, 30))));
+  }
+
   private Order orderWithItems() {
     Order order = Order.createTemporary(7L, now);
     order.addItem(1L, "아메리카노", 3000, 2, List.of(new OrderItemOption(10L, "샷 추가", 500)));
@@ -64,7 +72,7 @@ class OrderTxServiceTest {
     when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(order));
     when(orderNoRepository.nextSequence(LocalDate.of(2026, 11, 13))).thenReturn(7);
 
-    OrderDetailResponse response = service.confirmOrder(100L, 9L);
+    OrderDetailResponse response = service.confirmOrder(100L, 9L, menus());
 
     assertThat(response.status()).isEqualTo(OrderStatus.PAID);
     assertThat(response.orderNo()).isEqualTo("261113-0007");
@@ -80,8 +88,11 @@ class OrderTxServiceTest {
     assertThat(json.get("userId").asLong()).isEqualTo(7L);
     assertThat(json.get("items").get(0).get("menuName").asString()).isEqualTo("아메리카노");
     assertThat(json.get("items").get(0).get("quantity").asInt()).isEqualTo(2);
+    assertThat(json.get("items").get(0).get("cookTimeSec").asInt()).isEqualTo(120);
     assertThat(json.get("items").get(0).get("options").get(0).get("optionName").asString())
         .isEqualTo("샷 추가");
+    assertThat(json.get("items").get(0).get("options").get(0).get("extraCookTimeSec").asInt())
+        .isEqualTo(30);
   }
 
   @Test
@@ -90,7 +101,7 @@ class OrderTxServiceTest {
     order.markConfirmed("261113-0001", 9L, now);
     when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(order));
 
-    OrderDetailResponse response = service.confirmOrder(100L, 9L);
+    OrderDetailResponse response = service.confirmOrder(100L, 9L, menus());
 
     assertThat(response.orderNo()).isEqualTo("261113-0001");
     verify(orderNoRepository, never()).nextSequence(any());

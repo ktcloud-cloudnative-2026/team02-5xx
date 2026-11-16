@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -69,6 +70,7 @@ public class Order {
   private Long paymentId;
 
   @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+  @OrderBy("id ASC")
   private List<OrderItem> items = new ArrayList<>();
 
   @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)

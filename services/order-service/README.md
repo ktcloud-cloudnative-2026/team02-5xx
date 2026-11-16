@@ -51,6 +51,7 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 - 결제 성공 후 재고 확정이 거부되면 결제를 취소하고 `FAILED`(`STOCK_CONFIRM_FAILED`)로 종료한다. 취소까지 실패하면 `fail_reason`이 `STOCK_CONFIRM_FAILED_REFUND_NEEDED`로 남아 수동 확인 대상이 된다.
 - 결제·재고 확정 결과를 알 수 없으면(타임아웃, 5xx) 성공·실패를 정하지 않고 주문을 `CREATED`로 두고 503을 돌려준다. 같은 주문으로 다시 호출하면 이어서 처리된다.
 - 주문번호는 `yyMMdd-0001` 형식(날짜별 일련번호)이며 확정 트랜잭션에서 발급한다.
+- 조리 시간은 Order DB에 저장하지 않는다. 결제를 시작할 때 Menu(MI-01)에서 다시 받아 `OrderConfirmed`(`cookTimeSec`, 옵션 `extraCookTimeSec`)에 싣는다. Menu에 연결할 수 없으면 결제 전에 503으로 끝나 돈이 나가지 않고, 그 사이 판매가 중지된 메뉴가 있으면 주문을 종료(`MENU_NOT_AVAILABLE`)하고 재고를 반환한다.
 - `OrderConfirmed`는 `outbox_events`에 `PENDING`으로 저장만 한다. 실제 발행은 후속 작업(RabbitMQ 발행기)에서 구현한다.
 
 ## 빌드·테스트

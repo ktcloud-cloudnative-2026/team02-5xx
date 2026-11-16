@@ -13,6 +13,7 @@ import com.peakorder.order.client.InventoryClient;
 import com.peakorder.order.client.InventoryClient.HoldLine;
 import com.peakorder.order.client.InventoryClient.StockHold;
 import com.peakorder.order.client.MenuClient;
+import com.peakorder.order.client.MenuClient.PurchaseLine;
 import com.peakorder.order.client.MenuClient.ValidatedMenu;
 import com.peakorder.order.client.MenuClient.ValidatedOption;
 import com.peakorder.order.client.PaymentClient;
@@ -72,6 +73,17 @@ class OrderServiceTest {
             Clock.fixed(now.toInstant(), ZoneId.of("Asia/Seoul")));
     when(storeRepository.findById(StoreOperation.SINGLE_STORE_ID))
         .thenReturn(Optional.of(new StoreOperation(true, true, now)));
+    when(menuClient.validatePurchase(payLines())).thenReturn(cookedMenus());
+  }
+
+  private List<PurchaseLine> payLines() {
+    return List.of(new PurchaseLine(1L, 2, List.of(10L)));
+  }
+
+  private List<ValidatedMenu> cookedMenus() {
+    return List.of(
+        new ValidatedMenu(
+            1L, "아메리카노", 3000, 120, List.of(new ValidatedOption(10L, "샷 추가", 500, 30))));
   }
 
   private CreateOrderRequest request() {
@@ -230,7 +242,7 @@ class OrderServiceTest {
 
   private PaymentTarget target(OrderStatus status, Long holdId, OffsetDateTime holdExpiresAt) {
     return new PaymentTarget(
-        100L, status, 11000, holdId, holdExpiresAt, mock(OrderDetailResponse.class));
+        100L, status, 11000, holdId, holdExpiresAt, payLines(), mock(OrderDetailResponse.class));
   }
 
   private PaymentTarget payable() {
@@ -242,16 +254,17 @@ class OrderServiceTest {
     when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
     when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
     OrderDetailResponse confirmed = mock(OrderDetailResponse.class);
-    when(txService.confirmOrder(100L, 9L)).thenReturn(confirmed);
+    when(txService.confirmOrder(eq(100L), eq(9L), any())).thenReturn(confirmed);
 
     OrderDetailResponse actual = service.payOrder(7L, 100L);
 
     assertThat(actual).isSameAs(confirmed);
     org.mockito.InOrder order =
-        org.mockito.Mockito.inOrder(paymentClient, inventoryClient, txService);
+        org.mockito.Mockito.inOrder(menuClient, paymentClient, inventoryClient, txService);
+    order.verify(menuClient).validatePurchase(payLines());
     order.verify(paymentClient).pay(100L, 11000, "order-100");
     order.verify(inventoryClient).confirm(55L);
-    order.verify(txService).confirmOrder(100L, 9L);
+    order.verify(txService).confirmOrder(100L, 9L, cookedMenus());
     verify(txService, never()).markFailed(any(), any());
   }
 
@@ -264,7 +277,7 @@ class OrderServiceTest {
 
     assertThat(actual).isSameAs(paid.detail());
     verify(paymentClient, never()).pay(any(), org.mockito.ArgumentMatchers.anyInt(), any());
-    verify(txService, never()).confirmOrder(any(), any());
+    verify(txService, never()).confirmOrder(any(), any(), any());
   }
 
   @Test
@@ -362,7 +375,7 @@ class OrderServiceTest {
             e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.STOCK_CONFIRM_FAILED));
     verify(paymentClient).refund(9L);
     verify(txService).markFailed(100L, "STOCK_CONFIRM_FAILED");
-    verify(txService, never()).confirmOrder(any(), any());
+    verify(txService, never()).confirmOrder(any(), any(), any());
   }
 
   @Test
@@ -393,6 +406,67 @@ class OrderServiceTest {
             BusinessException.class,
             e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE));
     verify(paymentClient, never()).refund(any());
+    verify(txService, never()).markFailed(any(), any());
+  }
+
+  @Test
+  void pay_fetches_cook_times_from_menu_before_charging() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
+
+    service.payOrder(7L, 100L);
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<List<ValidatedMenu>> menus = ArgumentCaptor.forClass(List.class);
+    verify(txService).confirmOrder(eq(100L), eq(9L), menus.capture());
+    assertThat(menus.getValue().get(0).cookTimeSec()).isEqualTo(120);
+    assertThat(menus.getValue().get(0).options().get(0).extraCookTimeSec()).isEqualTo(30);
+  }
+
+  @Test
+  void menu_unreachable_at_pay_leaves_order_untouched_and_does_not_charge() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(menuClient.validatePurchase(payLines()))
+        .thenThrow(new BusinessException(ErrorCode.MENU_SERVICE_UNAVAILABLE));
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.MENU_SERVICE_UNAVAILABLE));
+    verify(paymentClient, never()).pay(any(), org.mockito.ArgumentMatchers.anyInt(), any());
+    verify(txService, never()).markFailed(any(), any());
+    verify(inventoryClient, never()).release(any());
+  }
+
+  @Test
+  void menu_no_longer_sellable_at_pay_fails_order_and_releases_stock_without_charging() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(menuClient.validatePurchase(payLines()))
+        .thenThrow(new BusinessException(ErrorCode.MENU_NOT_AVAILABLE));
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.MENU_NOT_AVAILABLE));
+    verify(txService).markFailed(100L, "MENU_NOT_AVAILABLE");
+    verify(inventoryClient).release(55L);
+    verify(paymentClient, never()).pay(any(), org.mockito.ArgumentMatchers.anyInt(), any());
+  }
+
+  @Test
+  void menu_response_without_cook_time_is_rejected_before_charging() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(menuClient.validatePurchase(payLines()))
+        .thenReturn(
+            List.of(
+                new ValidatedMenu(
+                    1L, "아메리카노", 3000, List.of(new ValidatedOption(10L, "샷 추가", 500)))));
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE));
+    verify(paymentClient, never()).pay(any(), org.mockito.ArgumentMatchers.anyInt(), any());
     verify(txService, never()).markFailed(any(), any());
   }
 }

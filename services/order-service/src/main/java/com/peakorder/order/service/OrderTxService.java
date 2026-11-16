@@ -1,6 +1,8 @@
 package com.peakorder.order.service;
 
 import com.peakorder.order.client.InventoryClient.StockHold;
+import com.peakorder.order.client.MenuClient.PurchaseLine;
+import com.peakorder.order.client.MenuClient.ValidatedMenu;
 import com.peakorder.order.dto.OrderDetailResponse;
 import com.peakorder.order.entity.Order;
 import com.peakorder.order.entity.OrderItemOption;
@@ -56,6 +58,7 @@ public class OrderTxService {
       int totalAmount,
       Long holdId,
       OffsetDateTime holdExpiresAt,
+      List<PurchaseLine> lines,
       OrderDetailResponse detail) {}
 
   @Transactional
@@ -90,6 +93,14 @@ public class OrderTxService {
         order.getTotalAmount(),
         order.getHoldId(),
         order.getHoldExpiresAt(),
+        order.getItems().stream()
+            .map(
+                i ->
+                    new PurchaseLine(
+                        i.getMenuId(),
+                        i.getQuantity(),
+                        i.getOptions().stream().map(OrderItemOption::getOptionId).toList()))
+            .toList(),
         OrderDetailResponse.from(order));
   }
 
@@ -98,7 +109,7 @@ public class OrderTxService {
    * 한다. 이미 확정된 주문이면 아무것도 바꾸지 않고 현재 상태를 돌려준다(중복 호출 방지).
    */
   @Transactional
-  public OrderDetailResponse confirmOrder(Long orderId, Long paymentId) {
+  public OrderDetailResponse confirmOrder(Long orderId, Long paymentId, List<ValidatedMenu> menus) {
     Order order =
         orderRepository
             .findWithLockById(orderId)
@@ -110,7 +121,8 @@ public class OrderTxService {
     order.markConfirmed(issueOrderNo(LocalDate.now(clock)), paymentId, now);
 
     UUID eventId = UUID.randomUUID();
-    String payload = jsonMapper.writeValueAsString(OrderConfirmedEvent.from(order, eventId, now));
+    String payload =
+        jsonMapper.writeValueAsString(OrderConfirmedEvent.from(order, eventId, now, menus));
     outboxEventRepository.insertPending(eventId, OrderConfirmedEvent.EVENT_TYPE, payload, now);
     return OrderDetailResponse.from(order);
   }
