@@ -20,15 +20,21 @@ public interface CookingTicketRepository extends JpaRepository<CookingTicket, Lo
   /** 상태별 건수 (CO-01 대기 주문 수, CO-03 현황) */
   long countByStatus(TicketStatus status);
 
-  /** FIFO 기준으로 기준 전표보다 앞에 있는 WAITING 전표 수 */
+  /** FIFO 기준으로 기준 전표(queuedAt, id)보다 앞에 있는 해당 상태 전표 수 */
   @Query(
-      "select count(t) from CookingTicket t where t.status = 'WAITING' "
+      "select count(t) from CookingTicket t where t.status = :status "
           + "and (t.queuedAt < :queuedAt or (t.queuedAt = :queuedAt and t.id < :id))")
-  long countWaitingAhead(@Param("queuedAt") Instant queuedAt, @Param("id") Long id);
+  long countAheadByStatus(
+      @Param("status") TicketStatus status,
+      @Param("queuedAt") Instant queuedAt,
+      @Param("id") Long id);
 
-  /** FIFO 기준으로 기준 전표보다 앞에 있는 WAITING 전표들의 예상 조리 시간 합(초) */
+  /** FIFO 기준으로 기준 전표(queuedAt, id)보다 앞에 있는 해당 상태 전표들의 예상 조리 시간 합(초) */
   @Query(
-      "select coalesce(sum(t.estimatedCookSec), 0) from CookingTicket t where t.status = 'WAITING' "
+      "select coalesce(sum(t.estimatedCookSec), 0) from CookingTicket t where t.status = :status "
           + "and (t.queuedAt < :queuedAt or (t.queuedAt = :queuedAt and t.id < :id))")
-  long sumEstimatedCookSecWaitingAhead(@Param("queuedAt") Instant queuedAt, @Param("id") Long id);
+  long sumEstimatedCookSecAheadByStatus(
+      @Param("status") TicketStatus status,
+      @Param("queuedAt") Instant queuedAt,
+      @Param("id") Long id);
 }

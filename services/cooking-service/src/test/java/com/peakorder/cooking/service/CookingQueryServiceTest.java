@@ -65,8 +65,10 @@ class CookingQueryServiceTest {
     when(repository.findByOrderId(3L)).thenReturn(Optional.of(mine));
     when(repository.findByStatusOrderByQueuedAtAscIdAsc(TicketStatus.COOKING))
         .thenReturn(List.of(cooking));
-    when(repository.countWaitingAhead(eq(mine.getQueuedAt()), any())).thenReturn(1L);
-    when(repository.sumEstimatedCookSecWaitingAhead(eq(mine.getQueuedAt()), any()))
+    when(repository.countAheadByStatus(eq(TicketStatus.WAITING), eq(mine.getQueuedAt()), any()))
+        .thenReturn(1L);
+    when(repository.sumEstimatedCookSecAheadByStatus(
+            eq(TicketStatus.WAITING), eq(mine.getQueuedAt()), any()))
         .thenReturn(150L);
 
     CookingStatusResponse res = service.getStatus(3L);

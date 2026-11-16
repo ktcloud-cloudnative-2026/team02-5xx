@@ -46,9 +46,12 @@ public class CookingQueryService {
 
     return switch (ticket.getStatus()) {
       case WAITING -> {
-        long ahead = ticketRepository.countWaitingAhead(ticket.getQueuedAt(), ticket.getId());
+        long ahead =
+            ticketRepository.countAheadByStatus(
+                TicketStatus.WAITING, ticket.getQueuedAt(), ticket.getId());
         long aheadCookSec =
-            ticketRepository.sumEstimatedCookSecWaitingAhead(ticket.getQueuedAt(), ticket.getId());
+            ticketRepository.sumEstimatedCookSecAheadByStatus(
+                TicketStatus.WAITING, ticket.getQueuedAt(), ticket.getId());
         long expected = cookingRemainingSec(now) + aheadCookSec + ticket.getEstimatedCookSec();
         yield CookingStatusResponse.of(ticket, ahead, expected);
       }
