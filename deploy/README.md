@@ -41,9 +41,10 @@ deploy/
 | MetalLB 대역 | 10.10.22.100-127 | 10.10.22.200-223 |
 | 파드 대역 | 10.244.0.0/16 | 10.244.0.0/16 |
 
+- PostgreSQL은 클러스터 밖 강사 제공 VM t2-db(10.10.22.10)에 PostgreSQL 16으로 설치했습니다(11/13). 서비스별 DB 12개의 이름·접속 허용·백업은 [런북](../docs/runbook.md#postgresql-t2-db)을 확인합니다.
+
 ## 상세 확인 필요
 
-- PostgreSQL의 물리 배치: 클러스터 내부 또는 기존 강사 제공 VM(10.10.22.10). 서비스별 독립 DB dev 6개 + prod 6개 규칙은 유지합니다.
 - RabbitMQ 배포 방식.
 - prod 배포의 추가 승인 절차·자동 동기화 설정. 어떤 방식이든 Git PR → Argo CD 경로를 유지합니다.
 - 기존 구축 안내에 언급된 Calico·MetalLB·local-path·Envoy Gateway의 최종 채택과 상세 설정. kubeadm과 Argo CD는 확정 규칙을 따릅니다.
