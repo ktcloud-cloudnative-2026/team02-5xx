@@ -2,12 +2,14 @@ package com.peakorder.cooking.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.peakorder.cooking.config.ClockConfig;
+import com.peakorder.cooking.dto.CookingQueueResponse;
 import com.peakorder.cooking.dto.CookingStatusResponse;
 import com.peakorder.cooking.entity.CookingTicket;
 import com.peakorder.cooking.entity.CookingTicketItem;
@@ -99,5 +101,31 @@ class CookingQueryServiceTest {
     assertThat(res.status()).isEqualTo(TicketStatus.DONE);
     assertThat(res.expectedWaitSec()).isZero();
     assertThat(res.completedAt()).isNotNull();
+  }
+
+  @Test
+  void 대기열은_FIFO_순서대로_1번부터_번호를_매긴다() {
+    CookingTicket first = ticket(10L, 100, NOW.minusSeconds(30));
+    CookingTicket second = ticket(11L, 200, NOW.minusSeconds(20));
+    when(repository.findByStatusOrderByQueuedAtAscIdAsc(TicketStatus.WAITING))
+        .thenReturn(List.of(first, second));
+
+    CookingQueueResponse res = service.getQueue();
+
+    assertThat(res.count()).isEqualTo(2);
+    assertThat(res.items())
+        .extracting(CookingQueueResponse.Entry::position, CookingQueueResponse.Entry::orderId)
+        .containsExactly(tuple(1, 10L), tuple(2, 11L));
+  }
+
+  @Test
+  void 대기열이_비어_있으면_빈_목록() {
+    when(repository.findByStatusOrderByQueuedAtAscIdAsc(TicketStatus.WAITING))
+        .thenReturn(List.of());
+
+    CookingQueueResponse res = service.getQueue();
+
+    assertThat(res.count()).isZero();
+    assertThat(res.items()).isEmpty();
   }
 }

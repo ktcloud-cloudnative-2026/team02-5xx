@@ -1,5 +1,6 @@
 package com.peakorder.cooking.service;
 
+import com.peakorder.cooking.dto.CookingQueueResponse;
 import com.peakorder.cooking.dto.CookingStatusResponse;
 import com.peakorder.cooking.entity.CookingTicket;
 import com.peakorder.cooking.entity.TicketStatus;
@@ -54,6 +55,12 @@ public class CookingQueryService {
       case COOKING -> CookingStatusResponse.of(ticket, 0, remainingSec(ticket, now));
       case DONE, CANCELED -> CookingStatusResponse.of(ticket, 0, 0);
     };
+  }
+
+  /** CO-04. WAITING 전표를 Cooking DB 등록 순서(FIFO)로 조회한다. */
+  public CookingQueueResponse getQueue() {
+    return CookingQueueResponse.from(
+        ticketRepository.findByStatusOrderByQueuedAtAscIdAsc(TicketStatus.WAITING));
   }
 
   /** 현재 조리 중인 전표들의 남은 시간 합(초) */
