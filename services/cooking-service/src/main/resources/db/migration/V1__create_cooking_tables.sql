@@ -1,7 +1,6 @@
 -- Cooking 서비스 초기 스키마
--- 기준: Notion ERD "3-6. 조리 (cooking_svc)"
+-- 기준: Notion ERD "3-6. 조리 (cooking_svc)", "3-8. 이벤트용 표 (Order·Cooking 공통)"
 -- 포함: cooking_tickets, cooking_ticket_items, outbox_events, processed_events, congestion_thresholds
---       (outbox_events · processed_events는 API 명세 처리 규칙 "이벤트 중복 방지" 기준)
 -- 제외: congestion_snapshots (이력용 선택 표, 필요 시 이후 버전으로 추가)
 
 -- 조리 전표: OrderConfirmed 이벤트 1건당 1행
@@ -62,7 +61,6 @@ CREATE INDEX idx_outbox_events_pending
 -- 수신 이벤트 중복 처리 방지 (메시지의 eventId 저장)
 CREATE TABLE processed_events (
     event_id      UUID          PRIMARY KEY,
-    event_type    VARCHAR(100)  NOT NULL,                         -- 예: OrderConfirmed
     processed_at  TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
 
