@@ -57,6 +57,7 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
   - 같은 키로 다시 호출했는데 이미 환불된 결제(`REFUNDED`)가 오면 돈은 돌아간 상태이므로 다시 환불하지 않고 `FAILED`(`PAYMENT_REFUNDED`)로 종료한다. (환불까지 끝났는데 주문 종료 저장만 실패했던 경우)
   - 메뉴 판매 중지로 재시도가 막히면 결제 결과를 확인해 성공이면 환불하고 `FAILED`(`MENU_NOT_AVAILABLE`)로 종료한다. 환불까지 실패하면 `fail_reason`이 `*_REFUND_NEEDED`로 남아 수동 확인 대상이 된다.
   - 결제 요청이 Payment에 닿지 않았던 경우에도 같은 키로 재호출하면 새로 결제될 수 있지만, 이어지는 확정 단계에서 거절되면 바로 환불한다.
+- Inventory 응답 해석(Inventory 담당과 2026-11-16 합의): II-01 `409`(`INSUFFICIENT_STOCK`, `STOCK_NOT_LINKED`)은 재고 부족, II-02 `409`(`HOLD_NOT_ACTIVE`: 만료·해제된 확보)와 `404`(`HOLD_NOT_FOUND`)는 확정 불가(결제 취소 후 주문 종료), 이미 확정된 건의 재호출은 `200`. 그 밖의 `4xx`(요청·인증 오류)는 재고 판단으로 단정하지 않고 `502`로 응답하며 주문을 그대로 둔다. `5xx`·연결 실패는 결과 불명이다.
 - 주문번호는 `yyMMdd-0001` 형식(날짜별 일련번호)이며 확정 트랜잭션에서 발급한다.
 - 조리 시간은 Order DB에 저장하지 않는다. 결제를 시작할 때 Menu(MI-01)에서 다시 받아 `OrderConfirmed`(`cookTimeSec`, 옵션 `extraCookTimeSec`)에 싣는다. Menu에 연결할 수 없으면 결제 전에 503으로 끝나 돈이 나가지 않고, 그 사이 판매가 중지된 메뉴가 있으면 주문을 종료(`MENU_NOT_AVAILABLE`)하고 재고를 반환한다.
 - `OrderConfirmed`는 `outbox_events`에 `PENDING`으로 저장만 한다. 실제 발행은 후속 작업(RabbitMQ 발행기)에서 구현한다.

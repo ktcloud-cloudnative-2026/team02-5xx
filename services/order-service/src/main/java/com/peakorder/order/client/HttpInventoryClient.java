@@ -39,8 +39,13 @@ public class HttpInventoryClient implements InventoryClient {
       }
       return body.data();
     } catch (RestClientResponseException e) {
-      if (e.getStatusCode().is4xxClientError()) {
+      // 409: 재고 부족(INSUFFICIENT_STOCK) 또는 재고 미연결(STOCK_NOT_LINKED)로 주문할 수 없음이 확실한 경우.
+      // 그 밖의 4xx는 우리 요청이 잘못되었다는 뜻이라 재고 부족으로 단정하지 않는다.
+      if (e.getStatusCode().value() == 409) {
         throw new BusinessException(ErrorCode.OUT_OF_STOCK);
+      }
+      if (e.getStatusCode().is4xxClientError()) {
+        throw new BusinessException(ErrorCode.UPSTREAM_INVALID_RESPONSE);
       }
       throw new BusinessException(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE);
     } catch (RestClientException e) {
@@ -57,9 +62,15 @@ public class HttpInventoryClient implements InventoryClient {
           .retrieve()
           .toBodilessEntity();
     } catch (RestClientResponseException e) {
-      // 4xx: 확보가 없거나 만료되어 확정할 수 없음이 확실한 경우. 5xx: 결과를 알 수 없음.
-      if (e.getStatusCode().is4xxClientError()) {
+      // 409(HOLD_NOT_ACTIVE: 만료·해제된 확보)와 404(HOLD_NOT_FOUND)만 "확정할 수 없음이 확실한" 경우다.
+      // 결제 후 이 판단은 환불로 이어지므로, 그 밖의 4xx(요청·인증 오류 등)는 확정 실패로 단정하지 않는다.
+      // 5xx·연결 실패는 결과를 알 수 없음.
+      int status = e.getStatusCode().value();
+      if (status == 409 || status == 404) {
         throw new BusinessException(ErrorCode.STOCK_CONFIRM_FAILED);
+      }
+      if (e.getStatusCode().is4xxClientError()) {
+        throw new BusinessException(ErrorCode.UPSTREAM_INVALID_RESPONSE);
       }
       throw new BusinessException(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE);
     } catch (RestClientException e) {
