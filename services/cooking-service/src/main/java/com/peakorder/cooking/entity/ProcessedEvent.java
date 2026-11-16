@@ -25,9 +25,6 @@ public class ProcessedEvent implements Persistable<UUID> {
   @Column(name = "event_id")
   private UUID eventId;
 
-  @Column(name = "event_type", nullable = false, length = 100)
-  private String eventType;
-
   @Column(name = "processed_at", nullable = false)
   private Instant processedAt;
 
@@ -35,10 +32,9 @@ public class ProcessedEvent implements Persistable<UUID> {
 
   protected ProcessedEvent() {}
 
-  public static ProcessedEvent of(UUID eventId, String eventType, Instant now) {
+  public static ProcessedEvent of(UUID eventId, Instant now) {
     ProcessedEvent event = new ProcessedEvent();
     event.eventId = eventId;
-    event.eventType = eventType;
     event.processedAt = now;
     return event;
   }
@@ -57,10 +53,6 @@ public class ProcessedEvent implements Persistable<UUID> {
   @Override
   public boolean isNew() {
     return isNew;
-  }
-
-  public String getEventType() {
-    return eventType;
   }
 
   public Instant getProcessedAt() {
