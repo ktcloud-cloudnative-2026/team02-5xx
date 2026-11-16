@@ -65,6 +65,9 @@ public class Order {
   @Column(name = "hold_expires_at")
   private OffsetDateTime holdExpiresAt;
 
+  @Column(name = "payment_id")
+  private Long paymentId;
+
   @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<OrderItem> items = new ArrayList<>();
 
@@ -96,6 +99,14 @@ public class Order {
     this.holdId = holdId;
     this.holdExpiresAt = holdExpiresAt;
     this.updatedAt = now;
+  }
+
+  /** 결제·재고 확정 완료: 주문번호를 발급하고 PAID로 변경한다. */
+  public void markConfirmed(String orderNo, Long paymentId, OffsetDateTime now) {
+    changeStatus(OrderStatus.PAID, null, now);
+    this.orderNo = orderNo;
+    this.paymentId = paymentId;
+    this.paidAt = now;
   }
 
   public void markFailed(String reason, OffsetDateTime now) {
@@ -159,6 +170,10 @@ public class Order {
 
   public OffsetDateTime getUpdatedAt() {
     return updatedAt;
+  }
+
+  public Long getPaymentId() {
+    return paymentId;
   }
 
   public Long getHoldId() {

@@ -46,6 +46,13 @@ public class OrderController {
     return ApiResponse.ok(orderService.createOrder(userId, request), "임시 주문이 생성되었습니다.");
   }
 
+  @PostMapping("/{orderId}/pay")
+  @Operation(summary = "모의 결제 요청 및 주문 확정 (OR-02)")
+  public ApiResponse<OrderDetailResponse> pay(
+      @RequestHeader(USER_ID_HEADER) Long userId, @PathVariable Long orderId) {
+    return ApiResponse.ok(orderService.payOrder(userId, orderId), "결제가 완료되었습니다.");
+  }
+
   @GetMapping
   @Operation(summary = "본인 주문 목록 조회 (OR-03)")
   public ApiResponse<OrderListResponse> list(

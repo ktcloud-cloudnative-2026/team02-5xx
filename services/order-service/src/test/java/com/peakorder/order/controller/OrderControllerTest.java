@@ -122,4 +122,44 @@ class OrderControllerTest {
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.errorCode").value("ORDER_NOT_FOUND"));
   }
+
+  @Test
+  void pay_returns_200_with_confirmed_order() throws Exception {
+    OrderDetailResponse confirmed =
+        new OrderDetailResponse(
+            100L,
+            "261113-0001",
+            OrderStatus.PAID,
+            7000,
+            null,
+            OffsetDateTime.parse("2026-11-13T10:00:00+09:00"),
+            OffsetDateTime.parse("2026-11-13T10:01:00+09:00"),
+            null,
+            null,
+            null,
+            List.of());
+    when(orderService.payOrder(7L, 100L)).thenReturn(confirmed);
+
+    mvc.perform(post("/api/v1/orders/100/pay").header("X-User-Id", 7))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.success").value(true))
+        .andExpect(jsonPath("$.data.orderNo").value("261113-0001"))
+        .andExpect(jsonPath("$.data.status").value("PAID"))
+        .andExpect(jsonPath("$.data.holdExpiresAt").doesNotExist());
+  }
+
+  @Test
+  void pay_failure_is_402_and_unknown_payment_is_503() throws Exception {
+    when(orderService.payOrder(7L, 100L))
+        .thenThrow(new BusinessException(ErrorCode.PAYMENT_FAILED));
+    when(orderService.payOrder(7L, 101L))
+        .thenThrow(new BusinessException(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE));
+
+    mvc.perform(post("/api/v1/orders/100/pay").header("X-User-Id", 7))
+        .andExpect(status().isPaymentRequired())
+        .andExpect(jsonPath("$.errorCode").value("PAYMENT_FAILED"));
+    mvc.perform(post("/api/v1/orders/101/pay").header("X-User-Id", 7))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(jsonPath("$.errorCode").value("PAYMENT_SERVICE_UNAVAILABLE"));
+  }
 }

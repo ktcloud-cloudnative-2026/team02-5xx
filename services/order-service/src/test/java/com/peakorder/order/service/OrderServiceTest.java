@@ -15,6 +15,8 @@ import com.peakorder.order.client.InventoryClient.StockHold;
 import com.peakorder.order.client.MenuClient;
 import com.peakorder.order.client.MenuClient.ValidatedMenu;
 import com.peakorder.order.client.MenuClient.ValidatedOption;
+import com.peakorder.order.client.PaymentClient;
+import com.peakorder.order.client.PaymentClient.PaymentResult;
 import com.peakorder.order.dto.CreateOrderRequest;
 import com.peakorder.order.dto.CreateOrderRequest.OrderLine;
 import com.peakorder.order.dto.OrderDetailResponse;
@@ -26,7 +28,10 @@ import com.peakorder.order.exception.BusinessException;
 import com.peakorder.order.exception.ErrorCode;
 import com.peakorder.order.repository.OrderRepository;
 import com.peakorder.order.repository.StoreOperationRepository;
+import com.peakorder.order.service.OrderTxService.PaymentTarget;
+import java.time.Clock;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +50,7 @@ class OrderServiceTest {
   private OrderTxService txService;
   private MenuClient menuClient;
   private InventoryClient inventoryClient;
+  private PaymentClient paymentClient;
   private OrderService service;
 
   @BeforeEach
@@ -54,8 +60,16 @@ class OrderServiceTest {
     txService = mock(OrderTxService.class);
     menuClient = mock(MenuClient.class);
     inventoryClient = mock(InventoryClient.class);
+    paymentClient = mock(PaymentClient.class);
     service =
-        new OrderService(orderRepository, storeRepository, txService, menuClient, inventoryClient);
+        new OrderService(
+            orderRepository,
+            storeRepository,
+            txService,
+            menuClient,
+            inventoryClient,
+            paymentClient,
+            Clock.fixed(now.toInstant(), ZoneId.of("Asia/Seoul")));
     when(storeRepository.findById(StoreOperation.SINGLE_STORE_ID))
         .thenReturn(Optional.of(new StoreOperation(true, true, now)));
   }
@@ -210,5 +224,175 @@ class OrderServiceTest {
         .findByUserIdAndStatusNotIn(eq(7L), excluded.capture(), any(Pageable.class));
     assertThat(excluded.getValue())
         .containsExactlyInAnyOrder(OrderStatus.CREATED, OrderStatus.FAILED);
+  }
+
+  // ---- OR-02 결제 ----
+
+  private PaymentTarget target(OrderStatus status, Long holdId, OffsetDateTime holdExpiresAt) {
+    return new PaymentTarget(
+        100L, status, 11000, holdId, holdExpiresAt, mock(OrderDetailResponse.class));
+  }
+
+  private PaymentTarget payable() {
+    return target(OrderStatus.CREATED, 55L, now.plusMinutes(3));
+  }
+
+  @Test
+  void pay_success_charges_confirms_stock_then_confirms_order() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
+    OrderDetailResponse confirmed = mock(OrderDetailResponse.class);
+    when(txService.confirmOrder(100L, 9L)).thenReturn(confirmed);
+
+    OrderDetailResponse actual = service.payOrder(7L, 100L);
+
+    assertThat(actual).isSameAs(confirmed);
+    org.mockito.InOrder order =
+        org.mockito.Mockito.inOrder(paymentClient, inventoryClient, txService);
+    order.verify(paymentClient).pay(100L, 11000, "order-100");
+    order.verify(inventoryClient).confirm(55L);
+    order.verify(txService).confirmOrder(100L, 9L);
+    verify(txService, never()).markFailed(any(), any());
+  }
+
+  @Test
+  void pay_on_already_confirmed_order_returns_current_state_without_charging_again() {
+    PaymentTarget paid = target(OrderStatus.PAID, 55L, now.plusMinutes(3));
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(paid);
+
+    OrderDetailResponse actual = service.payOrder(7L, 100L);
+
+    assertThat(actual).isSameAs(paid.detail());
+    verify(paymentClient, never()).pay(any(), org.mockito.ArgumentMatchers.anyInt(), any());
+    verify(txService, never()).confirmOrder(any(), any());
+  }
+
+  @Test
+  void pay_rejects_failed_or_canceled_orders() {
+    for (OrderStatus status : List.of(OrderStatus.FAILED, OrderStatus.CANCELED)) {
+      when(txService.findPaymentTarget(7L, 100L))
+          .thenReturn(target(status, 55L, now.plusMinutes(3)));
+
+      assertThatThrownBy(() -> service.payOrder(7L, 100L))
+          .isInstanceOfSatisfying(
+              BusinessException.class,
+              e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.ORDER_NOT_PAYABLE));
+    }
+    verify(paymentClient, never()).pay(any(), org.mockito.ArgumentMatchers.anyInt(), any());
+  }
+
+  @Test
+  void pay_rejects_order_without_stock_hold() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(target(OrderStatus.CREATED, null, null));
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.ORDER_NOT_PAYABLE));
+  }
+
+  @Test
+  void pay_after_hold_expired_fails_order_without_charging() {
+    when(txService.findPaymentTarget(7L, 100L))
+        .thenReturn(target(OrderStatus.CREATED, 55L, now.minusSeconds(1)));
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.HOLD_EXPIRED));
+    verify(txService).markFailed(100L, "HOLD_EXPIRED");
+    verify(paymentClient, never()).pay(any(), org.mockito.ArgumentMatchers.anyInt(), any());
+  }
+
+  @Test
+  void pay_failure_fails_order_and_releases_stock() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "FAILED"));
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.PAYMENT_FAILED));
+    verify(txService).markFailed(100L, "PAYMENT_FAILED");
+    verify(inventoryClient).release(55L);
+    verify(inventoryClient, never()).confirm(any());
+  }
+
+  @Test
+  void pay_failure_still_ends_order_when_stock_release_fails() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "FAILED"));
+    org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE))
+        .when(inventoryClient)
+        .release(55L);
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.PAYMENT_FAILED));
+    verify(txService).markFailed(100L, "PAYMENT_FAILED");
+  }
+
+  @Test
+  void unknown_payment_result_leaves_order_untouched_so_retry_can_continue() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(paymentClient.pay(100L, 11000, "order-100"))
+        .thenThrow(new BusinessException(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE));
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE));
+    verify(txService, never()).markFailed(any(), any());
+    verify(inventoryClient, never()).release(any());
+    verify(inventoryClient, never()).confirm(any());
+  }
+
+  @Test
+  void stock_confirm_rejected_after_payment_refunds_and_fails_order() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
+    org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.STOCK_CONFIRM_FAILED))
+        .when(inventoryClient)
+        .confirm(55L);
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.STOCK_CONFIRM_FAILED));
+    verify(paymentClient).refund(9L);
+    verify(txService).markFailed(100L, "STOCK_CONFIRM_FAILED");
+    verify(txService, never()).confirmOrder(any(), any());
+  }
+
+  @Test
+  void refund_failure_is_recorded_in_fail_reason_for_manual_follow_up() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
+    org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.STOCK_CONFIRM_FAILED))
+        .when(inventoryClient)
+        .confirm(55L);
+    org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE))
+        .when(paymentClient)
+        .refund(9L);
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L)).isInstanceOf(BusinessException.class);
+    verify(txService).markFailed(100L, "STOCK_CONFIRM_FAILED_REFUND_NEEDED");
+  }
+
+  @Test
+  void unknown_stock_confirm_result_does_not_refund_or_fail_order() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
+    org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE))
+        .when(inventoryClient)
+        .confirm(55L);
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE));
+    verify(paymentClient, never()).refund(any());
+    verify(txService, never()).markFailed(any(), any());
   }
 }

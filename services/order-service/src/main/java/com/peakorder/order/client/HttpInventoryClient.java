@@ -48,5 +48,37 @@ public class HttpInventoryClient implements InventoryClient {
     }
   }
 
+  @Override
+  public void confirm(Long holdId) {
+    try {
+      restClient
+          .post()
+          .uri("/internal/v1/inventory/holds/{holdId}/confirm", holdId)
+          .retrieve()
+          .toBodilessEntity();
+    } catch (RestClientResponseException e) {
+      // 4xx: 확보가 없거나 만료되어 확정할 수 없음이 확실한 경우. 5xx: 결과를 알 수 없음.
+      if (e.getStatusCode().is4xxClientError()) {
+        throw new BusinessException(ErrorCode.STOCK_CONFIRM_FAILED);
+      }
+      throw new BusinessException(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE);
+    } catch (RestClientException e) {
+      throw new BusinessException(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE);
+    }
+  }
+
+  @Override
+  public void release(Long holdId) {
+    try {
+      restClient
+          .delete()
+          .uri("/internal/v1/inventory/holds/{holdId}", holdId)
+          .retrieve()
+          .toBodilessEntity();
+    } catch (RestClientException e) {
+      throw new BusinessException(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE);
+    }
+  }
+
   record HoldRequest(Long orderId, List<HoldLine> items) {}
 }
