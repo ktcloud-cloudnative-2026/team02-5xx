@@ -63,6 +63,16 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 - 조리 시간은 Order DB에 저장하지 않는다. 결제를 시작할 때 Menu(MI-01)에서 다시 받아 `OrderConfirmed`(`cookTimeSec`, 옵션 `extraCookTimeSec`)에 싣는다. Menu에 연결할 수 없으면 결제 전에 503으로 끝나 돈이 나가지 않고, 그 사이 판매가 중지된 메뉴가 있으면 주문을 종료(`MENU_NOT_AVAILABLE`)하고 재고를 반환한다.
 - `OrderConfirmed`는 `outbox_events`에 `PENDING`으로 저장만 한다. 실제 발행은 후속 작업(RabbitMQ 발행기)에서 구현한다.
 
+## Cooking 장애 시 신규 주문·결제 차단 (US-13)
+
+Cooking 담당(김지윤)과 합의한 방식이다.
+
+- Order가 Cooking의 `GET /actuator/health`(인증 없음)를 5초 주기로 확인한다. 타임아웃은 2초이고, HTTP 503(DOWN)·그 외 오류 응답·연결 실패·타임아웃은 모두 실패로 센다.
+- **3회 연속 실패**하면 "Cooking 장애"로 판단하고, **한 번이라도 성공하면 바로 해제**한다. 기동 직후에는 정상으로 간주한다(첫 실패 한 번으로 차단하지 않음). 상태는 인스턴스마다 독립적으로 판단한다.
+- 장애 상태에서는 **신규 주문 생성(OR-01)과 결제(OR-02)**만 `503 COOKING_UNAVAILABLE`로 거절한다. 매장 접수 설정(`store_operations`)과는 별개이며, 접수가 닫혀 있으면 `STORE_NOT_ACCEPTING_ORDERS`(409)가 먼저 나온다.
+- 영향을 받지 않는 것: 주문 목록·상세 조회, 이미 확정된 주문(결제 재호출 시 현재 상태 반환), `CookingCompleted` 수신, outbox 발행. 장애로 결제가 거절된 주문은 `CREATED`로 남고 재고 확보 만료 규칙은 그대로 적용된다(만료되면 종료).
+- 관측: 상태 전환은 로그로 남고, 지표 `order_cooking_available`(1=정상, 0=차단 중)을 `/actuator/prometheus`로 노출한다.
+
 ## 이벤트 (RabbitMQ)
 
 Cooking 담당(김지윤)과 2026-11-16에 아래 내용으로 합의했다. 모든 큐는 durable이고 메시지는 persistent로 발행한다.
@@ -105,6 +115,8 @@ Cooking 담당(김지윤)과 2026-11-16에 아래 내용으로 합의했다. 모
 | `MENU_SERVICE_URL` | Menu Service 내부 주소 | `http://localhost:8081` |
 | `INVENTORY_SERVICE_URL` | Inventory Service 내부 주소 | `http://localhost:8082` |
 | `PAYMENT_SERVICE_URL` | Payment Service 내부 주소 | `http://localhost:8083` |
+| `COOKING_SERVICE_URL` | Cooking Service 내부 주소(헬스 확인용) | `http://localhost:8084` |
+| `COOKING_HEALTH_INTERVAL_MS` / `COOKING_HEALTH_FAILURE_THRESHOLD` | Cooking 헬스 확인 주기(ms) / 장애로 판단할 연속 실패 횟수 | `5000` / `3` |
 
 ## 규칙
 

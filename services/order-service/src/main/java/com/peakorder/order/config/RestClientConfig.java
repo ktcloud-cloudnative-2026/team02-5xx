@@ -14,6 +14,7 @@ public class RestClientConfig {
 
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
   private static final Duration READ_TIMEOUT = Duration.ofSeconds(3);
+  private static final Duration HEALTH_TIMEOUT = Duration.ofSeconds(2);
 
   @Bean
   public RestClient menuRestClient(@Value("${clients.menu.base-url}") String baseUrl) {
@@ -30,11 +31,21 @@ public class RestClientConfig {
     return build(baseUrl);
   }
 
+  /** Cooking 헬스 확인용. 합의한 대로 타임아웃 2초. */
+  @Bean
+  public RestClient cookingRestClient(@Value("${clients.cooking.base-url}") String baseUrl) {
+    return build(baseUrl, CONNECT_TIMEOUT, HEALTH_TIMEOUT);
+  }
+
   private RestClient build(String baseUrl) {
+    return build(baseUrl, CONNECT_TIMEOUT, READ_TIMEOUT);
+  }
+
+  private RestClient build(String baseUrl, Duration connectTimeout, Duration readTimeout) {
     JdkClientHttpRequestFactory factory =
         new JdkClientHttpRequestFactory(
-            HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build());
-    factory.setReadTimeout(READ_TIMEOUT);
+            HttpClient.newBuilder().connectTimeout(connectTimeout).build());
+    factory.setReadTimeout(readTimeout);
     return RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
   }
 }
