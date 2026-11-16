@@ -1,1 +1,8 @@
-{ "services": [] }
+{
+  "services": [
+    {
+      "id": "auth",
+      "path": "services/auth-service"
+    }
+  ]
+}
