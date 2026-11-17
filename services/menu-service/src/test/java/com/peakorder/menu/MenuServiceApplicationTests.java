@@ -109,14 +109,20 @@ class MenuServiceApplicationTests {
       Long optionId, String optionName, int extraPrice, Integer extraCookTimeSec) {}
 
   @ParameterizedTest
-  @ValueSource(strings = {
-    "", "null", "{", "{}", "{\"items\":[]}", "{\"items\":[null]}",
-    "{\"items\":[{\"menuId\":1,\"optionIds\":[]}]}",
-    "{\"items\":[{\"menuId\":1,\"quantity\":0,\"optionIds\":[]}]}",
-    "{\"items\":[{\"menuId\":1,\"quantity\":2147483648,\"optionIds\":[]}]}",
-    "{\"items\":[{\"menuId\":\"bad\",\"quantity\":1,\"optionIds\":[]}]}",
-    "{\"items\":[{\"menuId\":1,\"quantity\":1,\"optionIds\":[1,1]}]}"
-  })
+  @ValueSource(
+      strings = {
+        "",
+        "null",
+        "{",
+        "{}",
+        "{\"items\":[]}",
+        "{\"items\":[null]}",
+        "{\"items\":[{\"menuId\":1,\"optionIds\":[]}]}",
+        "{\"items\":[{\"menuId\":1,\"quantity\":0,\"optionIds\":[]}]}",
+        "{\"items\":[{\"menuId\":1,\"quantity\":2147483648,\"optionIds\":[]}]}",
+        "{\"items\":[{\"menuId\":\"bad\",\"quantity\":1,\"optionIds\":[]}]}",
+        "{\"items\":[{\"menuId\":1,\"quantity\":1,\"optionIds\":[1,1]}]}"
+      })
   void invalidJsonAndFieldsUseCommonErrorEnvelope(String body) throws Exception {
     var response = post(body);
     assertThat(response.statusCode()).isEqualTo(400);
@@ -129,8 +135,7 @@ class MenuServiceApplicationTests {
   @ParameterizedTest
   @ValueSource(strings = {"1.5", "\"1\"", "true", "[]", "{}", "9223372036854775808"})
   void rejectsNonIntegerIdentifiers(String value) throws Exception {
-    var response =
-        post("{\"items\":[{\"menuId\":" + value + ",\"quantity\":1,\"optionIds\":[]}]}");
+    var response = post("{\"items\":[{\"menuId\":" + value + ",\"quantity\":1,\"optionIds\":[]}]}");
     assertThat(response.statusCode()).isEqualTo(400);
     assertThat(response.body()).contains("INVALID_REQUEST");
   }
@@ -138,22 +143,28 @@ class MenuServiceApplicationTests {
   @ParameterizedTest
   @ValueSource(strings = {"1.5", "\"2\"", "true"})
   void rejectsNonIntegerQuantity(String value) throws Exception {
-    var response =
-        post("{\"items\":[{\"menuId\":1,\"quantity\":" + value + ",\"optionIds\":[]}]}");
+    var response = post("{\"items\":[{\"menuId\":1,\"quantity\":" + value + ",\"optionIds\":[]}]}");
     assertThat(response.statusCode()).isEqualTo(400);
     assertThat(response.body()).contains("INVALID_REQUEST");
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {
-    "MISSING_MENU", "PAUSED", "HIDDEN", "MISSING_OPTION", "INACTIVE_OPTION", "FOREIGN_OPTION"
-  })
+  @ValueSource(
+      strings = {
+        "MISSING_MENU",
+        "PAUSED",
+        "HIDDEN",
+        "MISSING_OPTION",
+        "INACTIVE_OPTION",
+        "FOREIGN_OPTION"
+      })
   void businessValidationFailuresRemainClientErrors(String scenario) throws Exception {
-    var status = switch (scenario) {
-      case "PAUSED" -> MenuStatus.PAUSED;
-      case "HIDDEN" -> MenuStatus.HIDDEN;
-      default -> MenuStatus.ON_SALE;
-    };
+    var status =
+        switch (scenario) {
+          case "PAUSED" -> MenuStatus.PAUSED;
+          case "HIDDEN" -> MenuStatus.HIDDEN;
+          default -> MenuStatus.ON_SALE;
+        };
     var menu = new Menu(null, "Burger", null, null, 6500, 90, status);
     ReflectionTestUtils.setField(menu, "id", 1L);
     when(menus.findAllById(any()))
