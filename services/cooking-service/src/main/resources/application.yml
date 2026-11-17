@@ -18,6 +18,10 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER}
     password: ${RABBITMQ_PASSWORD}
+    publisher-confirm-type: correlated # 브로커 수신 확인 후에만 outbox를 SENT로
+    publisher-returns: true # 바인딩된 큐가 없어 되돌아온 메시지 감지
+    template:
+      mandatory: true
     listener:
       simple:
         default-requeue-rejected: false # 실패 메시지는 재큐잉하지 않고 DLQ로 (재시도 정책은 RabbitConfig 참고)
@@ -35,6 +39,10 @@ events:
     routing-key: order.confirmed
   cooking-completed:
     routing-key: cooking.completed
+  outbox:
+    enabled: true
+    poll-interval-ms: 1000
+    batch-size: 50
 
 cooking:
   # 관리자 API 노출: 인증(STORE_ADMIN) 연동 전까지 기본 꺼짐. 로컬·dev에서만 COOKING_ADMIN_ENABLED=true (PR #53 리뷰)
