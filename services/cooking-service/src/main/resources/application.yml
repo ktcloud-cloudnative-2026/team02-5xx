@@ -36,10 +36,14 @@ events:
   cooking-completed:
     routing-key: cooking.completed
 
-# 관리자 API 노출: 인증(STORE_ADMIN) 연동 전까지 기본 꺼짐. 로컬·dev에서만 COOKING_ADMIN_ENABLED=true (PR #53 리뷰)
 cooking:
+  # 관리자 API 노출: 인증(STORE_ADMIN) 연동 전까지 기본 꺼짐. 로컬·dev에서만 COOKING_ADMIN_ENABLED=true (PR #53 리뷰)
   admin:
     enabled: ${COOKING_ADMIN_ENABLED:false}
+  # 자동 조리 진행 (회의 11/5·11/11 결정)
+  progress:
+    enabled: true
+    interval-ms: 1000
 
 management:
   endpoints:
