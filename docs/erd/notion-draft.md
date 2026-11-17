@@ -467,8 +467,21 @@ erDiagram
 | Order 상태 | CREATED, PAID, WAITING, COOKING, COMPLETED, CANCELED, FAILED | Order PR의 CHECK와 enum은 도식과 일치. 현재 이벤트 처리는 PAID→COMPLETED이며 WAITING·COOKING 반영 방식은 미확정 |
 | Cooking 상태·관계 | WAITING→COOKING→DONE, WAITING→CANCELED. order_id UNIQUE, 전표-항목 FK | [PR #62](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/62)의 V1에 상태 CHECK, quantity > 0, cook_time_sec·estimated_cook_sec >= 0, (status, queued_at, id) INDEX 존재. CI-03은 행 잠금으로 취소 경합 제어 |
 | Cooking 혼잡도 | congestion_thresholds로 기준값 관리 | V1에는 id, busy_wait_sec(>0), updated_at 존재. 도식의 선택 이력 표 congestion_snapshots는 PR에서 제외. 확정된 필수 표 누락으로 간주하지 않음 |
-| Inventory | inventories.menu_id NULL 허용·UNIQUE, 확보 상태 RESERVED/CONFIRMED/RELEASED/EXPIRED | 현재 main과 확인한 관련 PR에 Inventory Flyway가 없어 컬럼·CHECK·멱등 제약 구현은 확인 불가. 기존 도식을 구현 완료로 보지 않음 |
+| Inventory | inventories.menu_id NULL 허용·UNIQUE, 확보 상태 RESERVED/CONFIRMED/RELEASED/EXPIRED | **main 미병합·PR 구현 존재:** [PR #70](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/70)의 V1에서 아래 네 테이블·주요 제약을 확인. PR은 RESTORED를 추가하므로 기존 Notion 도식과 상태값 차이를 구분. 마이그레이션 존재가 API·멱등 처리 전체의 구현 완료를 의미하지 않음 |
 | 이벤트 이력 | 업무 변경·Outbox 저장, processed_events.event_id UUID PK로 중복 방지 | Order·Cooking PR에 event_id UNIQUE Outbox와 Processed Event 존재. 수신은 이력 삽입과 업무 반영을 같은 트랜잭션에서 처리. [이벤트 계약](../events/notion-draft.md) 참조 |
+
+#### Inventory V1 확인 — PR #70
+
+확인 대상: [V1__create_inventory_tables.sql, `df7ba02`](https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/df7ba02024d6df8d7a716adbddf602a904619c61/services/inventory-service/src/main/resources/db/migration/V1__create_inventory_tables.sql). **main 미병합·PR 구현 존재**이며, 실제 main DB 적용 상태는 확인하지 않았습니다.
+
+| 테이블 | V1의 주요 제약조건·인덱스 |
+| --- | --- |
+| inventories | id PK, menu_id NULL 허용·UNIQUE. stock_qty·reserved_qty·low_stock_threshold >= 0, reserved_qty <= stock_qty CHECK. version NOT NULL DEFAULT 0은 컬럼 정의이며 낙관적 잠금 구현 완료를 뜻하지 않음 |
+| inventory_reservations | id PK, order_id NOT NULL UNIQUE. status CHECK: RESERVED/CONFIRMED/RELEASED/EXPIRED/**RESTORED**. expires_at NOT NULL, (status, expires_at) INDEX |
+| inventory_reservation_items | id PK, reservation_id → inventory_reservations.id FK, quantity > 0 CHECK, (reservation_id, menu_id) UNIQUE |
+| inventory_histories | id PK, inventory_id → inventories.id FK, type CHECK: RESERVE/CONFIRM/RELEASE/RESTORE/RESTOCK/ADJUST, (inventory_id, created_at) INDEX |
+
+다른 서비스의 menu_id·order_id에는 FK를 만들지 않습니다. **도식과 PR의 차이:** RESTORED는 V1에서 확정 재고의 취소 후 복원 상태로 추가됐습니다. 기존 Notion 도식은 네 상태만 표시하므로, 설계 승인 여부와 실제 II-04 중복 복원 방지는 담당자 확인 대상으로 유지합니다.
 
 출처: [Notion ERD](https://app.notion.com/p/4102f07e947880fb87eac2ab3ffc68a2), 위 PR의 Flyway·엔티티·서비스 코드. 확정 상태와 구현 차이가 있는 항목은 담당자 확인 후에만 도식의 개발 계약으로 승격합니다.
 

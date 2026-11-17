@@ -69,7 +69,7 @@ Cooking 저장 규칙은 `cook_time_sec = cookTimeSec + Σ options.extraCookTime
 
 수신 트랜잭션은 ① processed_events에 eventId 삽입(중복이면 업무 처리 없이 종료) → ② 전표·항목 생성 → ③ 커밋 후 ack입니다. cooking_tickets.order_id UNIQUE가 두 번째 중복 방지 장치입니다. Cooking PR은 다른 eventId로 같은 orderId가 다시 오면 경고 후 무시합니다.
 
-**구현 불일치:** [Order 발행 DTO `cfe5a88`](https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/cfe5a884d7d9b7133f0f99f1094d0000593f51fd/services/order-service/src/main/java/com/peakorder/order/messaging/OrderConfirmedEvent.java)의 Option에는 합의된 optionName이 없습니다. [Cooking 수신 DTO `16eb587`](https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/16eb58742a003bda9029f664020519691f00d996/services/cooking-service/src/main/java/com/peakorder/cooking/messaging/OrderConfirmedEvent.java)는 이를 사용합니다. 위 JSON은 **합의 계약**이며 현재 Order 발행 결과와 완전히 일치하는 예시는 아닙니다. 담당자가 발행 DTO를 확인해야 합니다.
+**DTO 확인:** [Order 발행 DTO `cfe5a88`](https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/cfe5a884d7d9b7133f0f99f1094d0000593f51fd/services/order-service/src/main/java/com/peakorder/order/messaging/OrderConfirmedEvent.java)의 Option은 `optionId`, `optionName`, `extraCookTimeSec`를 선언하며, 이벤트 생성 시 주문 옵션의 이름을 전달합니다. [Cooking 수신 DTO `16eb587`](https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/16eb58742a003bda9029f664020519691f00d996/services/cooking-service/src/main/java/com/peakorder/cooking/messaging/OrderConfirmedEvent.java)에도 같은 필드가 존재합니다. optionName 누락에 따른 DTO 불일치는 없습니다. 이는 지정한 커밋의 코드 확인 결과이며 main 병합이나 실제 종단 간 연동 완료를 의미하지 않습니다.
 
 ## EV-02 CookingCompleted
 
