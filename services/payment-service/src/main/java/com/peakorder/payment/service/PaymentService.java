@@ -43,8 +43,8 @@ public class PaymentService {
   /**
    * PI-01 모의 결제.
    *
-   * <p>같은 idempotencyKey로 다시 오면 새로 결제하지 않고 처음 결과(성공·실패)를 그대로 돌려준다. 동시에 두 번 와도 DB의
-   * UNIQUE 제약 때문에 한 건만 저장되고, 늦은 쪽은 먼저 저장된 결과를 돌려준다.
+   * <p>같은 idempotencyKey로 다시 오면 새로 결제하지 않고 처음 결과(성공·실패)를 그대로 돌려준다. 동시에 두 번 와도 DB의 UNIQUE 제약 때문에 한
+   * 건만 저장되고, 늦은 쪽은 먼저 저장된 결과를 돌려준다.
    */
   public PaymentResponse pay(PaymentRequest req) {
     Optional<Payment> existing = findReplay(req);
