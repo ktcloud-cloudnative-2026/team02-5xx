@@ -22,6 +22,10 @@ spring:
       simple:
         default-requeue-rejected: false # 실패 메시지는 재큐잉하지 않고 DLQ로 (재시도 정책은 RabbitConfig 참고)
 
+# Order의 COOKING_SERVICE_URL 로컬 기본값(localhost:8084)과 맞춤 (PR #56 리뷰). K8s에서는 환경 변수 SERVER_PORT로 바꿀 수 있음
+server:
+  port: 8084
+
 # RabbitMQ 이벤트 계약 (Order #51과 합의, 2026-11-16)
 events:
   exchange: peakorder.events
