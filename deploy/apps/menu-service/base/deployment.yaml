@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: menu-service
+  namespace: peakorder
+  labels:
+    app: menu-service
+    team: team02
+spec:
+  selector:
+    matchLabels:
+      app: menu-service
+  template:
+    metadata:
+      labels:
+        app: menu-service
+        team: team02
+    spec:
+      containers:
+        - name: menu-service
+          # Unpublished placeholder; replace before deployment. See ../README.md.
+          image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/menu-service:sha-REPLACE_WITH_PUBLISHED_40_CHAR_COMMIT_SHA
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: MENU_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: menu-service-db
+                  key: MENU_DB_URL
+                  optional: false
+            - name: MENU_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: menu-service-db
+                  key: MENU_DB_USERNAME
+                  optional: false
+            - name: MENU_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: menu-service-db
+                  key: MENU_DB_PASSWORD
+                  optional: false
+          readinessProbe:
+            tcpSocket:
+              port: http
+          livenessProbe:
+            tcpSocket:
+              port: http
