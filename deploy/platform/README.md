@@ -26,7 +26,7 @@ kubectl create secret generic rabbitmq-secret -n peakorder \
   --from-literal=username='<사용자이름>' \
   --from-literal=password='<비밀번호>'
 ```
-
+> RabbitMQ 아이디·비밀번호는 저장 공간(PVC)이 비어 있는 **첫 기동 때만** 적용됩니다. 이후 `rabbitmq-secret`을 바꿔도 RabbitMQ 비밀번호는 바뀌지 않습니다.
 ## 4. 나머지 적용
 ```bash
 kubectl apply -f gateway.yaml
@@ -40,3 +40,9 @@ kubectl get pod -n peakorder   # rabbitmq-0, redis-0 Running
 kubectl get pvc -n peakorder   # data-*-0 Bound
 kubectl get pod -n argocd      # 전부 Running
 ```
+## 6. 서비스에서 접속하는 주소
+같은 `peakorder` 네임스페이스의 서비스는 아래 주소로 접속합니다. 서비스 배포 시 환경 변수에 넣습니다(앱 기본값 `localhost`는 클러스터에서 동작하지 않음).
+
+| 대상 | 환경 변수 | 값 |
+|---|---|---|
+| RabbitMQ | `RABBITMQ_HOST` / `RABBITMQ_PORT` | `rabbitmq` / `5672` |
