@@ -9,6 +9,10 @@
       "path": "services/menu-service"
     },
     {
+      "id": "inventory",
+      "path": "services/inventory-service"
+    },
+    {
       "id": "order",
       "path": "services/order-service"
     },
