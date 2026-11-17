@@ -5,6 +5,9 @@ on:
     branches: [main]
     types: [opened, synchronize, reopened, edited, ready_for_review]
 
+  push:
+    branches: [main]
+
 permissions:
   contents: read
 
@@ -33,7 +36,7 @@ jobs:
           package-manager-cache: false
 
       - name: Test CI foundation
-        run: node --test .github/ci/ci.test.mjs
+        run: node --test .github/ci/ci.test.mjs .github/ci/image-ci.test.mjs
 
       - name: Check service registration and required files
         id: services
@@ -96,9 +99,100 @@ jobs:
         id: checks
         run: node .github/ci/run-services.mjs node
 
+  image_ci:
+    name: Image build and Trivy
+    needs: [readiness, java_ci, react_ci]
+    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.readiness.result == 'success' && needs.readiness.outputs.registered_count != '0' && needs.readiness.outputs.registered_count != '' && (needs.java_ci.result == 'success' || (needs.readiness.outputs.java_count == '0' && needs.java_ci.result == 'skipped')) && (needs.react_ci.result == 'success' || (needs.readiness.outputs.node_count == '0' && needs.react_ci.result == 'skipped')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    outputs:
+      image_results: ${{ steps.report.outputs.image_results }}
+    steps:
+      - name: Checkout PR
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        id: node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Configure temporary image workspace
+        run: |
+          echo "CI_IMAGE_REPORT=$RUNNER_TEMP/peakorder-image-results.json" >> "$GITHUB_ENV"
+          echo "CI_TRIVY_PATH=$RUNNER_TEMP/peakorder-trivy/bin/trivy" >> "$GITHUB_ENV"
+          echo "DOCKER_CONFIG=$RUNNER_TEMP/peakorder-ghcr-auth" >> "$GITHUB_ENV"
+
+      - name: Install verified Trivy 0.76.2
+        run: bash .github/ci/install-trivy.sh
+
+      - name: Build and scan registered service images
+        run: node .github/ci/image-ci.mjs check
+
+      - name: Report image results
+        id: report
+        if: ${{ always() && steps.checkout.outcome == 'success' && steps.node.outcome == 'success' }}
+        run: node .github/ci/image-ci.mjs report
+
+  image_publish:
+    name: Image build, Trivy and GHCR
+    needs: [readiness, java_ci, react_ci]
+    if: ${{ always() && !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.readiness.result == 'success' && needs.readiness.outputs.registered_count != '0' && needs.readiness.outputs.registered_count != '' && (needs.java_ci.result == 'success' || (needs.readiness.outputs.java_count == '0' && needs.java_ci.result == 'skipped')) && (needs.react_ci.result == 'success' || (needs.readiness.outputs.node_count == '0' && needs.react_ci.result == 'skipped')) }}
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    outputs:
+      image_results: ${{ steps.report.outputs.image_results }}
+    steps:
+      - name: Checkout merged commit
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        id: node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Verify all code checks before image publication
+        env:
+          CI_NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node .github/ci/final-check.mjs
+
+      - name: Configure temporary image workspace
+        run: |
+          echo "CI_IMAGE_REPORT=$RUNNER_TEMP/peakorder-image-results.json" >> "$GITHUB_ENV"
+          echo "CI_TRIVY_PATH=$RUNNER_TEMP/peakorder-trivy/bin/trivy" >> "$GITHUB_ENV"
+          echo "DOCKER_CONFIG=$RUNNER_TEMP/peakorder-ghcr-auth" >> "$GITHUB_ENV"
+
+      - name: Install verified Trivy 0.76.2
+        run: bash .github/ci/install-trivy.sh
+
+      - name: Build and scan all registered service images
+        run: node .github/ci/image-ci.mjs check
+
+      - name: Publish the scanned images to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/ci/image-ci.mjs publish
+
+      - name: Report image results
+        id: report
+        if: ${{ always() && steps.checkout.outcome == 'success' && steps.node.outcome == 'success' }}
+        run: node .github/ci/image-ci.mjs report
+
   final:
     name: CI Final
-    needs: [readiness, java_ci, react_ci]
+    needs: [readiness, java_ci, react_ci, image_ci, image_publish]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -117,4 +211,5 @@ jobs:
       - name: Evaluate all required jobs
         env:
           CI_NEEDS_JSON: ${{ toJSON(needs) }}
+          CI_IMAGE_MODE: ${{ github.event_name == 'push' && 'main' || 'pr' }}
         run: node .github/ci/final-check.mjs
