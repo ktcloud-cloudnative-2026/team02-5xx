@@ -3,6 +3,22 @@
     {
       "id": "auth",
       "path": "services/auth-service"
+    },
+    {
+      "id": "menu",
+      "path": "services/menu-service"
+    },
+    {
+      "id": "order",
+      "path": "services/order-service"
+    },
+    {
+      "id": "payment",
+      "path": "services/payment-service"
+    },
+    {
+      "id": "cooking",
+      "path": "services/cooking-service"
     }
   ]
 }
