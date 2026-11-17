@@ -10,7 +10,13 @@ kubectl apply -n argocd --server-side --force-conflicts \
 ```
 > 일반 `kubectl apply`는 ApplicationSet CRD 크기 제한(256KB) 에러가 나므로 `--server-side`를 사용합니다.
 
-## 2. Secret 먼저 만들기
+## 2. Namespace 먼저 만들기
+Secret을 넣을 `peakorder` 네임스페이스가 있어야 다음 단계가 성공합니다.
+```bash
+kubectl apply -f namespaces.yaml
+```
+
+## 3. Secret 만들기
 실제 값은 Git에 올리지 않습니다. 팀 비공개 채널에서 받아 입력하세요.
 ```bash
 kubectl create secret generic redis-secret -n peakorder \
@@ -21,15 +27,14 @@ kubectl create secret generic rabbitmq-secret -n peakorder \
   --from-literal=password='<비밀번호>'
 ```
 
-## 3. 적용 순서
+## 4. 나머지 적용
 ```bash
-kubectl apply -f namespaces.yaml   # 가장 먼저
 kubectl apply -f gateway.yaml
 kubectl apply -f rabbitmq.yaml
 kubectl apply -f redis.yaml
 ```
 
-## 4. 확인
+## 5. 확인
 ```bash
 kubectl get pod -n peakorder   # rabbitmq-0, redis-0 Running
 kubectl get pvc -n peakorder   # data-*-0 Bound
