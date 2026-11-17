@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: inventory-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/${DB_NAME:inventory_db}}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: none # 스키마 변경은 Flyway 마이그레이션으로만 한다
+    open-in-view: false
+  flyway:
+    enabled: true
+
+inventory:
+  stock-hold-ttl: ${STOCK_HOLD_TTL:5m} # 재고 임시 확보 유효시간 (기본 5분, 테스트 10s)
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
