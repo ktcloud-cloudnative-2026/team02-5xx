@@ -28,3 +28,10 @@ erDiagram
 |---|---|
 | 테이블 변경 | Flyway 마이그레이션 |
 | 시드 데이터 | <scripts/seed 실행 방법> |
+
+## Notion 설계 초안
+
+- [현재 ERD 초안](notion-draft.md): 서비스별 ERD, 설계 이유, 미결정 사항과 수정 기록을 보존했습니다.
+- [보관용 옛 ERD](archive/notion-legacy.md): Notion 원문에서 과거 자료로 구분한 설계이며 현재 구현 기준으로 사용하지 않습니다.
+
+현재 ERD도 초안 상태입니다. Notion의 Mermaid 원문을 보존했으며 DBML 원본을 임의로 생성하지 않았습니다. 문서 보관은 DB 변경이나 Flyway 마이그레이션 실행을 의미하지 않습니다.

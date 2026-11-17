@@ -17,6 +17,8 @@
 | 기획·설계 문서, 회의록 (Notion) | [Peak Order](https://app.notion.com/p/Peak-Order-35f2f07e947883f88d530131eb2b8f0b?source=copy_link)          |
 | 시퀀스 다이어그램 (FigJam)      | [FigJam](https://www.figma.com/board/PfXHpZdcoHplNNKP6ZPcx1/kt-cloud-team2?node-id=0-1&t=N8W9xaJJmx3OKX5J-1) |
 | 할 일 보드 (GitHub Projects)    | 준비 중                                                                                                      |
+| API 명세 초안 | [Notion에서 가져온 API · 이벤트](docs/api/README.md#notion-설계-초안) |
+| ERD 초안 | [현재 초안 · 과거 자료](docs/erd/README.md#notion-설계-초안) |
 | 공통 PR CI | [구조 · 서비스 등록 · 로컬 검증](docs/ci.md) |
 
 ## 링크
