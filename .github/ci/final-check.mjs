@@ -1,3 +1,4 @@
+import { evaluateImageJobs, imagePlan, imageSummary } from "./image-ci.mjs";
 import { appendFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { inspectServices, loadServices } from "./service-config.mjs";
@@ -12,6 +13,7 @@ let results = [];
 let error = "";
 let passed = false;
 let registeredCount = null;
+let imageReport = null;
 const normalSkips = new Set();
 try {
   const needs = JSON.parse(process.env.CI_NEEDS_JSON ?? "");
@@ -134,10 +136,21 @@ try {
     results.push(...reported);
   }
 
+  if (process.env.CI_IMAGE_MODE) {
+    const imageState = evaluateImageJobs(
+      needs,
+      imagePlan(root, process.env),
+      process.env.CI_IMAGE_MODE,
+    );
+    imageState.normalSkips.forEach((id) => normalSkips.add(id));
+    imageReport = { results: imageState.results, error: "" };
+  }
+
   for (const job of jobs) {
     if (
       !["readiness", "java_ci", "react_ci"].includes(job.id) &&
-      job.result !== "success"
+      job.result !== "success" &&
+      !normalSkips.has(job.id)
     ) {
       passed = false;
     }
@@ -161,7 +174,11 @@ const lines = [
 if (error) lines.push("최종 집계 오류 — " + error, "");
 lines.push("| 선행 작업 | 실행 결과 | 설명 |", "| --- | --- | --- |");
 for (const job of jobs) {
-  const reason = normalSkips.has(job.id) ? "정상 생략 — 등록 대상 없음" : "";
+  const reason = normalSkips.has(job.id)
+    ? ["image_ci", "image_publish"].includes(job.id)
+      ? "정상 생략 — 실행 이벤트 또는 등록 대상 조건"
+      : "정상 생략 — 등록 대상 없음"
+    : "";
   lines.push("| " + job.id + " | " + job.result + " | " + reason + " |");
 }
 lines.push("", formatServiceResults(results));
@@ -173,6 +190,7 @@ lines.push(
   "등록 대상 0개이며 준비 검사가 성공한 종류의 skipped만 정상 생략으로 처리합니다.",
   "필수 검사 실패·취소·결과 누락·등록 대상이 있는 작업의 생략은 최종 실패입니다.",
 );
+if (imageReport) lines.push("", imageSummary(imageReport));
 const summary = lines.join("\n") + "\n";
 console.log(summary);
 if (process.env.GITHUB_STEP_SUMMARY) {
