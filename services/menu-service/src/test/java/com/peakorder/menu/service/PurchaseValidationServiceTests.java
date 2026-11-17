@@ -76,7 +76,9 @@ class PurchaseValidationServiceTests {
   }
 
   @ParameterizedTest
-  @EnumSource(value = MenuStatus.class, names = {"PAUSED", "HIDDEN"})
+  @EnumSource(
+      value = MenuStatus.class,
+      names = {"PAUSED", "HIDDEN"})
   void rejectsNonSaleMenus(MenuStatus status) {
     when(menus.findAllById(any())).thenReturn(List.of(menu(1, status, 0, 0)));
     assertThatThrownBy(() -> service.validate(request(1L, 1)))
@@ -153,8 +155,7 @@ class PurchaseValidationServiceTests {
   void rejectsInvalidStoredOptionValues() {
     var menu = menu(1, MenuStatus.ON_SALE, 0, 0);
     when(menus.findAllById(any())).thenReturn(List.of(menu));
-    for (var option :
-        List.of(option(10, menu, true, -1, 0), option(10, menu, true, 0, -1))) {
+    for (var option : List.of(option(10, menu, true, -1, 0), option(10, menu, true, 0, -1))) {
       when(options.findAllById(any())).thenReturn(List.of(option));
       assertThatThrownBy(() -> service.validate(request(1L, 1, 10L)))
           .isInstanceOf(IllegalStateException.class);
