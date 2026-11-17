@@ -100,7 +100,7 @@ jobs:
         run: node .github/ci/run-services.mjs node
 
   image_ci:
-    name: Image build and Trivy
+    name: Image build
     needs: [readiness, java_ci, react_ci]
     if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.readiness.result == 'success' && needs.readiness.outputs.registered_count != '0' && needs.readiness.outputs.registered_count != '' && (needs.java_ci.result == 'success' || (needs.readiness.outputs.java_count == '0' && needs.java_ci.result == 'skipped')) && (needs.react_ci.result == 'success' || (needs.readiness.outputs.node_count == '0' && needs.react_ci.result == 'skipped')) }}
     runs-on: ubuntu-24.04
@@ -124,13 +124,9 @@ jobs:
       - name: Configure temporary image workspace
         run: |
           echo "CI_IMAGE_REPORT=$RUNNER_TEMP/peakorder-image-results.json" >> "$GITHUB_ENV"
-          echo "CI_TRIVY_PATH=$RUNNER_TEMP/peakorder-trivy/bin/trivy" >> "$GITHUB_ENV"
           echo "DOCKER_CONFIG=$RUNNER_TEMP/peakorder-ghcr-auth" >> "$GITHUB_ENV"
 
-      - name: Install verified Trivy 0.76.2
-        run: bash .github/ci/install-trivy.sh
-
-      - name: Build and scan registered service images
+      - name: Build registered service images
         run: node .github/ci/image-ci.mjs check
 
       - name: Report image results
@@ -139,7 +135,7 @@ jobs:
         run: node .github/ci/image-ci.mjs report
 
   image_publish:
-    name: Image build, Trivy and GHCR
+    name: Image build and GHCR
     needs: [readiness, java_ci, react_ci]
     if: ${{ always() && !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.readiness.result == 'success' && needs.readiness.outputs.registered_count != '0' && needs.readiness.outputs.registered_count != '' && (needs.java_ci.result == 'success' || (needs.readiness.outputs.java_count == '0' && needs.java_ci.result == 'skipped')) && (needs.react_ci.result == 'success' || (needs.readiness.outputs.node_count == '0' && needs.react_ci.result == 'skipped')) }}
     permissions:
@@ -171,16 +167,12 @@ jobs:
       - name: Configure temporary image workspace
         run: |
           echo "CI_IMAGE_REPORT=$RUNNER_TEMP/peakorder-image-results.json" >> "$GITHUB_ENV"
-          echo "CI_TRIVY_PATH=$RUNNER_TEMP/peakorder-trivy/bin/trivy" >> "$GITHUB_ENV"
           echo "DOCKER_CONFIG=$RUNNER_TEMP/peakorder-ghcr-auth" >> "$GITHUB_ENV"
 
-      - name: Install verified Trivy 0.76.2
-        run: bash .github/ci/install-trivy.sh
-
-      - name: Build and scan all registered service images
+      - name: Build all registered service images
         run: node .github/ci/image-ci.mjs check
 
-      - name: Publish the scanned images to GHCR
+      - name: Publish the built images to GHCR
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node .github/ci/image-ci.mjs publish

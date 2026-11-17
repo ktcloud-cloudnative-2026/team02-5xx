@@ -11,7 +11,7 @@ main 대상 PR
       → 서비스 등록·필수 파일 검사와 실행 요약
   → Java service CI / React service CI
       → 등록된 종류의 서비스 검사와 단계별 요약
-  → 이미지 빌드·Trivy 검사 (main push에서는 검사 후 GHCR 게시)
+  → 이미지 빌드 (main push에서는 빌드 후 GHCR 게시)
   → CI Final
       → 준비 검사와 Java·React 결과 집계
 ```
@@ -257,67 +257,59 @@ actionlint는 검증할 때만 OS 임시 폴더에서 사용하고, Prettier는 
 - `CI Final`을 필수 검사로 지정할지 저장소 관리자가 확인했는지
 - CI/CD 공통 인프라 변경으로 작성자 외 팀원 1명이 리뷰 승인했는지
 
-이미지 CI의 실제 GitHub Actions 실행과 게시 검증은 아래 절차를 따릅니다. 서비스 코드 검사의 기존 검증 결과와 이미지 빌드·보안 검사·게시 검증을 각각 기록합니다.
+이미지 CI의 실제 GitHub Actions 실행과 게시 검증은 아래 절차를 따릅니다. 서비스 코드 검사의 기존 검증 결과와 이미지 빌드·게시 검증을 각각 기록합니다.
 
 ## 컨테이너 이미지 CI — Issue #73
 
-[Issue #73](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/73)의 승인된 범위입니다.
+[Issue #73](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/73)의 현재 범위는 이미지 빌드와 GHCR 게시입니다.
+제공된 Notion 원문의 `인프라 설계 초안` 6절은 GitHub Actions 검사·테스트·이미지 빌드 후 GHCR 게시를 확정 사항으로 명시합니다.
+`피크오더 팀 공통 규칙` 6절은 버전 또는 커밋 해시 이미지 태그와 latest 금지를 명시하고, `Project Canvas · 프로젝트 기획서` 8절은 React·Nginx를 포함합니다.
+원문에 명시되지 않은 Trivy 검사와 취약점 필수 차단은 사용자 요청에 따라 이번 구현 범위에서 제외했습니다. 이전 검사에서 발견한 취약점은 PR #79의 후속 검토 기록으로 관리합니다.
+
 이미지는 실행에 필요한 프로그램과 라이브러리를 묶은 결과물이고, GHCR은 그 이미지를 저장하는 GitHub 저장소입니다.
-Trivy는 이미지 안의 OS 패키지와 애플리케이션 의존성에서 알려진 취약점을 검사합니다.
 
 ### 실행 조건과 권한
 
-| 이벤트          | 코드 검사                  | 이미지 빌드·Trivy      | GHCR 게시                     |
+| 이벤트          | 코드 검사                  | 이미지 빌드            | GHCR 게시                     |
 | --------------- | -------------------------- | ---------------------- | ----------------------------- |
 | main 대상 PR    | 등록된 Java·React 검사     | 코드 검사 통과 후 실행 | 미실행                        |
-| main push       | 병합된 커밋으로 재검사     | 코드 검사 통과 후 실행 | 모든 이미지 검사 통과 후 실행 |
+| main push       | 병합된 커밋으로 재검사     | 코드 검사 통과 후 실행 | 모든 이미지 빌드 통과 후 실행 |
 | 등록 서비스 0개 | 공통 자체 테스트·준비 검사 | 대상 없음·미실행       | 대상 없음·미실행              |
 
 PR의 `image_ci` 작업은 읽기 권한으로 실행합니다. main의 `image_publish`에만 `packages: write`를 부여합니다.
-PR에서 `pull_request_target`이나 게시 자격 증명을 사용하지 않습니다.
 main 게시 작업은 코드 검사 상세 결과도 다시 집계한 뒤 이미지를 만듭니다.
-이미지 빌드·Trivy 오류, HIGH·CRITICAL 취약점, 필수 단계 미실행, 비정상 생략은 `CI Final` 실패에 반영합니다.
+이미지 빌드·Docker 준비 오류, 필수 단계 미실행, 비정상 생략은 `CI Final` 실패에 반영합니다.
 이벤트에 해당하지 않는 이미지 작업 하나의 생략과 등록 0개인 경우의 생략은 정상 생략으로 구분합니다.
 
 ### 공통 컨테이너 빌드 정의
 
 | 파일                                     | 역할                                                                       |
 | ---------------------------------------- | -------------------------------------------------------------------------- |
-| `.github/ci/image-ci.mjs`                | 등록 목록·경로 재검증, 컨텍스트 준비, 이미지 빌드·검사·게시·결과 검증      |
-| `.github/ci/image-ci.test.mjs`           | 임시 폴더와 모의 명령으로 이미지 단계·게시 차단·최종 판정 회귀 검증        |
-| `.github/ci/install-trivy.sh`            | 공식 Trivy 배포본 다운로드 및 SHA-256 확인                                 |
+| `.github/ci/image-ci.mjs`                | 등록 목록·경로 재검증, 컨텍스트 준비, 이미지 빌드·게시·결과 검증           |
+| `.github/ci/image-ci.test.mjs`           | 임시 폴더와 모의 명령으로 이미지 단계·게시 조건·최종 판정 회귀 검증        |
 | `.github/ci/docker/java.Dockerfile`      | Java 21에서 프로젝트의 Gradle Wrapper로 bootJar 생성, Java 21 JRE에서 실행 |
 | `.github/ci/docker/react.Dockerfile`     | Node.js 24에서 npm ci·build 실행, Nginx로 dist 제공                        |
 | `.github/ci/docker/nginx.conf`           | 8080 포트와 React 화면 경로 새로고침 처리                                  |
 | `.github/ci/docker/context.dockerignore` | 빌드 결과·node_modules·.env 파일 등을 컨텍스트에서 제외                    |
 
-기존 서비스의 Dockerfile과 소스는 보존하고 CI가 공통 Dockerfile을 명시하여 사용합니다.
-Java 프로젝트의 기존 Gradle 버전·의존성을 따릅니다. 표준 bootJar가 실행 가능한 JAR 하나를 만들어야 합니다.
-Java의 테스트와 Spotless는 선행 서비스 CI에서 실행하며 컨테이너 빌드의 성공으로 대체하지 않습니다.
+CI가 공통 Dockerfile을 명시하여 사용합니다. Java 프로젝트의 기존 Gradle 버전·의존성을 따르며 표준 bootJar가 실행 가능한 JAR 하나를 만들어야 합니다.
+Java의 테스트와 Spotless는 선행 서비스 CI에서 실행합니다.
 React는 현재 Vite 프로젝트의 `dist` 결과물을 제공하고 `format:check`는 선행 React CI에서 실행합니다.
 다중 모듈, 다른 출력 디렉터리, 특수 OS 의존성이 필요한 프로젝트는 등록 전에 담당자와 빌드 계약을 확인합니다.
-Nginx의 `/api` 전달이나 런타임 환경 변수 주입은 이번 공통 정적 파일 제공 설정에 포함되지 않습니다.
+Nginx의 `/api` 전달이나 런타임 환경 변수 주입은 이번 공통 정적 파일 제공 범위에서 제외합니다.
 
 컨텍스트는 서비스 경로 아래의 Git 추적 파일만 임시 디렉터리에 복사합니다.
 외부 경로·심볼릭 링크·일반 파일이 아닌 경로를 차단하고, 임시 디렉터리는 검사 종료 시 정리합니다.
-서비스 소스 디렉터리에 설정 파일을 쓰지 않습니다.
 
-### 보안 검사 기준과 도구 버전
+### 도구와 이미지 버전
 
-- Trivy **0.76.2**, 공식 Linux AMD64 배포본의 SHA-256은 `bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf`입니다.
-- `--scanners vuln --severity HIGH,CRITICAL --ignore-unfixed=false --exit-code 1`을 사용합니다.
-- 수정 버전이 없는 HIGH·CRITICAL도 실패합니다. 이번 작업에서 취약점 예외나 자동 무시를 추가하지 않습니다.
-- 저장소의 Trivy 설정·ignore 파일이 기준을 바꾸지 않도록 비어 있는 임시 설정·ignore 파일을 명시합니다.
-- Trivy 종료 코드와 JSON 보고서를 함께 확인하고 보고서의 ImageID가 실제 빌드 이미지와 같은지 검사합니다.
 - Java 빌더·실행 이미지는 `eclipse-temurin:21-jdk-alpine`, `eclipse-temurin:21-jre-alpine`입니다.
-- 프론트엔드 빌더는 `node:24-alpine`, 실행 이미지는 승인된 Nginx **`1.30.6-alpine`**입니다.
-- Java·Node 베이스 태그는 같은 메이저 버전 안에서 갱신될 수 있습니다. 매번 `--pull`로 가져오고 만들어진 이미지를 다시 검사합니다.
-- Docker CLI는 GitHub Ubuntu 실행기의 제공 도구를 사용합니다. 새로운 외부 GitHub Action이나 npm 런타임 라이브러리는 추가하지 않습니다.
+- 프론트엔드 빌더는 `node:24-alpine`, 실행 이미지는 `nginx:1.30.6-alpine`입니다.
+- Java·Node 베이스 태그는 같은 메이저 버전 안에서 갱신될 수 있습니다. 매번 `--pull`로 가져와 빌드합니다.
+- Docker CLI는 GitHub Ubuntu 실행기의 제공 도구를 사용합니다.
 - 기존 checkout·setup-node의 버전과 전체 고정 SHA를 유지합니다.
 
-공식 자료는 [Trivy 0.76.2 배포](https://github.com/aquasecurity/trivy/releases/tag/v0.76.2),
-[Trivy 이미지 옵션](https://trivy.dev/docs/latest/references/configuration/cli/trivy_image/),
-[Nginx 공식 이미지](https://hub.docker.com/_/nginx),
+공식 자료는 [Nginx 공식 이미지](https://hub.docker.com/_/nginx),
 [GitHub Packages 게시 권한](https://docs.github.com/en/packages/managing-github-packages-using-github-actions-workflows/publishing-and-installing-a-package-with-github-actions)을 참고했습니다.
 
 ### GHCR 이름·태그와 게시 조건
@@ -328,26 +320,26 @@ Nginx의 `/api` 전달이나 런타임 환경 변수 주입은 이번 공통 정
 ghcr.io/ktcloud-cloudnative-2026/team02-5xx/<서비스 ID>:sha-<전체 40자리 커밋 SHA>
 ```
 
-PR에서는 PR 병합 검증 커밋의 SHA를 로컬 이미지 태그로 사용하며 GHCR에 게시하지 않습니다.
-main push에서는 병합된 main 커밋의 SHA를 사용합니다. `latest`를 만들지 않습니다.
+PR에서는 PR 병합 검증 커밋의 SHA를 로컬 이미지 태그로 사용합니다.
+main push에서는 병합된 main 커밋의 SHA를 사용합니다.
 
-모든 이미지의 빌드·검사를 끝낸 뒤 게시 단계가 시작됩니다.
-게시 직전에도 모든 로컬 이미지 ID를 확인하여 검사한 동일 이미지를 push합니다.
-토큰은 게시 단계의 환경 변수와 Docker 표준 입력으로만 전달하고 명령 인수·Summary·소스에 기록하지 않습니다.
+모든 이미지의 빌드를 끝낸 뒤 게시 단계가 시작됩니다.
+게시 직전에 모든 로컬 이미지 ID를 확인하여 빌드한 동일 이미지를 push합니다.
+토큰은 게시 단계의 환경 변수와 Docker 표준 입력으로 전달합니다.
 Docker 로그인 정보는 실행기 임시 DOCKER_CONFIG에 저장하고 게시 후 logout을 실행합니다.
 소스 저장소·커밋을 OCI 라벨에 기록하여 GHCR 이미지의 출처를 연결합니다.
 
 게시 중 네트워크·권한 오류가 나면 작업과 CI Final이 실패합니다. 앞서 성공한 이미지의 게시 상태도 Summary에 남습니다.
 GHCR은 이미지를 하나씩 업로드하므로 중간 실패 시 일부 이미지가 먼저 게시될 수 있습니다.
-실패 후 같은 main 실행을 재시도하면 다시 검사한 결과로 게시합니다. 성공·실패 기록을 확인한 뒤 배포 담당자가 사용할 태그를 선택합니다.
+실패 후 같은 main 실행을 재시도하면 새 빌드 결과로 게시합니다.
 
 ### 저장소 관리자가 확인할 설정
 
 1. 조직이 이 저장소의 GitHub Actions에서 GHCR 패키지 생성을 허용하는지 확인합니다.
 2. 기존 동명 GHCR 패키지가 있다면 해당 패키지의 Actions 접근 권한에 이 저장소가 쓰기 권한을 갖는지 확인합니다.
-3. 기본 제공 GITHUB_TOKEN을 사용합니다. PAT 추가나 패키지 공개 범위 변경은 수행하지 않습니다.
+3. 기본 제공 GITHUB_TOKEN을 사용합니다. 패키지 공개 범위는 저장소 관리자와 확인합니다.
 4. `CI Final`을 main의 필수 검사로 적용할지 저장소 관리자와 확인합니다.
-5. 공통 인프라·보안 변경이므로 작성자 외 팀원 1명의 승인을 받습니다.
+5. 공통 인프라 변경이므로 작성자 외 팀원 1명의 승인을 받습니다.
 
 ### 검증 방법과 현재 한계
 
@@ -356,19 +348,18 @@ node --test .github/ci/ci.test.mjs .github/ci/image-ci.test.mjs
 node .github/ci/check-services.mjs
 ```
 
-새 자체 테스트는 Docker·Trivy 명령을 모의 실행합니다. 실제 이미지 빌드나 실제 취약점 검사 성공을 증명하지 않습니다.
-Java만·React만·전체 7개·0개 등록, 빌드·스캔 실패, 손상된 보고서, 이미지 ID 변경, 게시 권한·로그인·push 오류,
-PR 게시 차단, 정상·비정상 생략, CI Final 실패 전파를 재현합니다.
-기존 153개 자체 테스트도 함께 실행합니다.
+새 자체 테스트는 Docker 명령을 모의 실행합니다. 실제 이미지 빌드·게시 결과는 GitHub에서 별도로 확인합니다.
+Java만·React만·전체 7개·0개 등록, 빌드·Docker 준비 실패, 이미지 결과 누락·손상·ID 변경, 게시 권한·로그인·push 오류,
+PR 게시 조건, 정상·비정상 생략, CI Final 실패 전파를 재현합니다.
+기존 153개 자체 테스트를 유지하며 이미지 빌드·게시 검증 58개를 포함해 총 211개를 실행합니다.
 
-실제 검증은 commit·push·PR 생성 승인 후 GitHub에서 진행합니다.
+실제 검증은 다음 순서로 기록합니다.
 
-- PR의 등록 서비스별 이미지 빌드와 Trivy 실행, GHCR 게시 미실행 확인
-- 실패 시 보고서의 취약점·빌드 오류 확인 후 서비스 담당자와 해결 방안 협의
-- 승인·병합 후 main push에서 코드 재검사와 이미지 빌드·보안 검사·GHCR 게시 확인
-- 각 게시 이미지의 SHA 태그, 출처 라벨, 검사 ImageID 및 게시 결과 확인
+- PR의 등록 서비스별 이미지 빌드, Summary, GHCR 게시 정상 생략 및 CI Final 확인
+- 승인·병합 후 main push에서 코드 재검사·이미지 빌드·GHCR 게시 확인
+- 각 게시 이미지의 SHA 태그, 출처 라벨, 빌드 ImageID 및 게시 결과 확인
 - 별도 검증 환경에서 이미지 기동·HTTP 응답 확인
 
-로컬 PC에 Docker 엔진이 없으면 실제 이미지 검증은 미실행으로 기록합니다. 이번 로컬 검증은 기존 153개와 신규 64개, 총 217개 자체 테스트를 기준으로 합니다. actionlint 1.7.12와 Prettier 3.10.1, bash 문법 검사를 사용하며 ShellCheck는 별도로 실행하지 않았습니다.
+로컬 PC에 Docker 엔진이 없으면 실제 이미지 검증은 미실행으로 기록합니다.
+actionlint 1.7.12와 Prettier 3.10.1을 사용하며 ShellCheck는 별도로 실행하지 않았습니다.
 React 등록은 기존 PR #64, 아직 main에 없는 Inventory는 기존 PR #70의 진행 상태를 따릅니다.
-준비되지 않은 서비스를 임의로 생성하거나 등록하지 않습니다.

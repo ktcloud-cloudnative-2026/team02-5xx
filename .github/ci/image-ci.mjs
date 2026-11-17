@@ -122,50 +122,12 @@ export function prepareContext(root, service, destination, execute) {
   }
 }
 
-export function scanReport(file, imageId) {
-  const report = JSON.parse(readFileSync(file, "utf8"));
-  if (
-    report.SchemaVersion !== 2 ||
-    report.Metadata?.ImageID !== imageId ||
-    !Array.isArray(report.Results) ||
-    report.Results.length === 0
-  ) {
-    throw new Error("Trivy 보고서의 형식 또는 검사 이미지 ID 확인 불가");
-  }
-  const vulnerabilities = report.Results.flatMap((result) => {
-    if (result.Vulnerabilities == null) return [];
-    if (!Array.isArray(result.Vulnerabilities))
-      throw new Error("Trivy 취약점 목록 형식 오류");
-    if (
-      result.Vulnerabilities.some(
-        (item) =>
-          !item ||
-          !["UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(
-            item.Severity,
-          ),
-      )
-    ) {
-      throw new Error("Trivy 취약점 심각도 확인 불가");
-    }
-    return result.Vulnerabilities;
-  });
-  const blocking = vulnerabilities.filter((item) =>
-    ["HIGH", "CRITICAL"].includes(item.Severity),
-  );
-  for (const item of blocking)
-    console.log(
-      `${item.Severity} ${item.VulnerabilityID} ${item.PkgName} ${item.InstalledVersion} → ${item.FixedVersion || "수정 버전 없음"}`,
-    );
-  return blocking.length;
-}
-
 export function checkImages(root, env, execute = executeCommand) {
   root = realpathSync(root);
   const results = imagePlan(root, env).map((service) => ({
     ...service,
     imageId: "",
     build: step("not_run", "검사 시작 전"),
-    scan: step("not_run", "이미지 빌드 완료 전"),
     publish: step("not_run", "PR 검사 또는 main 게시 단계 전"),
   }));
   const report = { results, error: "", failed: false };
@@ -176,14 +138,6 @@ export function checkImages(root, env, execute = executeCommand) {
       execute("docker", ["version", "--format", "{{.Server.Version}}"]),
       "Docker 엔진 준비",
     );
-    const trivy = env.CI_TRIVY_PATH ?? "trivy";
-    const version = requireSuccess(execute(trivy, ["--version"]), "Trivy 준비");
-    if (!/^Version: 0\.76\.2\s*$/m.test(version))
-      throw new Error("Trivy 0.76.2가 필요합니다.");
-    const config = join(temp, "trivy.yaml");
-    const ignore = join(temp, "trivyignore");
-    writeFileSync(config, "{}\n");
-    writeFileSync(ignore, "");
     for (const result of results) {
       try {
         const context = join(temp, result.id);
@@ -212,42 +166,6 @@ export function checkImages(root, env, execute = executeCommand) {
         result.build = step("success", "이미지 빌드 및 ID 확인 완료");
       } catch (cause) {
         result.build = step("failure", cause.message);
-        continue;
-      }
-      try {
-        const output = join(temp, result.id + "-trivy.json");
-        const outcome = execute(trivy, [
-          "image",
-          "--image-src",
-          "docker",
-          "--scanners",
-          "vuln",
-          "--severity",
-          "HIGH,CRITICAL",
-          "--ignore-unfixed=false",
-          "--exit-code",
-          "1",
-          "--config",
-          config,
-          "--ignorefile",
-          ignore,
-          "--no-progress",
-          "--timeout",
-          "15m",
-          "--format",
-          "json",
-          "--output",
-          output,
-          result.image,
-        ]);
-        const blocking = scanReport(output, result.imageId);
-        requireSuccess(outcome, "Trivy 검사");
-        if (blocking > 0) throw new Error(`차단 대상 취약점 ${blocking}개`);
-        if (inspectImage(execute, result.image) !== result.imageId)
-          throw new Error("검사 중 이미지 ID 변경");
-        result.scan = step("success", "HIGH·CRITICAL 취약점 0개");
-      } catch (cause) {
-        result.scan = step("failure", cause.message);
       }
     }
   } catch (cause) {
@@ -258,10 +176,7 @@ export function checkImages(root, env, execute = executeCommand) {
   }
   report.failed =
     Boolean(report.error) ||
-    results.some(
-      (result) =>
-        result.build.status !== "success" || result.scan.status !== "success",
-    );
+    results.some((result) => result.build.status !== "success");
   return report;
 }
 
@@ -280,7 +195,7 @@ export function validateImageResults(plan, results, published) {
     }
     seen.add(result.id);
     if (
-      ["build", "scan", "publish"].some(
+      ["build", "publish"].some(
         (name) => typeof result[name]?.reason !== "string",
       )
     ) {
@@ -288,10 +203,9 @@ export function validateImageResults(plan, results, published) {
     }
     if (
       !imageIdPattern.test(result.imageId) ||
-      result.build?.status !== "success" ||
-      result.scan?.status !== "success"
+      result.build?.status !== "success"
     ) {
-      throw new Error("이미지 빌드·보안 검사 미완료");
+      throw new Error("이미지 빌드 미완료");
     }
     if (
       published
@@ -310,7 +224,7 @@ export function publishImages(root, env, report, execute = executeCommand) {
       env.GITHUB_REF !== "refs/heads/main"
     )
       throw new Error("GHCR 게시는 main push에서만 허용합니다.");
-    if (report.failed || report.error) throw new Error("선행 이미지 검사 실패");
+    if (report.failed || report.error) throw new Error("선행 이미지 빌드 실패");
     const plan = imagePlan(root, env);
     validateImageResults(plan, report.results, false);
     if (plan.length === 0) return report;
@@ -322,7 +236,7 @@ export function publishImages(root, env, report, execute = executeCommand) {
       throw new Error("GHCR 게시 자격 증명 누락");
     for (const result of report.results) {
       if (inspectImage(execute, result.image) !== result.imageId)
-        throw new Error("검사 후 게시 대상 이미지 ID 변경");
+        throw new Error("빌드 후 게시 대상 이미지 ID 변경");
     }
     requireSuccess(
       execute(
@@ -341,7 +255,7 @@ export function publishImages(root, env, report, execute = executeCommand) {
     for (const result of report.results) {
       try {
         requireSuccess(execute("docker", ["push", result.image]), "GHCR 게시");
-        result.publish = step("success", "검사한 이미지 게시 완료");
+        result.publish = step("success", "빌드한 이미지 게시 완료");
       } catch (cause) {
         result.publish = step("failure", cause.message);
         throw cause;
@@ -400,24 +314,22 @@ export function imageSummary(report) {
   if (report.results.length === 0)
     lines.push(
       report.error
-        ? "이미지 검사 대상 확인 불가·미실행"
+        ? "이미지 빌드 대상 확인 불가·미실행"
         : "대상 없음·미실행 — 등록된 서비스 0개",
     );
   else {
     lines.push(
-      "| 서비스 | 이미지 빌드 | Trivy | GHCR 게시 | 이미지 태그 | 사유 |",
-      "| --- | --- | --- | --- | --- | --- |",
+      "| 서비스 | 이미지 빌드 | GHCR 게시 | 이미지 태그 | 사유 |",
+      "| --- | --- | --- | --- | --- |",
     );
     for (const result of report.results) {
       lines.push(
         "| " +
           [
             result.id,
-            ...["build", "scan", "publish"].map(
-              (name) => labels[result[name].status],
-            ),
+            ...["build", "publish"].map((name) => labels[result[name].status]),
             result.image,
-            ["build", "scan", "publish"]
+            ["build", "publish"]
               .filter((name) => result[name].status !== "success")
               .map((name) => result[name].reason)
               .join(" / ") || "필수 단계 완료",
@@ -452,12 +364,11 @@ function main() {
         imageId: "",
         build: step(
           "not_run",
-          "이미지 검사 보고서 없음 — 앞선 준비 또는 검사 단계 실패",
+          "이미지 빌드 보고서 없음 — 앞선 준비 또는 검사 단계 실패",
         ),
-        scan: step("not_run", "이미지 검사 미실행 또는 결과 확인 불가"),
-        publish: step("not_run", "이미지 검사 미완료"),
+        publish: step("not_run", "이미지 빌드 미완료"),
       }));
-      report = { results, failed: true, error: "이미지 검사 보고서 확인 불가" };
+      report = { results, failed: true, error: "이미지 빌드 보고서 확인 불가" };
     }
     if (mode === "publish")
       report = publishImages(process.cwd(), process.env, report);

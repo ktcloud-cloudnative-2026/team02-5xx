@@ -68,7 +68,7 @@ function fixture(t, ids = ["auth"]) {
   return { root, services, files };
 }
 
-// These commands simulate Docker and Trivy. They do not build or scan real images.
+// These commands simulate Docker. They do not build or publish real images.
 function commands(fixture, options = {}) {
   const calls = [];
   const execute = (command, args, settings = {}) => {
@@ -86,44 +86,16 @@ function commands(fixture, options = {}) {
       if (args[0] === "version" && options.engineFailure) return { status: 1 };
       if (args[0] === "build")
         return { ...ok, status: options.buildFailure ? 1 : 0 };
-      if (args[0] === "image")
-        return {
-          ...ok,
-          stdout: options.changedId ? "sha256:" + "c".repeat(64) : imageId,
-        };
+      if (args[0] === "image") {
+        const inspectedId = options.changedId
+          ? "sha256:" + "c".repeat(64)
+          : imageId;
+        return { ...ok, stdout: options.invalidId ? "invalid" : inspectedId };
+      }
       if (args[0] === "login" && options.loginFailure) return { status: 1 };
       if (args[0] === "push")
         return { ...ok, status: options.pushFailure ? 1 : 0 };
       return ok;
-    }
-    if (command === "trivy") {
-      if (args[0] === "--version")
-        return {
-          ...ok,
-          stdout:
-            "Version: " + (options.wrongVersion ? "0.1.0" : "0.76.2") + "\n",
-        };
-      calls.at(-1).config = readFileSync(
-        args[args.indexOf("--config") + 1],
-        "utf8",
-      );
-      const output = args[args.indexOf("--output") + 1];
-      if (!options.missingReport)
-        writeFileSync(
-          output,
-          options.badJson
-            ? "{"
-            : JSON.stringify({
-                SchemaVersion: 2,
-                Metadata: {
-                  ImageID: options.wrongScanId
-                    ? "sha256:" + "d".repeat(64)
-                    : imageId,
-                },
-                Results: [{ Vulnerabilities: options.vulnerabilities ?? [] }],
-              }),
-        );
-      return { ...ok, status: options.scanFailure ? 1 : 0 };
     }
     throw new Error("Unexpected command " + command);
   };
@@ -138,7 +110,6 @@ function successfulReport(services) {
       ...service,
       imageId,
       build: { status: "success", reason: "모의 빌드" },
-      scan: { status: "success", reason: "모의 검사" },
       publish: { status: "not_run", reason: "PR" },
     })),
   };
@@ -204,7 +175,7 @@ function finalCheck(root, needs, mode = "pr") {
   });
 }
 
-test("이미지 대상 0개는 Docker·Trivy를 실행하지 않고 미실행으로 요약한다", (t) => {
+test("이미지 대상 0개는 Docker를 실행하지 않고 미실행으로 요약한다", (t) => {
   const f = fixture(t, []);
   const mock = commands(f);
   const report = checkImages(f.root, env, mock.execute);
@@ -214,7 +185,7 @@ test("이미지 대상 0개는 Docker·Trivy를 실행하지 않고 미실행으
   assert.equal(finalCheck(f.root, needsFor([], report)).status, 0);
 });
 
-test("Java·React 및 전체 7개 등록 조합의 빌드와 보안 검사 명령을 유지한다", async (t) => {
+test("Java·React 및 전체 7개 등록 조합의 이미지 빌드 명령을 유지한다", async (t) => {
   for (const ids of [
     ["auth"],
     ["web-frontend"],
@@ -239,13 +210,6 @@ test("Java·React 및 전체 7개 등록 조합의 빌드와 보안 검사 명�
         mock.calls.filter((call) => call.args[0] === "build").length,
         ids.length,
       );
-      for (const call of mock.calls.filter(
-        (call) => call.args[0] === "image" && call.command === "trivy",
-      )) {
-        assert.ok(call.args.includes("HIGH,CRITICAL"));
-        assert.ok(call.args.includes("--ignore-unfixed=false"));
-        assert.equal(call.config, "{}\n");
-      }
       assert.equal(
         finalCheck(f.root, needsFor(imagePlan(f.root, env), report)).status,
         0,
@@ -279,17 +243,11 @@ test("이미지 태그는 저장소·서비스·전체 SHA를 사용하고 잘�
     assert.throws(() => imagePlan(f.root, { ...env, ...patch }));
 });
 
-test("이미지 빌드·도구·스캔 보고서 오류와 취약점은 실패한다", async (t) => {
+test("이미지 빌드·Docker 준비 오류는 실패한다", async (t) => {
   for (const [name, options] of Object.entries({
     build: { buildFailure: true },
     docker: { engineFailure: true },
-    version: { wrongVersion: true },
-    scanner: { scanFailure: true },
-    missing: { missingReport: true },
-    json: { badJson: true },
-    identity: { wrongScanId: true },
-    high: { vulnerabilities: [{ Severity: "HIGH" }] },
-    critical: { vulnerabilities: [{ Severity: "CRITICAL", FixedVersion: "" }] },
+    identity: { invalidId: true },
   })) {
     await t.test(name, (t) => {
       const f = fixture(t);
@@ -304,22 +262,19 @@ test("이미지 빌드·도구·스캔 보고서 오류와 취약점은 실패�
   }
 });
 
-test("빌드 실패 후 스캔을 생략하며 다른 서비스의 결과는 계속 수집한다", (t) => {
+test("빌드 실패 후에도 다른 서비스의 결과는 계속 수집한다", (t) => {
   const f = fixture(t, ["auth", "menu"]);
   const mock = commands(f, { buildFailure: true });
   const report = checkImages(f.root, env, mock.execute);
   assert.equal(report.results.length, 2);
   assert.ok(
-    report.results.every(
-      (result) =>
-        result.build.status === "failure" && result.scan.status === "not_run",
-    ),
+    report.results.every((result) => result.build.status === "failure"),
   );
   assert.equal(
     mock.calls.filter(
-      (call) => call.command === "trivy" && call.args[0] === "image",
+      (call) => call.command === "docker" && call.args[0] === "build",
     ).length,
-    0,
+    2,
   );
 });
 
@@ -375,7 +330,7 @@ test("외부 파일·잘못된 추적 경로·중복 서비스 등록을 차단�
   assert.throws(() => imagePlan(f.root, env));
 });
 
-test("GHCR 게시는 main push에서 검사한 이미지 ID를 확인한 뒤에만 실행한다", (t) => {
+test("GHCR 게시는 main push에서 빌드한 이미지 ID를 확인한 뒤에만 실행한다", (t) => {
   const f = fixture(t, ["auth", "web-frontend"]);
   const plan = imagePlan(f.root, env);
   const report = successfulReport(plan);
@@ -414,7 +369,7 @@ test("PR·다른 브랜치·검사 실패·이미지 교체·권한 오류는 �
   for (const name of [
     "pr",
     "branch",
-    "scan",
+    "build",
     "changed-id",
     "token",
     "login",
@@ -433,7 +388,7 @@ test("PR·다른 브랜치·검사 실패·이미지 교체·권한 오류는 �
       if (name === "pr") settings.GITHUB_EVENT_NAME = "pull_request";
       if (name === "branch") settings.GITHUB_REF = "refs/heads/feature";
       if (name === "token") delete settings.GHCR_TOKEN;
-      if (name === "scan") report.results[0].scan.status = "failure";
+      if (name === "build") report.results[0].build.status = "failure";
       const mock = commands(f, {
         changedId: name === "changed-id",
         loginFailure: name === "login",
@@ -469,7 +424,7 @@ test("이미지 결과의 개수·중복·경로·태그·단계 누락을 차�
       rows[0].image = "ghcr.io/other/image:latest";
     },
     (rows) => {
-      rows[0].scan.status = "not_run";
+      rows[0].build.status = "not_run";
     },
     (rows) => {
       rows[0].build.status = "failure";
@@ -510,7 +465,7 @@ test("CI Final은 이미지 작업 실패·취소·비정상 생략·결과 오�
         if (state === "missing") delete needs[active];
         if (state === "bad-json") needs[active].outputs.image_results = "{";
         if (state === "not-run") {
-          report.results[0].scan.status = "not_run";
+          report.results[0].build.status = "not_run";
           needs[active].outputs.image_results = JSON.stringify(report.results);
         }
         if (state === "unexpected-publish")
@@ -566,11 +521,11 @@ test("워크플로는 PR 권한을 제한하고 main에서만 게시하며 선�
     if (id === "image_publish") {
       assert.ok(
         job.indexOf("Verify all code checks before image publication") <
-          job.indexOf("Build and scan all registered service images"),
+          job.indexOf("Build all registered service images"),
       );
       assert.match(job, /CI_NEEDS_JSON: \$\{\{ toJSON\(needs\) \}\}/);
       const publicationStep = job
-        .split("- name: Publish the scanned images to GHCR")[1]
+        .split("- name: Publish the built images to GHCR")[1]
         .split("- name: Report image results")[0];
       assert.match(
         publicationStep,
@@ -662,27 +617,6 @@ test("중간 게시 실패는 앞선 성공과 뒤의 미실행을 보존하고 
   assert.equal(finalCheck(f.root, needs, "main").status, 1);
 });
 
-test("낮은 심각도와 빈 취약점 목록은 통과하며 잘못된 심각도는 실패한다", (t) => {
-  const f = fixture(t);
-  for (const vulnerabilities of [
-    null,
-    [],
-    [{ Severity: "LOW" }],
-    [{ Severity: "MEDIUM" }],
-    [{ Severity: "UNKNOWN" }],
-  ]) {
-    assert.equal(
-      checkImages(f.root, env, commands(f, { vulnerabilities }).execute).failed,
-      false,
-    );
-  }
-  assert.equal(
-    checkImages(f.root, env, commands(f, { vulnerabilities: [{}] }).execute)
-      .failed,
-    true,
-  );
-});
-
 test("실제 CLI는 Docker 준비 실패와 보고서 누락을 실패·미실행으로 기록한다", (t) => {
   const f = fixture(t);
   const checker = fileURLToPath(new URL("./image-ci.mjs", import.meta.url));
@@ -720,4 +654,30 @@ test("실제 CLI는 Docker 준비 실패와 보고서 누락을 실패·미실�
     readFileSync(childEnv.GITHUB_STEP_SUMMARY, "utf8"),
     /Docker 엔진 준비 실패/,
   );
+});
+
+test("현재 이미지 CI는 Docker 빌드·게시만 연결하며 별도 보안 검사기를 요구하지 않는다", (t) => {
+  const workflow = readFileSync(
+    new URL("../workflows/pr-ci.yml", import.meta.url),
+    "utf8",
+  );
+  const source = readFileSync(
+    new URL("./image-ci.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(workflow, /trivy|HIGH|CRITICAL/i);
+  assert.doesNotMatch(source, /trivy|scanReport|\.scan\b/i);
+  assert.equal(
+    existsSync(fileURLToPath(new URL("./install-trivy.sh", import.meta.url))),
+    false,
+  );
+  const f = fixture(t);
+  const mock = commands(f);
+  const report = checkImages(f.root, env, mock.execute);
+  assert.equal(report.failed, false);
+  assert.ok(
+    mock.calls.every((call) => ["docker", "git"].includes(call.command)),
+  );
+  assert.equal(Object.hasOwn(report.results[0], "scan"), false);
+  assert.doesNotMatch(imageSummary(report), /Trivy|보안 검사/);
 });
