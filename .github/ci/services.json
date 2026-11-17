@@ -1,6 +1,10 @@
 {
   "services": [
     {
+      "id": "auth",
+      "path": "services/auth-service"
+    },
+    {
       "id": "web-frontend",
       "path": "services/web-frontend"
     }
