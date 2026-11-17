@@ -22,6 +22,11 @@ export default function MenuDetail({ menu, onClose }) {
     };
   }, []);
 
+  function closeDetail() {
+    dialogRef.current?.close();
+    onClose();
+  }
+
   return (
     <dialog
       ref={dialogRef}
@@ -29,17 +34,17 @@ export default function MenuDetail({ menu, onClose }) {
       aria-labelledby="detail-title"
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        closeDetail();
       }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) closeDetail();
       }}
     >
       <div className="detail-toolbar">
         <button
           className="close-button"
           aria-label="메뉴 상세 닫기"
-          onClick={onClose}
+          onClick={closeDetail}
           autoFocus
         >
           ×
@@ -50,7 +55,7 @@ export default function MenuDetail({ menu, onClose }) {
           <div className="detail-error" role="alert">
             <h2 id="detail-title">선택할 수 없는 메뉴예요</h2>
             <p>메뉴가 없거나 현재 판매 중이 아닙니다.</p>
-            <button className="pill-button" onClick={onClose}>
+            <button className="pill-button" onClick={closeDetail}>
               목록으로 돌아가기
             </button>
           </div>
