@@ -71,7 +71,6 @@ class MenuServiceApplicationTests {
     assertThat(config.path("url").asString()).isEqualTo("/v3/api-docs");
   }
 
-
   @Test
   void acceptsOrderRequestAndDeserializesResponseWithOrderContract() throws Exception {
     var menu = new Menu(null, "Burger", null, null, 6500, 90, MenuStatus.ON_SALE);
@@ -165,7 +164,8 @@ class MenuServiceApplicationTests {
         owner = new Menu(null, "Other menu", null, null, 6500, 90, MenuStatus.ON_SALE);
         ReflectionTestUtils.setField(owner, "id", 2L);
       }
-      var option = new MenuOption(owner, "Set", 2500, 30, false, !scenario.equals("INACTIVE_OPTION"));
+      var option =
+          new MenuOption(owner, "Set", 2500, 30, false, !scenario.equals("INACTIVE_OPTION"));
       ReflectionTestUtils.setField(option, "id", 3L);
       when(options.findAllById(any())).thenReturn(List.of(option));
     } else {

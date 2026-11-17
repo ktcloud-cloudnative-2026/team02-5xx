@@ -8,12 +8,9 @@ public record ValidatePurchaseResponse(List<Item> items) {
   public record Item(
       Long menuId,
       String menuName,
-      @Schema(
-              description = "Base price per menu, excluding options and quantity",
-              minimum = "0")
+      @Schema(description = "Base price per menu, excluding options and quantity", minimum = "0")
           int unitPrice,
-      @Schema(description = "Base cooking time per menu in seconds", minimum = "0")
-          int cookTimeSec,
+      @Schema(description = "Base cooking time per menu in seconds", minimum = "0") int cookTimeSec,
       List<Option> options) {}
 
   @Schema(name = "PurchaseValidationResultOption")

@@ -4,9 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
 public record ValidatePurchaseRequest(
-    @Schema(
-            description = "Ordered purchase lines",
-            requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "Ordered purchase lines", requiredMode = Schema.RequiredMode.REQUIRED)
         List<Item> items) {
   @Schema(name = "PurchaseValidationRequestItem")
   public record Item(

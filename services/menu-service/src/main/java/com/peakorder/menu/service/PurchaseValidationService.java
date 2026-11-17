@@ -66,9 +66,7 @@ public class PurchaseValidationService {
   }
 
   private ValidatePurchaseResponse.Item validateItem(
-      ValidatePurchaseRequest.Item item,
-      Map<Long, Menu> menuMap,
-      Map<Long, MenuOption> optionMap) {
+      ValidatePurchaseRequest.Item item, Map<Long, Menu> menuMap, Map<Long, MenuOption> optionMap) {
     var menu = menuMap.get(item.menuId());
     if (menu == null || menu.getStatus() != MenuStatus.ON_SALE) {
       throw new PurchaseValidationException("Menu is not available for purchase");

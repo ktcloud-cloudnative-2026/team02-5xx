@@ -29,7 +29,8 @@ public class MenuInternalController {
               + "Only ON_SALE menus and active options are allowed. Inventory is not checked.")
   @ApiResponses({
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
-        responseCode = "200", description = "All items validated"),
+        responseCode = "200",
+        description = "All items validated"),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "400",
         description = "Invalid request or unavailable purchase: INVALID_REQUEST",
@@ -46,7 +47,8 @@ public class MenuInternalController {
                 schema = @Schema(implementation = ApiResponse.class)))
   })
   @PostMapping("/validate-purchase")
-  public ApiResponse<ValidatePurchaseResponse> validate(@RequestBody ValidatePurchaseRequest request) {
+  public ApiResponse<ValidatePurchaseResponse> validate(
+      @RequestBody ValidatePurchaseRequest request) {
     return ApiResponse.ok(service.validate(request));
   }
 }
