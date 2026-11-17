@@ -1,1 +1,8 @@
-{ "services": [] }
+{
+  "services": [
+    {
+      "id": "web-frontend",
+      "path": "services/web-frontend"
+    }
+  ]
+}
