@@ -1,12 +1,13 @@
 # ERD 초안 — Notion 가져오기
 
-> Notion 원문의 초안을 보관한 문서입니다. Git에 추가했다는 이유로 팀 승인·구현 완료를 의미하지 않습니다.
+> 기존 Notion 초안의 구조를 유지하며 확인된 최신 합의를 반영합니다. 확정 설계와 구현 상태는 구분하며, 미확정 사항은 구현 기준으로 삼지 않습니다.
 
 - 원본: [ERD 초안](https://app.notion.com/p/4102f07e947880fb87eac2ab3ffc68a2)
 - 원본 최종 수정: 2026-11-13T03:41:37.090Z (UTC)
 - 가져온 날짜: 2026-11-13 (Asia/Seoul)
 - 공통 확정 규칙: [CLAUDE.md](../../CLAUDE.md)
-- 변경 범위: 문서 형식 변환·자료 분리. API 경로, 필드, 테이블, 상태 및 미결정 사항은 원문을 유지합니다.
+- 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
+- 구현 기준: main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없습니다. 열린 PR의 구현을 main 반영 완료로 표시하지 않습니다.
 
 ---
 
@@ -424,7 +425,7 @@ erDiagram
 | `inventory_reservations `(결제 전 재고 확보) | 임시 주문의 orderId로 재고를 먼저 잡아 두고(RESERVED), 결제·재고 확정 시 CONFIRMED, 실패하거나 expires\_at이 지나면 RELEASED·EXPIRED로 돌려주기 위해서입니다 |
 | `idempotency_key` (UK) | 결제 버튼을 두 번 눌러도 결제·차감이 **한 번만** 되게 합니다 |
 | `임시 Order 먼저 생성 (별도 checkout 표 없음)` | 결제 전에 orderId를 발급하고 메뉴 검증·재고 확보 후 결제합니다. 확정되지 않은 임시 주문은 남기되 주문 목록에서 제외하고, 재시도는 새 임시 주문으로 합니다 |
-| 주문 항목에 메뉴 이름·가격·조리 시간을 복사해서 저장 | 나중에 메뉴 가격이 바뀌어도 그 주문은 **주문 당시 값**이 남아야 하고, 매번 메뉴 서비스에 물어보지 않아도 됩니다 |
+| 주문 항목의 스냅샷 | 메뉴 이름·가격 복사는 유지합니다. 조리 시간 저장은 기존 설계 설명과 Order PR이 다릅니다. 현재 PR은 Order DB에 조리 시간을 저장하지 않고 결제 직전 Menu 응답을 이벤트에 사용하므로 별도 확인이 필요합니다 |
 | `order_no (UK)` | 고객·관리자 화면에 같은 주문번호가 두 번 나오지 않게 합니다. 결제·재고 확정 후에만 발급하고, 임시 주문은 NULL입니다 |
 | `store_operations` | 관리자가 OR-06·OR-07로 조회·변경하는 영업(is\_open)·주문 접수(accepting\_orders) 상태입니다. Cooking 장애에 따른 주문 차단은 이 설정과 별개로 적용합니다 |
 
@@ -440,8 +441,8 @@ erDiagram
 | 설계 | 이유 |
 | --- | --- |
 | Cooking DB에 실제 등록된 순서 = FIFO 순서 | 먼저 등록된 주문부터 조리합니다 |
-| 매장마다 `COOKING` 상태는 최대 1건 | "동시에 조리하는 주문 최대 1건" 규칙을 DB에서도 지킵니다 |
-| `version` | "조리 시작"과 "고객 취소"가 동시에 일어나도 둘 중 하나만 성공하게 합니다 |
+| 매장마다 `COOKING` 상태는 최대 1건 | 확정 업무 규칙입니다. 현재 Cooking PR의 V1에는 이를 강제하는 부분 UNIQUE 제약이 없고 자동 조리 진행도 후속 작업이므로 DB 보장 완료로 보지 않습니다 |
+| 전표 행 잠금 | CI-03 최신 합의·PR #62는 version 컬럼 대신 PESSIMISTIC_WRITE로 상태를 재확인합니다. 자동 조리 시작도 같은 잠금 방식에 참여해야 합니다 |
 | 조리 상태와 시각(`queued_at`, `started_at`, `completed_at`)을 DB에 저장 | 파드가 재시작돼도 조리 상태가 사라지지 않습니다 |
 
 ### 혼잡도(Cooking 소속) · 회원(Auth)
@@ -453,6 +454,23 @@ erDiagram
 | `users.role 2종 (CUSTOMER · STORE_ADMIN)` | 고객과 매장 관리자를 한 표에서 관리하고, 역할로 권한을 나눕니다. 시스템 운영자는 Auth 권한으로 관리하지 않고 Grafana로 분리합니다 |
 | `password_hash` | 비밀번호는 원문이 아니라 해시로만 저장합니다 |
 | 소셜 로그인 | 범위·추가 테이블은 추후 검토. 현재 구현 기준은 위 Auth ERD |
+
+### 최신 계약과 Flyway 비교 (2026-11-17)
+
+기존 서비스별 도식은 Notion 설계를 유지합니다. 아래는 **열린 PR의 관찰 결과**이며 main의 DB 적용 완료나 신규 컬럼의 설계 확정을 의미하지 않습니다. 별도 Flyway 파일은 수정하지 않았습니다.
+
+| 대상 | 확인된 설계·동시성 정책 | 열린 PR과의 차이·확인 사항 |
+| --- | --- | --- |
+| Order 확보 정보 | orderId로 확보하고 holdId로 확정·해제 | [PR #29](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/29)의 V2에 orders.hold_id, hold_expires_at 추가. Notion 도식에는 없음. 요청·응답 상세 연결은 아직 제공자와 확인 필요 |
+| Order 결제·주문번호 | 결제·재고 확정 후 orderNo 발급 | [PR #46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)의 V3에 orders.payment_id와 order_no_counters(order_date PK, last_seq > 0) 추가. 도식 미반영이며 PR 제안과 확정을 구분 |
+| Order 취소 후속 처리 | 취소 확정 후 재고 복원·환불, 중복 처리 방지 | [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)의 stock_restored_at·refunded_at/V4는 제안 단계. 현재 마이그레이션에는 없으므로 도식에 추가하지 않음 |
+| Order 상태 | CREATED, PAID, WAITING, COOKING, COMPLETED, CANCELED, FAILED | Order PR의 CHECK와 enum은 도식과 일치. 현재 이벤트 처리는 PAID→COMPLETED이며 WAITING·COOKING 반영 방식은 미확정 |
+| Cooking 상태·관계 | WAITING→COOKING→DONE, WAITING→CANCELED. order_id UNIQUE, 전표-항목 FK | [PR #62](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/62)의 V1에 상태 CHECK, quantity > 0, cook_time_sec·estimated_cook_sec >= 0, (status, queued_at, id) INDEX 존재. CI-03은 행 잠금으로 취소 경합 제어 |
+| Cooking 혼잡도 | congestion_thresholds로 기준값 관리 | V1에는 id, busy_wait_sec(>0), updated_at 존재. 도식의 선택 이력 표 congestion_snapshots는 PR에서 제외. 확정된 필수 표 누락으로 간주하지 않음 |
+| Inventory | inventories.menu_id NULL 허용·UNIQUE, 확보 상태 RESERVED/CONFIRMED/RELEASED/EXPIRED | 현재 main과 확인한 관련 PR에 Inventory Flyway가 없어 컬럼·CHECK·멱등 제약 구현은 확인 불가. 기존 도식을 구현 완료로 보지 않음 |
+| 이벤트 이력 | 업무 변경·Outbox 저장, processed_events.event_id UUID PK로 중복 방지 | Order·Cooking PR에 event_id UNIQUE Outbox와 Processed Event 존재. 수신은 이력 삽입과 업무 반영을 같은 트랜잭션에서 처리. [이벤트 계약](../events/notion-draft.md) 참조 |
+
+출처: [Notion ERD](https://app.notion.com/p/4102f07e947880fb87eac2ab3ffc68a2), 위 PR의 Flyway·엔티티·서비스 코드. 확정 상태와 구현 차이가 있는 항목은 담당자 확인 후에만 도식의 개발 계약으로 승격합니다.
 
 ## 5. 함께 정할 것
 
@@ -496,4 +514,4 @@ sequenceDiagram
   end
 ```
 
-OrderConfirmed의 발신자는 Order·수신자는 Cooking이며, CookingCompleted는 반대 방향입니다. outbox\_events와 processed\_events는 두 서비스가 각각 자기 DB에 둡니다. 발행 확인·재시도·실패 메시지 정책의 세부 값은 미결정 사항을 유지합니다.
+OrderConfirmed의 발신자는 Order·수신자는 Cooking이며, CookingCompleted는 반대 방향입니다. outbox\_events와 processed\_events는 두 서비스가 각각 자기 DB에 둡니다. 최신 합의된 발행 확인·수신 재시도·DLQ 계약은 [이벤트 명세](../events/notion-draft.md)를 따릅니다. Outbox 영구 실패 복구·DLQ 재처리 등 아직 합의되지 않은 운영 절차는 미확정으로 유지합니다.
