@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-frontend
+  namespace: peakorder
+  labels:
+    app: web-frontend
+    team: team02
+spec:
+  selector:
+    matchLabels:
+      app: web-frontend
+  template:
+    metadata:
+      labels:
+        app: web-frontend
+        team: team02
+    spec:
+      containers:
+        - name: web-frontend
+          # Not a published image. Replace before deployment; see ../README.md.
+          image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/web-frontend:sha-REPLACE_WITH_PUBLISHED_40_CHAR_COMMIT_SHA
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /index.html
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /index.html
+              port: http
