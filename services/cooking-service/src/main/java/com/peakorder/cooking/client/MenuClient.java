@@ -16,10 +16,12 @@ public interface MenuClient {
   /** optionIds는 옵션이 없어도 빈 목록 (MI-01은 배열 필수) */
   record PurchaseLine(Long menuId, int quantity, List<Long> optionIds) {}
 
-  /** cookTimeSec: 메뉴 1개 기본 조리 시간(초) */
+  /**
+   * cookTimeSec: 메뉴 1개 기본 조리 시간(초). 응답에서 빠지면 0으로 읽히지 않도록 Integer로 받아 HttpMenuClient가 null을 거절한다.
+   */
   record ValidatedMenu(
-      Long menuId, String menuName, int cookTimeSec, List<ValidatedOption> options) {}
+      Long menuId, String menuName, Integer cookTimeSec, List<ValidatedOption> options) {}
 
-  /** extraCookTimeSec: 옵션 선택 시 1개당 추가 조리 시간(초) */
-  record ValidatedOption(Long optionId, String optionName, int extraCookTimeSec) {}
+  /** extraCookTimeSec: 옵션 선택 시 1개당 추가 조리 시간(초). 누락 검사를 위해 Integer */
+  record ValidatedOption(Long optionId, String optionName, Integer extraCookTimeSec) {}
 }

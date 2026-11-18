@@ -134,4 +134,68 @@ class HttpMenuClientTest {
         .extracting(HttpMenuClientTest::errorCodeOf)
         .isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
   }
+
+  /** LINES = [메뉴1(옵션10) ×2, 메뉴2 ×1] 에 대한 응답 본문 */
+  private void respond(String items) {
+    server
+        .expect(requestTo(URL))
+        .andRespond(
+            withSuccess(
+                "{\"success\":true,\"message\":\"OK\",\"data\":{\"items\":[" + items + "]}}",
+                MediaType.APPLICATION_JSON));
+  }
+
+  private static final String MENU1 =
+      "{\"menuId\":1,\"menuName\":\"아메리카노\",\"unitPrice\":3000,\"cookTimeSec\":120,"
+          + "\"options\":[{\"optionId\":10,\"optionName\":\"샷 추가\",\"extraPrice\":500,"
+          + "\"extraCookTimeSec\":30}]}";
+  private static final String MENU2 =
+      "{\"menuId\":2,\"menuName\":\"라떼\",\"unitPrice\":4000,\"cookTimeSec\":90,\"options\":[]}";
+
+  @Test
+  void 응답_순서가_요청과_다르면_UPSTREAM_INVALID_RESPONSE() {
+    respond(MENU2 + "," + MENU1); // 메뉴 순서가 뒤바뀜
+
+    assertThatThrownBy(() -> client.validatePurchase(LINES))
+        .extracting(HttpMenuClientTest::errorCodeOf)
+        .isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+  }
+
+  @Test
+  void 응답_옵션이_요청과_다르면_UPSTREAM_INVALID_RESPONSE() {
+    respond(MENU1.replace("\"optionId\":10", "\"optionId\":11") + "," + MENU2);
+
+    assertThatThrownBy(() -> client.validatePurchase(LINES))
+        .extracting(HttpMenuClientTest::errorCodeOf)
+        .isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+  }
+
+  @Test
+  void cookTimeSec이_빠지면_0으로_계산하지_않고_UPSTREAM_INVALID_RESPONSE() {
+    respond(MENU1 + "," + MENU2.replace("\"cookTimeSec\":90,", ""));
+
+    assertThatThrownBy(() -> client.validatePurchase(LINES))
+        .extracting(HttpMenuClientTest::errorCodeOf)
+        .isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+  }
+
+  @Test
+  void extraCookTimeSec이_빠지면_UPSTREAM_INVALID_RESPONSE() {
+    respond(MENU1.replace(",\"extraCookTimeSec\":30", "") + "," + MENU2);
+
+    assertThatThrownBy(() -> client.validatePurchase(LINES))
+        .extracting(HttpMenuClientTest::errorCodeOf)
+        .isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+  }
+
+  @Test
+  void 같은_메뉴를_옵션만_다르게_담아도_순서대로_검증한다() {
+    List<PurchaseLine> sameMenuTwice =
+        List.of(new PurchaseLine(1L, 1, List.of()), new PurchaseLine(1L, 1, List.of(10L)));
+    respond(MENU1.replaceFirst("\\[\\{\"optionId.*?\\}\\]", "[]") + "," + MENU1);
+
+    List<ValidatedMenu> menus = client.validatePurchase(sameMenuTwice);
+
+    assertThat(menus).extracting(m -> m.options().size()).containsExactly(0, 1);
+  }
 }
