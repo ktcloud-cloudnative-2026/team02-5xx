@@ -390,6 +390,22 @@ class OrderServiceTest {
   }
 
   @Test
+  void already_refunded_payment_on_retry_ends_the_order_without_refunding_again() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(retryAfterExpiry());
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "REFUNDED"));
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.PAYMENT_FAILED));
+
+    verify(txService).markFailed(100L, "PAYMENT_REFUNDED");
+    verify(paymentClient, never()).refund(any());
+    verify(inventoryClient, never()).confirm(any());
+    verify(inventoryClient).release(55L);
+  }
+
+  @Test
   void pay_failure_still_ends_order_when_stock_release_fails() {
     when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
     when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "FAILED"));

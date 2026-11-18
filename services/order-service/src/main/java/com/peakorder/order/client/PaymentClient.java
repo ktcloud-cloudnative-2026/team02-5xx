@@ -21,11 +21,18 @@ public interface PaymentClient {
   /** 결제를 취소·환불한다. 이미 환불된 결제는 Payment가 중복 환불하지 않는다. */
   void refund(Long paymentId);
 
-  /** status: SUCCESS 또는 FAILED. FAILED는 결제 실패가 확정된 경우다. */
+  /**
+   * status: SUCCESS, FAILED, REFUNDED. FAILED는 결제 실패가 확정된 경우, REFUNDED는 이미 환불된 결제(같은 키로 다시 호출했을 때)로
+   * 돈이 나가지 않은 상태다.
+   */
   record PaymentResult(Long paymentId, String status) {
 
     public boolean isSuccess() {
       return "SUCCESS".equals(status);
+    }
+
+    public boolean isRefunded() {
+      return "REFUNDED".equals(status);
     }
 
     public boolean isFailed() {

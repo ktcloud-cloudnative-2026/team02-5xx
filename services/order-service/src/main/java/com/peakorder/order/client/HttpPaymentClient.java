@@ -33,7 +33,7 @@ public class HttpPaymentClient implements PaymentClient {
           || !body.success()
           || body.data() == null
           || body.data().paymentId() == null
-          || !(body.data().isSuccess() || body.data().isFailed())) {
+          || !(body.data().isSuccess() || body.data().isFailed() || body.data().isRefunded())) {
         throw new BusinessException(ErrorCode.UPSTREAM_INVALID_RESPONSE);
       }
       return body.data();

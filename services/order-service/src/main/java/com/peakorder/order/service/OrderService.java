@@ -203,7 +203,8 @@ public class OrderService {
     PaymentResult payment =
         paymentClient.pay(orderId, target.totalAmount(), idempotencyKey(orderId));
     if (!payment.isSuccess()) {
-      txService.markFailed(orderId, "PAYMENT_FAILED");
+      // REFUNDED: 이전 시도에서 환불까지 끝났는데 주문 종료 저장만 실패한 경우. 돈은 이미 돌아갔으므로 종료한다.
+      txService.markFailed(orderId, payment.isRefunded() ? "PAYMENT_REFUNDED" : "PAYMENT_FAILED");
       releaseQuietly(target.holdId());
       throw new BusinessException(ErrorCode.PAYMENT_FAILED);
     }
