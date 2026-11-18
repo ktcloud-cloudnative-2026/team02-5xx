@@ -96,6 +96,62 @@ class OrderTest {
   }
 
   @Test
+  void created_order_can_be_canceled_with_reason_time_and_history() {
+    Order order = Order.createTemporary(7L, now);
+
+    order.markCanceled("CUSTOMER_CANCEL", now.plusSeconds(5));
+
+    assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
+    assertThat(order.getCancelReason()).isEqualTo("CUSTOMER_CANCEL");
+    assertThat(order.getCanceledAt()).isEqualTo(now.plusSeconds(5));
+    assertThat(order.getHistories().get(1).getFromStatus()).isEqualTo(OrderStatus.CREATED);
+    assertThat(order.getHistories().get(1).getToStatus()).isEqualTo(OrderStatus.CANCELED);
+  }
+
+  @Test
+  void confirmed_order_can_be_canceled_and_repeating_it_changes_nothing() {
+    Order order = Order.createTemporary(7L, now);
+    order.markConfirmed("261113-0001", 9L, now.plusSeconds(1));
+
+    order.markCanceled("CUSTOMER_CANCEL", now.plusSeconds(2));
+    order.markCanceled("CUSTOMER_CANCEL", now.plusSeconds(3));
+
+    assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
+    assertThat(order.getCanceledAt()).isEqualTo(now.plusSeconds(2));
+    assertThat(order.getHistories()).hasSize(3);
+  }
+
+  @Test
+  void completed_or_failed_orders_cannot_be_canceled() {
+    Order completed = Order.createTemporary(7L, now);
+    completed.markConfirmed("261113-0001", 9L, now);
+    completed.markCompleted(now, now);
+    Order failed = Order.createTemporary(7L, now);
+    failed.markFailed("PAYMENT_FAILED", now);
+
+    assertThatThrownBy(() -> completed.markCanceled("CUSTOMER_CANCEL", now))
+        .isInstanceOf(IllegalStateException.class);
+    assertThatThrownBy(() -> failed.markCanceled("CUSTOMER_CANCEL", now))
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void follow_up_times_keep_the_first_value() {
+    Order order = Order.createTemporary(7L, now);
+    order.markConfirmed("261113-0001", 9L, now);
+    order.markCanceled("CUSTOMER_CANCEL", now);
+
+    order.markStockRestored(now.plusSeconds(10));
+    order.markStockRestored(now.plusSeconds(99));
+    order.markRefunded(now.plusSeconds(20));
+    order.markRefunded(now.plusSeconds(99));
+
+    assertThat(order.getStockRestoredAt()).isEqualTo(now.plusSeconds(10));
+    assertThat(order.getRefundedAt()).isEqualTo(now.plusSeconds(20));
+    assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
+  }
+
+  @Test
   void confirmed_states_are_paid_and_after() {
     assertThat(OrderStatus.CREATED.isConfirmed()).isFalse();
     assertThat(OrderStatus.FAILED.isConfirmed()).isFalse();

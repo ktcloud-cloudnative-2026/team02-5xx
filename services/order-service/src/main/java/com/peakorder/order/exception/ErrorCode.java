@@ -10,6 +10,14 @@ public enum ErrorCode {
   OUT_OF_STOCK(HttpStatus.CONFLICT, "재고가 부족하여 주문할 수 없습니다."),
   ORDER_NOT_PAYABLE(HttpStatus.CONFLICT, "결제할 수 없는 주문입니다. 새로 주문해 주세요."),
   ORDER_PAY_IN_PROGRESS(HttpStatus.CONFLICT, "이 주문의 결제가 처리 중입니다. 잠시 후 주문 상태를 확인해 주세요."),
+  ORDER_NOT_CANCELABLE(HttpStatus.CONFLICT, "취소할 수 없는 주문입니다."),
+  ORDER_PAYMENT_PENDING(
+      HttpStatus.CONFLICT, "결제 결과를 확인하는 중이라 지금은 취소할 수 없습니다. 결제를 다시 시도해 결과를 확인해 주세요."),
+  COOKING_ALREADY_STARTED(HttpStatus.CONFLICT, "조리가 이미 시작되어 취소할 수 없습니다."),
+  COOKING_ALREADY_DONE(HttpStatus.CONFLICT, "조리가 이미 끝나 취소할 수 없습니다."),
+  COOKING_ORDER_PENDING(HttpStatus.CONFLICT, "주문이 접수 처리 중입니다. 잠시 후 다시 시도해 주세요."),
+  COOKING_SERVICE_UNAVAILABLE(
+      HttpStatus.SERVICE_UNAVAILABLE, "조리 서비스에서 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요."),
   HOLD_EXPIRED(HttpStatus.CONFLICT, "재고 확보 시간이 지나 주문이 종료되었습니다. 새로 주문해 주세요."),
   PAYMENT_FAILED(HttpStatus.PAYMENT_REQUIRED, "결제에 실패했습니다. 새로 주문해 주세요."),
   STOCK_CONFIRM_FAILED(HttpStatus.CONFLICT, "재고를 확정하지 못해 주문이 종료되었습니다. 새로 주문해 주세요."),

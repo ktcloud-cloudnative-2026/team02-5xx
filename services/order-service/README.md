@@ -63,6 +63,24 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 - 조리 시간은 Order DB에 저장하지 않는다. 결제를 시작할 때 Menu(MI-01)에서 다시 받아 `OrderConfirmed`(`cookTimeSec`, 옵션 `extraCookTimeSec`)에 싣는다. Menu에 연결할 수 없으면 결제 전에 503으로 끝나 돈이 나가지 않고, 그 사이 판매가 중지된 메뉴가 있으면 주문을 종료(`MENU_NOT_AVAILABLE`)하고 재고를 반환한다.
 - `OrderConfirmed`는 `outbox_events`에 `PENDING`으로 저장만 한다. 실제 발행은 후속 작업(RabbitMQ 발행기)에서 구현한다.
 
+## 주문 취소 (OR-05)
+
+`POST /api/v1/orders/{orderId}/cancel` (본인 주문만, 다른 사용자의 주문은 404, 부분 취소 없음). 취소 가능 여부는 Cooking이 최종 판단한다(CI-03).
+
+| 주문 상태 | 처리 |
+|---|---|
+| `CREATED`(결제 전) | 재고 확보만 해제(II-03)하고 `CANCELED`. 환불·Cooking 호출 없음. 이미 만료·해제된 확보도 성공으로 본다 |
+| `CREATED`인데 결제를 요청한 적이 있음 | 결제가 됐을 수 있어 취소하지 않고 `409 ORDER_PAYMENT_PENDING`. 결제를 다시 호출해 결과를 확인한 뒤 처리한다 |
+| `PAID` 이후(조리 전) | Cooking에 취소 요청(CI-03). 받아들이면 `CANCELED`로 바꾸고 재고 복원(II-04)과 환불(PI-03) |
+| `COMPLETED`, `FAILED` | `409 ORDER_NOT_CANCELABLE` |
+| 이미 `CANCELED` | 현재 상태를 그대로 돌려준다(멱등). 남은 후속 처리가 있으면 이어서 한다 |
+
+- **Cooking 응답 해석(CI-03)**: 200만 취소 확정. `409 COOKING_ALREADY_STARTED`·`409 COOKING_ALREADY_DONE`은 각각 같은 코드로 응답하고 주문은 그대로 둔다. `404 COOKING_TICKET_NOT_FOUND`는 "접수 처리 중"일 수 있어 취소로 보지 않고 `409 COOKING_ORDER_PENDING`으로 안내한다(errorCode가 다른 404는 계약 위반으로 502). 5xx·타임아웃은 결과를 알 수 없어 주문을 그대로 두고 `503 COOKING_SERVICE_UNAVAILABLE`, 재호출하면 된다. Cooking 취소는 멱등이라 우리 쪽 저장이 실패해도 재호출로 이어진다.
+- **후속 처리 실패**: 재고 복원이나 환불이 실패해도 주문은 `CANCELED`로 두고 응답도 200이다. 끝난 단계는 `orders.stock_restored_at`·`refunded_at`에 기록하고, 안 끝난 단계는 둘 중 하나가 NULL로 남아 재시도 대상이 된다(확정된 주문, 곧 `order_no`가 있는 취소 주문만 해당). 두 단계는 서로 독립이라 한쪽이 실패해도 다른 쪽은 진행한다.
+- **재시도**: 같은 주문의 취소를 다시 호출하거나, `CancelFollowUpScheduler`가 30초마다(`cancel.follow-up.interval-ms`) 남은 단계를 이어서 처리한다. 재고 복원은 `409 RESTORE_NOT_APPLICABLE`이면 성공으로 기록하지 않고 에러 로그를 남겨 수동 확인에 맡긴다(스케줄러가 계속 다시 시도하며 로그가 반복된다).
+- **동시성**: 결제와 같은 처리 독점(`pay_lock_*`, 소유권 토큰)을 잡고 진행한다. 결제 중이거나 다른 취소가 처리 중이면 `409 ORDER_PAY_IN_PROGRESS`. 외부 호출 직전마다 독점을 연장하며 확인하고, 잃었으면 아무것도 하지 않고 멈춘다.
+- **확인 필요(Inventory)**: II-04의 성공 응답 형식과 추가 오류 코드는 아직 확정되지 않았다. 지금은 200만 성공, 409만 복원 불가로 보고 그 밖의 4xx는 502, 5xx는 재시도 대상으로 둔다.
+
 ## Cooking 장애 시 신규 주문·결제 차단 (US-13)
 
 Cooking 담당(김지윤)과 합의한 방식이다.

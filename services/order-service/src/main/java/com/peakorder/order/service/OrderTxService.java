@@ -20,6 +20,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
@@ -30,6 +31,16 @@ public class OrderTxService {
 
   /** 외부 호출 타임아웃(연결 2초·읽기 3초)으로 환불까지 이어져도 끝나는 시간보다 충분히 길게 잡는다. */
   static final java.time.Duration PAY_LOCK_TTL = java.time.Duration.ofSeconds(60);
+
+  private static final List<OrderStatus> PAY_LOCK_STATUSES = List.of(OrderStatus.CREATED);
+
+  private static final List<OrderStatus> CANCEL_LOCK_STATUSES =
+      List.of(
+          OrderStatus.CREATED,
+          OrderStatus.PAID,
+          OrderStatus.WAITING,
+          OrderStatus.COOKING,
+          OrderStatus.CANCELED);
 
   private static final DateTimeFormatter ORDER_NO_DATE = DateTimeFormatter.ofPattern("yyMMdd");
 
@@ -54,6 +65,32 @@ public class OrderTxService {
 
   public record PricedLine(
       Long menuId, String menuName, int unitPrice, int quantity, List<OrderItemOption> options) {}
+
+  /** 취소 처리에 필요한 값. 외부 호출 전에 읽어 두고 트랜잭션을 닫는다. */
+  public record CancelTarget(
+      Long id,
+      OrderStatus status,
+      Long holdId,
+      String orderNo,
+      Long paymentId,
+      OffsetDateTime paymentRequestedAt,
+      OffsetDateTime stockRestoredAt,
+      OffsetDateTime refundedAt,
+      OrderDetailResponse detail) {
+
+    /** 재고 복원이 남았는가: 확정(주문번호 발급)된 뒤 취소됐는데 아직 복원을 못 했다. */
+    public boolean stockRestoreRemaining() {
+      return status == OrderStatus.CANCELED && orderNo != null && stockRestoredAt == null;
+    }
+
+    /** 환불이 남았는가: 결제된 뒤 취소됐는데 아직 환불을 못 했다. */
+    public boolean refundRemaining() {
+      return status == OrderStatus.CANCELED
+          && orderNo != null
+          && paymentId != null
+          && refundedAt == null;
+    }
+  }
 
   /** 결제 진행 여부를 판단하는 데 필요한 값. 외부 호출 전에 읽어 두고 트랜잭션을 닫는다. */
   public record PaymentTarget(
@@ -84,6 +121,95 @@ public class OrderTxService {
             .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
     order.markHeld(hold.holdId(), hold.expiresAt(), now());
     return OrderDetailResponse.from(order);
+  }
+
+  @Transactional(readOnly = true)
+  public CancelTarget findCancelTarget(Long userId, Long orderId) {
+    return orderRepository
+        .findByIdAndUserId(orderId, userId)
+        .map(OrderTxService::toCancelTarget)
+        .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+  }
+
+  /** 후속 처리를 이어서 할 때 쓴다(사용자 확인 없이 ID로 읽는다). */
+  @Transactional(readOnly = true)
+  public CancelTarget findCancelTargetById(Long orderId) {
+    return orderRepository
+        .findById(orderId)
+        .map(OrderTxService::toCancelTarget)
+        .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+  }
+
+  private static CancelTarget toCancelTarget(Order order) {
+    return new CancelTarget(
+        order.getId(),
+        order.getStatus(),
+        order.getHoldId(),
+        order.getOrderNo(),
+        order.getPaymentId(),
+        order.getPaymentRequestedAt(),
+        order.getStockRestoredAt(),
+        order.getRefundedAt(),
+        OrderDetailResponse.from(order));
+  }
+
+  /** 취소 후속 처리가 남은 주문 ID(오래된 것부터). 방금 취소돼 아직 처리 중일 수 있는 주문은 {@code graceSec}초 동안 건너뛴다. */
+  @Transactional(readOnly = true)
+  public List<Long> findCancelFollowUpIds(int graceSec, int limit) {
+    OffsetDateTime now = now();
+    return orderRepository.findCancelFollowUpIds(
+        now.minusSeconds(graceSec), now, PageRequest.of(0, limit));
+  }
+
+  /**
+   * 주문을 취소 상태로 바꾼다. 내 독점이고 취소할 수 있는 상태일 때만 바꾸며, 이미 CANCELED이면 그대로 두고 true(멱등). 독점을 잃었거나 취소할 수 없는
+   * 상태면 false이고 호출자는 이후 단계를 하지 않아야 한다.
+   */
+  @Transactional
+  public boolean markCanceled(Long orderId, UUID lockToken, String reason) {
+    return orderRepository
+        .findWithLockById(orderId)
+        .filter(order -> holds(order, lockToken))
+        .filter(
+            order ->
+                order.getStatus() == OrderStatus.CANCELED
+                    || order.getStatus() == OrderStatus.CREATED
+                    || (order.getStatus().isConfirmed()
+                        && order.getStatus() != OrderStatus.COMPLETED))
+        .map(
+            order -> {
+              order.markCanceled(reason, now());
+              return true;
+            })
+        .orElse(false);
+  }
+
+  /** 재고 복원을 끝냈음을 기록한다. 내 독점일 때만 반영하며 반영했으면 true. */
+  @Transactional
+  public boolean markStockRestored(Long orderId, UUID lockToken) {
+    return orderRepository
+        .findWithLockById(orderId)
+        .filter(order -> order.getStatus() == OrderStatus.CANCELED && holds(order, lockToken))
+        .map(
+            order -> {
+              order.markStockRestored(now());
+              return true;
+            })
+        .orElse(false);
+  }
+
+  /** 환불을 끝냈음을 기록한다. 내 독점일 때만 반영하며 반영했으면 true. */
+  @Transactional
+  public boolean markRefunded(Long orderId, UUID lockToken) {
+    return orderRepository
+        .findWithLockById(orderId)
+        .filter(order -> order.getStatus() == OrderStatus.CANCELED && holds(order, lockToken))
+        .map(
+            order -> {
+              order.markRefunded(now());
+              return true;
+            })
+        .orElse(false);
   }
 
   @Transactional(readOnly = true)
@@ -161,9 +287,23 @@ public class OrderTxService {
    */
   @Transactional
   public Optional<UUID> tryAcquirePayLock(Long orderId) {
+    return acquire(orderId, PAY_LOCK_STATUSES);
+  }
+
+  /**
+   * 취소 처리 독점을 잡는다. 결제와 같은 독점이라 결제·취소·후속 처리가 한 주문에서 동시에 돌지 않는다. 취소할 수 있는 상태(CREATED·확정된 주문)와, 후속 처리를
+   * 이어서 해야 하는 CANCELED 주문에서 잡을 수 있다.
+   */
+  @Transactional
+  public Optional<UUID> tryAcquireCancelLock(Long orderId) {
+    return acquire(orderId, CANCEL_LOCK_STATUSES);
+  }
+
+  private Optional<UUID> acquire(Long orderId, List<OrderStatus> statuses) {
     OffsetDateTime now = now();
     UUID token = UUID.randomUUID();
-    return orderRepository.acquirePayLock(orderId, now, now.plus(PAY_LOCK_TTL), token) == 1
+    return orderRepository.acquirePayLock(orderId, now, now.plus(PAY_LOCK_TTL), token, statuses)
+            == 1
         ? Optional.of(token)
         : Optional.empty();
   }

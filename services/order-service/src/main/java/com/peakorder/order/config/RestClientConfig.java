@@ -41,6 +41,12 @@ public class RestClientConfig {
     return build(baseUrl, HEALTH_CONNECT_TIMEOUT, HEALTH_TIMEOUT);
   }
 
+  /** Cooking 취소(CI-03)용. 헬스와 달리 전표 행 잠금을 기다릴 수 있어 응답 대기를 3초로 둔다. */
+  @Bean
+  public RestClient cookingCommandRestClient(@Value("${clients.cooking.base-url}") String baseUrl) {
+    return build(baseUrl);
+  }
+
   private RestClient build(String baseUrl) {
     return build(baseUrl, CONNECT_TIMEOUT, READ_TIMEOUT);
   }

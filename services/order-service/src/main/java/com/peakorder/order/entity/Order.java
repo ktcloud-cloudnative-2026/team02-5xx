@@ -72,6 +72,12 @@ public class Order {
   @Column(name = "payment_requested_at")
   private OffsetDateTime paymentRequestedAt;
 
+  @Column(name = "stock_restored_at")
+  private OffsetDateTime stockRestoredAt;
+
+  @Column(name = "refunded_at")
+  private OffsetDateTime refundedAt;
+
   /** 결제 처리 독점 만료 시각. 갱신은 {@code OrderRepository}의 조건부 UPDATE로만 한다. */
   @Column(name = "pay_lock_until")
   private OffsetDateTime payLockUntil;
@@ -156,6 +162,41 @@ public class Order {
     this.completedAt = completedAt != null ? completedAt : now;
   }
 
+  /**
+   * 주문 취소. 결제 전(CREATED)이거나 확정된 주문(PAID·WAITING·COOKING)만 취소할 수 있다. 이미 취소된 주문이면 아무것도 바꾸지 않는다(멱등).
+   * 취소 후속 처리(재고 복원·환불)는 {@link #markStockRestored}·{@link #markRefunded}로 따로 기록한다.
+   */
+  public void markCanceled(String reason, OffsetDateTime now) {
+    if (status == OrderStatus.CANCELED) {
+      return;
+    }
+    if (status != OrderStatus.CREATED && !status.isConfirmed()) {
+      throw new IllegalStateException("취소할 수 없는 주문 상태입니다: " + status);
+    }
+    if (status == OrderStatus.COMPLETED) {
+      throw new IllegalStateException("조리가 끝난 주문은 취소할 수 없습니다.");
+    }
+    changeStatus(OrderStatus.CANCELED, reason, now);
+    this.cancelReason = reason;
+    this.canceledAt = now;
+  }
+
+  /** 취소로 재고 복원을 끝낸 시각을 남긴다. 처음 기록한 값을 유지한다. */
+  public void markStockRestored(OffsetDateTime now) {
+    if (this.stockRestoredAt == null) {
+      this.stockRestoredAt = now;
+      this.updatedAt = now;
+    }
+  }
+
+  /** 취소로 환불을 끝낸 시각을 남긴다. 처음 기록한 값을 유지한다. */
+  public void markRefunded(OffsetDateTime now) {
+    if (this.refundedAt == null) {
+      this.refundedAt = now;
+      this.updatedAt = now;
+    }
+  }
+
   public void markFailed(String reason, OffsetDateTime now) {
     changeStatus(OrderStatus.FAILED, reason, now);
     this.failReason = reason;
@@ -221,6 +262,14 @@ public class Order {
 
   public Long getPaymentId() {
     return paymentId;
+  }
+
+  public OffsetDateTime getStockRestoredAt() {
+    return stockRestoredAt;
+  }
+
+  public OffsetDateTime getRefundedAt() {
+    return refundedAt;
   }
 
   public java.util.UUID getPayLockToken() {
