@@ -1,0 +1,95 @@
+name: Project - In review on review request
+
+# GitHub Projects is organization-scoped: the default GITHUB_TOKEN cannot edit it.
+# Create Actions secret PEAKORDER_PROJECTS_TOKEN with organization Projects: read/write
+# and repository Issues/Pull requests: read (fine-grained PAT, or equivalent app token).
+on:
+  pull_request_target:
+    types: [review_requested]
+
+permissions:
+  contents: read
+
+jobs:
+  update-linked-issues:
+    name: Move linked issues to In review
+    if: github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update GitHub Projects status
+        uses: actions/github-script@v8
+        env:
+          PROJECT_TOKEN: ${{ secrets.PEAKORDER_PROJECTS_TOKEN }}
+        with:
+          github-token: ${{ secrets.PEAKORDER_PROJECTS_TOKEN || github.token }}
+          script: |
+            // Never check out or execute pull request code in this privileged workflow.
+            if (!process.env.PROJECT_TOKEN) {
+              core.warning('Missing PEAKORDER_PROJECTS_TOKEN Actions secret; skipping project update.');
+              return;
+            }
+
+            const org = 'ktcloud-cloudnative-2026';
+            const projectNumber = 12;
+            const targetStatus = 'In review';
+            const { owner, repo } = context.repo;
+            const pull = context.payload.pull_request;
+
+            const projectResult = await github.graphql(
+              'query($org:String!, $number:Int!) { organization(login:$org) { projectV2(number:$number) { id field(name:"Status") { ... on ProjectV2SingleSelectField { id options { id name } } } } } }',
+              { org, number: projectNumber }
+            );
+            const project = projectResult.organization?.projectV2;
+            const statusField = project?.field;
+            const inReview = statusField?.options?.find(option => option.name === targetStatus);
+            if (!project || !statusField || !inReview) {
+              core.setFailed('Projects #12 or its In review status was not found.');
+              return;
+            }
+
+            // Prefer GitHub's linked closing issues. Also handle stacked PRs
+            // whose closing references may not yet target the default branch.
+            const prResult = await github.graphql(
+              'query($owner:String!, $repo:String!, $number:Int!) { repository(owner:$owner, name:$repo) { pullRequest(number:$number) { closingIssuesReferences(first:100) { nodes { number repository { nameWithOwner } } } } } }',
+              { owner, repo, number: pull.number }
+            );
+            const issueNumbers = new Set(
+              (prResult.repository?.pullRequest?.closingIssuesReferences?.nodes || [])
+                .filter(issue => issue.repository.nameWithOwner.toLowerCase() === (owner + '/' + repo).toLowerCase())
+                .map(issue => issue.number)
+            );
+            const closingPattern = /\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\s+#(\d+)\b/gi;
+            for (const match of (pull.body || '').matchAll(closingPattern)) {
+              issueNumbers.add(Number(match[1]));
+            }
+            if (issueNumbers.size === 0) {
+              core.info('No linked or Closes #number issue found; nothing to update.');
+              return;
+            }
+
+            for (const number of issueNumbers) {
+              const issueResult = await github.graphql(
+                'query($owner:String!, $repo:String!, $number:Int!) { repository(owner:$owner, name:$repo) { issue(number:$number) { id state projectItems(first:100) { nodes { id project { id } } } } } }',
+                { owner, repo, number }
+              );
+              const issue = issueResult.repository?.issue;
+              if (!issue || issue.state !== 'OPEN') {
+                core.info('Skipping issue #' + number + ': not open.');
+                continue;
+              }
+
+              let itemId = issue.projectItems.nodes.find(item => item.project.id === project.id)?.id;
+              if (!itemId) {
+                const addResult = await github.graphql(
+                  'mutation($projectId:ID!, $contentId:ID!) { addProjectV2ItemById(input:{projectId:$projectId,contentId:$contentId}) { item { id } } }',
+                  { projectId: project.id, contentId: issue.id }
+                );
+                itemId = addResult.addProjectV2ItemById.item.id;
+              }
+
+              await github.graphql(
+                'mutation($projectId:ID!, $itemId:ID!, $fieldId:ID!, $optionId:String!) { updateProjectV2ItemFieldValue(input:{projectId:$projectId,itemId:$itemId,fieldId:$fieldId,value:{singleSelectOptionId:$optionId}}) { projectV2Item { id } } }',
+                { projectId: project.id, itemId, fieldId: statusField.id, optionId: inReview.id }
+              );
+              core.info('Moved issue #' + number + ' to In review.');
+            }
