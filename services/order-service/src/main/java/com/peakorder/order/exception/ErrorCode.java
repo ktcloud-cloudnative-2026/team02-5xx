@@ -15,6 +15,8 @@ public enum ErrorCode {
   STOCK_CONFIRM_FAILED(HttpStatus.CONFLICT, "재고를 확정하지 못해 주문이 종료되었습니다. 새로 주문해 주세요."),
   MENU_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "메뉴 정보를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요."),
   INVENTORY_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "재고를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요."),
+  COOKING_UNAVAILABLE(
+      HttpStatus.SERVICE_UNAVAILABLE, "조리 서비스에 문제가 있어 지금은 주문과 결제를 할 수 없습니다. 잠시 후 다시 시도해 주세요."),
   PAYMENT_SERVICE_UNAVAILABLE(
       HttpStatus.SERVICE_UNAVAILABLE, "결제 결과를 확인할 수 없습니다. 같은 주문으로 잠시 후 다시 시도해 주세요."),
   UPSTREAM_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "연동 서비스의 응답이 올바르지 않습니다."),
