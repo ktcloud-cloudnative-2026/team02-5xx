@@ -78,7 +78,7 @@ Cooking 담당(김지윤)과 2026-11-16에 아래 내용으로 합의했다. 모
 
 - **발행(OrderConfirmed)**: 주문 확정 트랜잭션이 `outbox_events`에 `PENDING`으로 저장한 이벤트를 1초 주기로 발행하고 `SENT`로 바꾼다. 브로커 확인(publisher confirm)을 받은 뒤에만 `SENT`로 바꾸며, 큐에 바인딩되지 않아 되돌아온(unroutable) 메시지도 실패로 보고 `PENDING`으로 남겨 다시 발행한다. 최소 한 번 전달이므로 받는 쪽이 `eventId`로 중복을 걸러야 한다.
 - **수신(CookingCompleted)**: `processed_events`에 `eventId`를 저장하고 주문을 `COMPLETED`로 바꾸는 것을 한 트랜잭션에서 하며, 처리가 끝난 뒤에만 ack 한다. 이미 처리한 `eventId`는 무시한다.
-- **재시도·DLQ**: 일시적일 수 있는 오류(DB 연결 문제 등)는 최대 3회 시도(첫 시도 포함, 1초·2초 간격) 후 DLQ에 보관한다. 다시 시도해도 소용없는 오류(JSON 형식 오류, 필수값 누락, 취소·미확정 주문에 대한 완료 이벤트)는 재시도 없이 바로 DLQ에 보관한다. Cooking의 수신 정책도 같다.
+- **재시도·DLQ**: 일시적일 수 있는 오류(DB 연결 문제 등)는 최대 3회 시도(첫 시도 포함, 1초·2초 간격) 후 DLQ에 보관한다. 다시 시도해도 소용없는 오류(JSON 형식 오류, 필수값 누락, 존재하지 않는 주문, 취소·미확정 주문에 대한 완료 이벤트)는 재시도 없이 바로 DLQ에 보관한다. Cooking의 수신 정책도 같다.
 - **DLQ 알림**: Cooking(모니터링 담당)이 Grafana에서 "DLQ 메시지 수 > 0이 1분 지속" 알림을 구성한다(모니터링 인프라 준비 후).
 - **메시지 본문**(JSON, camelCase, `messageId`=`eventId`)
   - `OrderConfirmed`: `eventId`, `orderId`, `orderNo`, `userId`, `confirmedAt`, `items[]`(`menuId`, `menuName`, `quantity`, `cookTimeSec`, `options[]`(`optionId`, `optionName`, `extraCookTimeSec`))

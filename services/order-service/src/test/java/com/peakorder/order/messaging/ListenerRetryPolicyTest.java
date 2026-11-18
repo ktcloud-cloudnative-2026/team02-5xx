@@ -2,8 +2,6 @@ package com.peakorder.order.messaging;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.peakorder.order.exception.BusinessException;
-import com.peakorder.order.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.support.converter.MessageConversionException;
 import org.springframework.dao.TransientDataAccessResourceException;
@@ -42,9 +40,6 @@ class ListenerRetryPolicyTest {
     assertThat(
             ListenerRetryPolicy.isRetryable(
                 wrap(new TransientDataAccessResourceException("db connection lost"))))
-        .isTrue();
-    assertThat(
-            ListenerRetryPolicy.isRetryable(wrap(new BusinessException(ErrorCode.ORDER_NOT_FOUND))))
         .isTrue();
   }
 }

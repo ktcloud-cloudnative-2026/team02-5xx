@@ -9,9 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.peakorder.order.entity.Order;
 import com.peakorder.order.entity.OrderStatus;
-import com.peakorder.order.exception.BusinessException;
-import com.peakorder.order.exception.ErrorCode;
 import com.peakorder.order.messaging.CookingCompletedEvent;
+import com.peakorder.order.messaging.ListenerRetryPolicy;
 import com.peakorder.order.repository.OrderRepository;
 import com.peakorder.order.repository.ProcessedEventRepository;
 import java.time.Clock;
@@ -77,13 +76,12 @@ class CookingCompletedServiceTest {
   }
 
   @Test
-  void unknown_order_fails_so_the_message_is_retried_then_kept_in_dlq() {
+  void unknown_order_fails_with_a_non_retryable_error_so_it_goes_straight_to_dlq() {
     when(orders.findWithLockById(5L)).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> service.handle(new CookingCompletedEvent(eventId, 5L, completedAt)))
-        .isInstanceOfSatisfying(
-            BusinessException.class,
-            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.ORDER_NOT_FOUND));
+        .isInstanceOf(IllegalArgumentException.class)
+        .satisfies(e -> assertThat(ListenerRetryPolicy.isRetryable(e)).isFalse());
   }
 
   @Test

@@ -1,7 +1,5 @@
 package com.peakorder.order.service;
 
-import com.peakorder.order.exception.BusinessException;
-import com.peakorder.order.exception.ErrorCode;
 import com.peakorder.order.messaging.CookingCompletedEvent;
 import com.peakorder.order.repository.OrderRepository;
 import com.peakorder.order.repository.ProcessedEventRepository;
@@ -44,7 +42,11 @@ public class CookingCompletedService {
     var order =
         orderRepository
             .findWithLockById(event.orderId())
-            .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+            .orElseThrow(
+                // 없는 주문은 다시 시도해도 결과가 같다. 재시도 없이 바로 DLQ로 보낸다(ListenerRetryPolicy).
+                () ->
+                    new IllegalArgumentException(
+                        "존재하지 않는 주문에 대한 CookingCompleted입니다 orderId=" + event.orderId()));
     order.markCompleted(event.completedAt(), now);
   }
 }
