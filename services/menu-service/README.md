@@ -179,3 +179,23 @@ Service 단위 테스트와 실제 HTTP/OpenAPI 테스트는 Repository 모의 �
 공유 `menu_dev`로 테스트를 실행하지 않습니다.
 MI-01 세부 오류 코드/HTTP 상태 구분은 아직 서비스 간 합의가 필요합니다.
 현재는 기존 `INVALID_REQUEST`/`INTERNAL_ERROR`를 재사용하며 전용 코드를 추가하지 않았습니다.
+
+## ME-03·ME-04 관리자 조회 1차 기반
+
+Issue #108의 기존 관리자 조회 Service·전용 읽기 Repository·DTO를 재사용해 Controller·예외 처리·HTTP/OpenAPI 테스트를 추가했습니다.
+세 판매 상태 전체 조회·카테고리/이름/상태 필터·정렬·상세 옵션을 지원합니다.
+`/api/v1/admin/menus`와 상세 경로는 등록됐지만 실제 실행에서 항상 403 / FORBIDDEN으로 차단합니다.
+권한 검사는 파라미터 검증과 조회보다 먼저 실행되며 헤더·프로필·설정으로 해제하는 기능이 없습니다.
+STORE_ADMIN 권한 요구사항은 확정됐으나 JWT 검증·Gateway 신원 전달·401/403 계약은 미확정입니다.
+제안 데이터 계약·검증 범위·#105와의 관계는 [관리자 조회 초안](../../docs/api/menu-me03-me04-draft.md)을 확인합니다.
+공유 DB/Flyway·의존성·기존 MI-01·MI-02는 변경하지 않았습니다.
+격리 PostgreSQL 16.16에서 Flyway V1과 실제 관리자 JPQL·검색/정렬·상세 옵션을 검증했습니다.
+허용·미인증·권한 부족 HTTP 분기는 테스트에서만 권한 경계를 모의했습니다.
+이는 실제 인증 연동 성공이 아니며 최종 STORE_ADMIN 접근 제한·401/403 계약은 여전히 미충족입니다.
+Java 21의 Spotless·test·build와 공백 검사를 통과했습니다. 비DB 169건·기존 DB 35건·관리자 DB 13건,
+전체 217건 통과·실패/생략 0건입니다. 실제 기본 차단·헤더 위조 방지 검사도 포함합니다.
+기존 DB 생략 9건은 메서드 수이며 실제 실행 시 파라미터 사례가 35건으로 확장됩니다.
+임시 DB 격리·롤백·종료 내역은 [PostgreSQL 검증 기록](../../docs/api/menu-admin-postgresql-validation.md)을 확인합니다.
+#105 고객 API와 통합하지 않았으며, 향후 고객 HTTP 테스트에 관리자 Repository mock 추가와 전체 회귀 실행이 필요합니다.
+실제 Auth/JWT·Gateway 구현 상태, 담당자 결정 사항과 권장안은 [인증 연동 점검](../../docs/api/menu-admin-auth-integration.md)에 기록했습니다.
+추가한 위조 JWT/Servlet 신원 거부 테스트를 실제 STORE_ADMIN 인증 연동 완료로 해석하지 않습니다.

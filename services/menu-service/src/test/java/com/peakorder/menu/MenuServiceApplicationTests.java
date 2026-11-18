@@ -8,13 +8,17 @@ import static org.mockito.Mockito.when;
 import com.peakorder.menu.entity.Menu;
 import com.peakorder.menu.entity.MenuOption;
 import com.peakorder.menu.entity.MenuStatus;
+import com.peakorder.menu.repository.AdminMenuQueryRepository;
+import com.peakorder.menu.repository.CategoryRepository;
 import com.peakorder.menu.repository.MenuOptionRepository;
 import com.peakorder.menu.repository.MenuRepository;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -37,6 +41,77 @@ class MenuServiceApplicationTests {
   @LocalServerPort private int port;
   @MockitoBean private MenuRepository menus;
   @MockitoBean private MenuOptionRepository options;
+  @MockitoBean private AdminMenuQueryRepository adminMenus;
+  @MockitoBean private CategoryRepository categories;
+
+  @Test
+  void administratorRoutesDenyAccessBeforeAnyDataQuery() throws Exception {
+    var document = new ObjectMapper().readTree(get("/v3/api-docs").body());
+    assertThat(document.path("paths").has("/api/v1/admin/menus")).isTrue();
+    assertThat(document.path("paths").has("/api/v1/admin/menus/{menuId}")).isTrue();
+    assertThat(get("/api/v1/admin/menus").statusCode()).isEqualTo(403);
+    assertThat(get("/api/v1/admin/menus/1").statusCode()).isEqualTo(403);
+    assertThat(get("/api/v1/admin/menus/invalid").statusCode()).isEqualTo(403);
+    verifyNoInteractions(adminMenus, categories);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"X-Role", "X-User-Role", "Authorization", "X-Authenticated-User"})
+  void forgedIdentityHeadersCannotEnableAdministratorAccess(String header) throws Exception {
+    for (String path : List.of("/api/v1/admin/menus?categoryId=invalid", "/api/v1/admin/menus/1")) {
+      try (var client = HttpClient.newHttpClient()) {
+        var request =
+            HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
+                .header(
+                    header,
+                    header.equals("Authorization") ? "Bearer unverified-test-token" : "STORE_ADMIN")
+                .timeout(Duration.ofSeconds(15))
+                .GET()
+                .build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(403);
+        var json = new ObjectMapper().readTree(response.body());
+        assertThat(json.path("success").asBoolean()).isFalse();
+        assertThat(json.path("errorCode").asString()).isEqualTo("FORBIDDEN");
+        assertThat(json.has("data")).isFalse();
+      }
+    }
+    verifyNoInteractions(adminMenus, categories);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"none", "HS256", "RS256"})
+  void unverifiedJwtPayloadClaimsCannotGrantAdministratorAccess(String algorithm) throws Exception {
+    // Synthetic attack input, not an agreed token contract or a cryptographic verification test.
+    var encoder = Base64.getUrlEncoder().withoutPadding();
+    String header =
+        encoder.encodeToString(
+            ("{\"alg\":\"" + algorithm + "\",\"typ\":\"JWT\"}").getBytes(StandardCharsets.UTF_8));
+    String payload =
+        encoder.encodeToString(
+            "{\"sub\":\"1\",\"role\":\"STORE_ADMIN\",\"exp\":4102444800}"
+                .getBytes(StandardCharsets.UTF_8));
+    String token =
+        header + "." + payload + "." + (algorithm.equals("none") ? "" : "unverified-signature");
+    for (String path : List.of("/api/v1/admin/menus", "/api/v1/admin/menus/1")) {
+      try (var client = HttpClient.newHttpClient()) {
+        var request =
+            HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
+                .header("Authorization", "Bearer " + token)
+                .header("X-User-Id", "1")
+                .header("X-User-Role", "STORE_ADMIN")
+                .timeout(Duration.ofSeconds(15))
+                .GET()
+                .build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(403);
+        var json = new ObjectMapper().readTree(response.body());
+        assertThat(json.path("errorCode").asString()).isEqualTo("FORBIDDEN");
+        assertThat(json.has("data")).isFalse();
+      }
+    }
+    verifyNoInteractions(adminMenus, categories);
+  }
 
   @Test
   void documentsPurchaseValidationEndpoint() throws Exception {
