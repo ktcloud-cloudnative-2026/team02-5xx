@@ -141,6 +141,21 @@ public class Order {
     this.paidAt = now;
   }
 
+  /**
+   * 조리 완료 반영(CookingCompleted). 확정된 주문(PAID·WAITING·COOKING)만 COMPLETED로 바꾼다. 이미 완료된 주문이면 아무것도 하지
+   * 않고, 확정되지 않았거나 취소된 주문에 완료 이벤트가 오면 데이터 불일치이므로 예외로 알린다.
+   */
+  public void markCompleted(OffsetDateTime completedAt, OffsetDateTime now) {
+    if (status == OrderStatus.COMPLETED) {
+      return;
+    }
+    if (!status.isConfirmed()) {
+      throw new IllegalStateException("조리 완료를 반영할 수 없는 주문 상태입니다: " + status);
+    }
+    changeStatus(OrderStatus.COMPLETED, null, now);
+    this.completedAt = completedAt != null ? completedAt : now;
+  }
+
   public void markFailed(String reason, OffsetDateTime now) {
     changeStatus(OrderStatus.FAILED, reason, now);
     this.failReason = reason;

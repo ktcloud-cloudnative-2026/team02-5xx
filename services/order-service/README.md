@@ -63,6 +63,29 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 - 조리 시간은 Order DB에 저장하지 않는다. 결제를 시작할 때 Menu(MI-01)에서 다시 받아 `OrderConfirmed`(`cookTimeSec`, 옵션 `extraCookTimeSec`)에 싣는다. Menu에 연결할 수 없으면 결제 전에 503으로 끝나 돈이 나가지 않고, 그 사이 판매가 중지된 메뉴가 있으면 주문을 종료(`MENU_NOT_AVAILABLE`)하고 재고를 반환한다.
 - `OrderConfirmed`는 `outbox_events`에 `PENDING`으로 저장만 한다. 실제 발행은 후속 작업(RabbitMQ 발행기)에서 구현한다.
 
+## 이벤트 (RabbitMQ)
+
+Cooking 담당(김지윤)과 2026-11-16에 아래 내용으로 합의했다. 모든 큐는 durable이고 메시지는 persistent로 발행한다.
+
+| 구분 | 이름 |
+|---|---|
+| 교환기(topic, durable, autoDelete=false) | `peakorder.events` — Order와 Cooking이 같은 속성으로 선언 |
+| OrderConfirmed 라우팅 키 | `order.confirmed` (Order → Cooking) |
+| CookingCompleted 라우팅 키 | `cooking.completed` (Cooking → Order) |
+| Cooking이 받는 큐 | `cooking.order-confirmed` + DLQ `cooking.order-confirmed.dlq` (**Cooking이 선언**, `order.confirmed`로 바인딩) |
+| Order가 받는 큐 | `order.cooking-completed` + DLQ `order.cooking-completed.dlq` (Order가 선언) |
+| 보관용 교환기 | `peakorder.dlx` (direct, durable, autoDelete=false). 양쪽 DLQ가 같은 교환기를 쓴다. 큐는 `x-dead-letter-exchange=peakorder.dlx`, `x-dead-letter-routing-key=<큐 이름>`으로 선언하고 DLQ(`<큐 이름>.dlq`)를 큐 이름 키로 바인딩한다 (Cooking과 확인 완료) |
+
+- **발행(OrderConfirmed)**: 주문 확정 트랜잭션이 `outbox_events`에 `PENDING`으로 저장한 이벤트를 1초 주기로 발행하고 `SENT`로 바꾼다. 브로커 확인(publisher confirm)을 받은 뒤에만 `SENT`로 바꾸며, 큐에 바인딩되지 않아 되돌아온(unroutable) 메시지도 실패로 보고 `PENDING`으로 남겨 다시 발행한다. 최소 한 번 전달이므로 받는 쪽이 `eventId`로 중복을 걸러야 한다.
+- **수신(CookingCompleted)**: `processed_events`에 `eventId`를 저장하고 주문을 `COMPLETED`로 바꾸는 것을 한 트랜잭션에서 하며, 처리가 끝난 뒤에만 ack 한다. 이미 처리한 `eventId`는 무시한다.
+- **재시도·DLQ**: 일시적일 수 있는 오류(DB 연결 문제 등)는 최대 3회 시도(첫 시도 포함, 1초·2초 간격) 후 DLQ에 보관한다. 다시 시도해도 소용없는 오류(JSON 형식 오류, 필수값 누락, 존재하지 않는 주문, 취소·미확정 주문에 대한 완료 이벤트)는 재시도 없이 바로 DLQ에 보관한다. Cooking의 수신 정책도 같다.
+- **DLQ 알림**: Cooking(모니터링 담당)이 Grafana에서 "DLQ 메시지 수 > 0이 1분 지속" 알림을 구성한다(모니터링 인프라 준비 후).
+- **메시지 본문**(JSON, camelCase, `messageId`=`eventId`)
+  - `OrderConfirmed`: `eventId`, `orderId`, `orderNo`, `userId`, `confirmedAt`, `items[]`(`menuId`, `menuName`, `quantity`, `cookTimeSec`, `options[]`(`optionId`, `optionName`, `extraCookTimeSec`))
+  - `CookingCompleted`: `eventId`(UUID), `orderId`, `completedAt`(ISO 8601, +09:00)
+- **Cooking 쪽 처리 규칙(합의)**: `cook_time_sec = cookTimeSec + 옵션 extraCookTimeSec 합`(1개 기준), `option_summary`는 `optionName`을 ", "로 이어붙임(옵션 없으면 NULL), `estimated_cook_sec = Σ(cook_time_sec × quantity)`, `queued_at`은 Cooking DB 등록 시각(FIFO). 같은 `eventId`는 무시, `eventId`가 달라도 같은 `orderId`의 전표가 있으면 경고 로그 후 무시한다. 취소된 전표에는 `CookingCompleted`를 보내지 않는다(Cooking은 `WAITING`에서만 취소, `COOKING`에서만 완료 가능).
+- **후속(US-13) 합의 사항**: Cooking 장애 감지는 Order가 Cooking의 `GET /actuator/health`(인증 없음)를 확인해 2초 타임아웃·3회 연속 실패(또는 HTTP 503)이면 신규 주문·결제를 차단하고, 성공하면 자동 해제한다. 아직 구현 전이다. CI-02는 전표가 없으면 404 `COOKING_TICKET_NOT_FOUND`를 돌려주며 이는 "접수 처리 중"으로 해석한다.
+
 ## 빌드·테스트
 
 ```bash
