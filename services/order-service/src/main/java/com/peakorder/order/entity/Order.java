@@ -76,6 +76,10 @@ public class Order {
   @Column(name = "pay_lock_until")
   private OffsetDateTime payLockUntil;
 
+  /** 결제 처리 독점을 잡은 요청의 토큰. */
+  @Column(name = "pay_lock_token")
+  private java.util.UUID payLockToken;
+
   @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
   @OrderBy("id ASC")
   private List<OrderItem> items = new ArrayList<>();
@@ -202,6 +206,10 @@ public class Order {
 
   public Long getPaymentId() {
     return paymentId;
+  }
+
+  public java.util.UUID getPayLockToken() {
+    return payLockToken;
   }
 
   public OffsetDateTime getPaymentRequestedAt() {

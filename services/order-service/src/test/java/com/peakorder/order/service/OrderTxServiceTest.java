@@ -1,6 +1,7 @@
 package com.peakorder.order.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -14,6 +15,8 @@ import com.peakorder.order.dto.OrderDetailResponse;
 import com.peakorder.order.entity.Order;
 import com.peakorder.order.entity.OrderItemOption;
 import com.peakorder.order.entity.OrderStatus;
+import com.peakorder.order.exception.BusinessException;
+import com.peakorder.order.exception.ErrorCode;
 import com.peakorder.order.repository.OrderNoRepository;
 import com.peakorder.order.repository.OrderRepository;
 import com.peakorder.order.repository.OutboxEventRepository;
@@ -66,47 +69,111 @@ class OrderTxServiceTest {
     return order;
   }
 
-  @Test
-  void payment_requested_marker_is_saved_only_while_the_order_is_created() {
-    Order created = orderWithItems();
-    when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(created));
-    assertThat(service.markPaymentRequested(100L)).isTrue();
-    assertThat(created.getPaymentRequestedAt()).isEqualTo(now);
+  private static final UUID TOKEN = UUID.fromString("00000000-0000-0000-0000-000000000042");
+  private static final UUID OTHER = UUID.fromString("00000000-0000-0000-0000-000000000043");
 
-    Order failed = orderWithItems();
-    failed.markFailed("HOLD_EXPIRED", now);
-    when(orderRepository.findWithLockById(101L)).thenReturn(Optional.of(failed));
-    assertThat(service.markPaymentRequested(101L)).isFalse();
-    assertThat(failed.getPaymentRequestedAt()).isNull();
-
-    Order paid = orderWithItems();
-    paid.markConfirmed("261113-0001", 9L, now);
-    when(orderRepository.findWithLockById(102L)).thenReturn(Optional.of(paid));
-    assertThat(service.markPaymentRequested(102L)).isFalse();
-    assertThat(paid.getPaymentRequestedAt()).isNull();
-
-    when(orderRepository.findWithLockById(103L)).thenReturn(Optional.empty());
-    assertThat(service.markPaymentRequested(103L)).isFalse();
+  private Order lockedBy(UUID token) {
+    Order order = orderWithItems();
+    org.springframework.test.util.ReflectionTestUtils.setField(order, "payLockToken", token);
+    return order;
   }
 
   @Test
-  void pay_lock_is_acquired_only_when_exactly_one_row_was_updated() {
-    when(orderRepository.acquirePayLock(100L, now, now.plus(OrderTxService.PAY_LOCK_TTL)))
+  void payment_requested_marker_is_saved_only_while_the_order_is_created_and_the_lock_is_mine() {
+    Order created = lockedBy(TOKEN);
+    when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(created));
+    assertThat(service.markPaymentRequested(100L, TOKEN)).isTrue();
+    assertThat(created.getPaymentRequestedAt()).isEqualTo(now);
+
+    Order failed = lockedBy(TOKEN);
+    failed.markFailed("HOLD_EXPIRED", now);
+    when(orderRepository.findWithLockById(101L)).thenReturn(Optional.of(failed));
+    assertThat(service.markPaymentRequested(101L, TOKEN)).isFalse();
+    assertThat(failed.getPaymentRequestedAt()).isNull();
+
+    Order paid = lockedBy(TOKEN);
+    paid.markConfirmed("261113-0001", 9L, now);
+    when(orderRepository.findWithLockById(102L)).thenReturn(Optional.of(paid));
+    assertThat(service.markPaymentRequested(102L, TOKEN)).isFalse();
+    assertThat(paid.getPaymentRequestedAt()).isNull();
+
+    when(orderRepository.findWithLockById(103L)).thenReturn(Optional.empty());
+    assertThat(service.markPaymentRequested(103L, TOKEN)).isFalse();
+  }
+
+  @Test
+  void a_request_that_lost_the_lock_cannot_mark_record_fail_or_confirm_the_order() {
+    // 독점이 만료돼 다른 요청(OTHER)이 이어받은 뒤 이전 요청(TOKEN)이 늦게 도착한 경우
+    Order order = lockedBy(OTHER);
+    when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(order));
+
+    assertThat(service.markPaymentRequested(100L, TOKEN)).isFalse();
+    service.recordPaymentId(100L, TOKEN, 9L);
+    assertThat(service.markFailed(100L, TOKEN, "PAYMENT_FAILED")).isFalse();
+    assertThatThrownBy(() -> service.confirmOrder(100L, TOKEN, 9L, menus()))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.ORDER_PAY_IN_PROGRESS));
+
+    assertThat(order.getStatus()).isEqualTo(OrderStatus.CREATED);
+    assertThat(order.getPaymentRequestedAt()).isNull();
+    assertThat(order.getPaymentId()).isNull();
+    verify(outboxRepository, never()).insertPending(any(), any(), any(), any());
+  }
+
+  @Test
+  void the_lock_owner_can_fail_the_order_and_record_the_payment_id() {
+    Order order = lockedBy(TOKEN);
+    when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(order));
+
+    service.recordPaymentId(100L, TOKEN, 9L);
+    assertThat(order.getPaymentId()).isEqualTo(9L);
+    assertThat(service.markFailed(100L, TOKEN, "STOCK_CONFIRM_FAILED")).isTrue();
+    assertThat(order.getStatus()).isEqualTo(OrderStatus.FAILED);
+  }
+
+  @Test
+  void pay_lock_is_acquired_only_when_exactly_one_row_was_updated_and_the_token_is_returned() {
+    when(orderRepository.acquirePayLock(
+            eq(100L), eq(now), eq(now.plus(OrderTxService.PAY_LOCK_TTL)), any()))
         .thenReturn(1);
-    when(orderRepository.acquirePayLock(101L, now, now.plus(OrderTxService.PAY_LOCK_TTL)))
+    when(orderRepository.acquirePayLock(
+            eq(101L), eq(now), eq(now.plus(OrderTxService.PAY_LOCK_TTL)), any()))
         .thenReturn(0);
 
-    assertThat(service.tryAcquirePayLock(100L)).isTrue();
-    assertThat(service.tryAcquirePayLock(101L)).isFalse();
+    assertThat(service.tryAcquirePayLock(100L)).isPresent();
+    assertThat(service.tryAcquirePayLock(101L)).isEmpty();
+  }
+
+  @Test
+  void every_acquisition_uses_a_new_token_so_the_previous_owner_is_told_apart() {
+    when(orderRepository.acquirePayLock(any(), any(), any(), any())).thenReturn(1);
+
+    assertThat(service.tryAcquirePayLock(100L).orElseThrow())
+        .isNotEqualTo(service.tryAcquirePayLock(100L).orElseThrow());
+  }
+
+  @Test
+  void renew_and_release_are_scoped_to_the_token() {
+    when(orderRepository.renewPayLock(100L, now.plus(OrderTxService.PAY_LOCK_TTL), TOKEN))
+        .thenReturn(1);
+    when(orderRepository.renewPayLock(100L, now.plus(OrderTxService.PAY_LOCK_TTL), OTHER))
+        .thenReturn(0);
+
+    assertThat(service.renewPayLock(100L, TOKEN)).isTrue();
+    assertThat(service.renewPayLock(100L, OTHER)).isFalse();
+
+    service.releasePayLock(100L, TOKEN);
+    verify(orderRepository).releasePayLock(100L, TOKEN);
   }
 
   @Test
   void confirm_issues_order_no_and_saves_outbox_event_in_same_call() throws Exception {
-    Order order = orderWithItems();
+    Order order = lockedBy(TOKEN);
     when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(order));
     when(orderNoRepository.nextSequence(LocalDate.of(2026, 11, 13))).thenReturn(7);
 
-    OrderDetailResponse response = service.confirmOrder(100L, 9L, menus());
+    OrderDetailResponse response = service.confirmOrder(100L, TOKEN, 9L, menus());
 
     assertThat(response.status()).isEqualTo(OrderStatus.PAID);
     assertThat(response.orderNo()).isEqualTo("261113-0007");
@@ -135,7 +202,7 @@ class OrderTxServiceTest {
     order.markConfirmed("261113-0001", 9L, now);
     when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(order));
 
-    OrderDetailResponse response = service.confirmOrder(100L, 9L, menus());
+    OrderDetailResponse response = service.confirmOrder(100L, TOKEN, 9L, menus());
 
     assertThat(response.orderNo()).isEqualTo("261113-0001");
     verify(orderNoRepository, never()).nextSequence(any());

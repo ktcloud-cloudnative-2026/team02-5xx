@@ -30,7 +30,9 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -149,9 +151,11 @@ public class OrderService {
 
     // 같은 주문을 동시에 결제 처리하면 한쪽은 확정하고 다른 쪽은 환불·종료하는 모순이 생길 수 있다.
     // 한 요청만 처리 독점을 잡고, 나머지는 기다리지 않고 현재 상태로 응답한다.
-    if (!txService.tryAcquirePayLock(orderId)) {
+    Optional<UUID> acquired = txService.tryAcquirePayLock(orderId);
+    if (acquired.isEmpty()) {
       return answerWithoutPaying(userId, orderId);
     }
+    UUID lock = acquired.get();
     try {
       // 독점을 잡기 전에 읽은 값은 오래됐을 수 있으므로 독점을 잡은 뒤 다시 읽는다.
       PaymentTarget target = txService.findPaymentTarget(userId, orderId);
@@ -161,9 +165,9 @@ public class OrderService {
       if (target.status() != OrderStatus.CREATED || target.holdId() == null) {
         throw new BusinessException(ErrorCode.ORDER_NOT_PAYABLE);
       }
-      return pay(orderId, target);
+      return pay(orderId, lock, target);
     } finally {
-      releasePayLockQuietly(orderId);
+      releasePayLockQuietly(orderId, lock);
     }
   }
 
@@ -179,8 +183,8 @@ public class OrderService {
     throw new BusinessException(ErrorCode.ORDER_PAY_IN_PROGRESS);
   }
 
-  /** 처리 독점을 잡은 요청만 호출한다. */
-  private OrderDetailResponse pay(Long orderId, PaymentTarget target) {
+  /** 처리 독점을 잡은 요청만 호출한다. {@code lock}은 그 독점의 토큰이다. */
+  private OrderDetailResponse pay(Long orderId, UUID lock, PaymentTarget target) {
     // 결제를 이미 요청한 적이 있으면 결제가 됐을 수 있다(응답을 받지 못했을 뿐일 수 있다).
     boolean paymentMayExist = target.paymentRequestedAt() != null;
     boolean holdExpired =
@@ -188,40 +192,61 @@ public class OrderService {
             || !target.holdExpiresAt().isAfter(OffsetDateTime.now(clock));
     if (holdExpired && !paymentMayExist) {
       // 결제한 적이 없으므로 돈이 나가지 않았다. 바로 종료한다.
-      txService.markFailed(orderId, "HOLD_EXPIRED");
+      failOrder(orderId, lock, "HOLD_EXPIRED");
       throw new BusinessException(ErrorCode.HOLD_EXPIRED);
     }
 
     // 결제 전에 Menu에서 조리 시간을 받아 둔다. 결제한 적이 없다면 여기서 실패해도 돈이 나가지 않는다.
-    List<ValidatedMenu> menus = fetchCookTimes(orderId, target, paymentMayExist);
+    List<ValidatedMenu> menus = fetchCookTimes(orderId, lock, target, paymentMayExist);
 
     // 결제 요청 직전에 기록한다. 기록에 실패하면 예외가 나 결제는 요청되지 않는다.
-    if (!txService.markPaymentRequested(orderId)) {
-      // 그 사이 주문 상태가 바뀌었다. 결제를 요청하지 않는다.
-      throw new BusinessException(ErrorCode.ORDER_NOT_PAYABLE);
+    // 주문 상태가 바뀌었거나 독점을 잃었으면 false라서 결제를 요청하지 않는다.
+    if (!txService.markPaymentRequested(orderId, lock)) {
+      throw new BusinessException(ErrorCode.ORDER_PAY_IN_PROGRESS);
     }
     PaymentResult payment =
         paymentClient.pay(orderId, target.totalAmount(), idempotencyKey(orderId));
     if (!payment.isSuccess()) {
       // REFUNDED: 이전 시도에서 환불까지 끝났는데 주문 종료 저장만 실패한 경우. 돈은 이미 돌아갔으므로 종료한다.
-      txService.markFailed(orderId, payment.isRefunded() ? "PAYMENT_REFUNDED" : "PAYMENT_FAILED");
-      releaseQuietly(target.holdId());
+      if (failOrder(orderId, lock, payment.isRefunded() ? "PAYMENT_REFUNDED" : "PAYMENT_FAILED")) {
+        releaseQuietly(target.holdId());
+      }
       throw new BusinessException(ErrorCode.PAYMENT_FAILED);
     }
-    recordPaymentIdQuietly(orderId, payment.paymentId());
+    recordPaymentIdQuietly(orderId, lock, payment.paymentId());
 
+    // 결제는 시간이 걸릴 수 있으므로, 재고를 확정하기 전에 아직 내 독점인지 확인하고 만료를 늦춘다.
+    keepLockOrStop(orderId, lock);
     try {
       inventoryClient.confirm(target.holdId());
     } catch (BusinessException e) {
       if (e.errorCode() == ErrorCode.STOCK_CONFIRM_FAILED) {
         // 결제는 성공했지만 재고를 확정할 수 없음이 확실하므로 결제를 취소하고 주문을 종료한다.
+        keepLockOrStop(orderId, lock);
         boolean refunded = refundQuietly(payment.paymentId());
-        txService.markFailed(
-            orderId, refunded ? "STOCK_CONFIRM_FAILED" : "STOCK_CONFIRM_FAILED_REFUND_NEEDED");
+        failOrder(
+            orderId,
+            lock,
+            refunded ? "STOCK_CONFIRM_FAILED" : "STOCK_CONFIRM_FAILED_REFUND_NEEDED");
       }
       throw e;
     }
-    return txService.confirmOrder(orderId, payment.paymentId(), menus);
+    return txService.confirmOrder(orderId, lock, payment.paymentId(), menus);
+  }
+
+  /**
+   * 외부 호출을 하기 전에 아직 내 독점인지 확인한다. 이미 다른 요청이 이어받았다면 결제·환불·확정 중 어느 것도 하지 않고 멈춘다(이어받은 요청이 같은 멱등키로 결과를
+   * 이어서 처리한다).
+   */
+  private void keepLockOrStop(Long orderId, UUID lock) {
+    if (!txService.renewPayLock(orderId, lock)) {
+      throw new BusinessException(ErrorCode.ORDER_PAY_IN_PROGRESS);
+    }
+  }
+
+  /** 내 독점일 때만 주문을 종료한다. 독점을 잃었으면 종료하지 않고 false(후속 처리도 하지 않는다). */
+  private boolean failOrder(Long orderId, UUID lock, String reason) {
+    return txService.markFailed(orderId, lock, reason);
   }
 
   /** OR-03 본인 주문 목록. 확정되지 않은 주문(CREATED, FAILED)은 제외한다. */
@@ -255,16 +280,15 @@ public class OrderService {
    * 결제를 이미 요청한 적이 있다면(결제가 됐을 수 있다) 결제 결과를 확인해 성공이면 환불한 뒤 종료한다. Menu에 연결할 수 없으면 주문을 그대로 두고 오류만 돌려준다.
    */
   private List<ValidatedMenu> fetchCookTimes(
-      Long orderId, PaymentTarget target, boolean paymentMayExist) {
+      Long orderId, UUID lock, PaymentTarget target, boolean paymentMayExist) {
     List<ValidatedMenu> menus;
     try {
       menus = menuClient.validatePurchase(target.lines());
     } catch (BusinessException e) {
       if (e.errorCode() == ErrorCode.MENU_NOT_AVAILABLE) {
         if (paymentMayExist) {
-          endAfterPossiblePayment(orderId, target, "MENU_NOT_AVAILABLE");
-        } else {
-          txService.markFailed(orderId, "MENU_NOT_AVAILABLE");
+          endAfterPossiblePayment(orderId, lock, target, "MENU_NOT_AVAILABLE");
+        } else if (failOrder(orderId, lock, "MENU_NOT_AVAILABLE")) {
           releaseQuietly(target.holdId());
         }
       }
@@ -291,32 +315,36 @@ public class OrderService {
    * 결제가 이미 됐을 수 있는 주문을 종료한다. 같은 키로 결제 결과를 확인하고(처음 결과를 돌려준다), 성공이면 환불한다. 환불까지 실패하면 수동 확인 대상으로 남긴다.
    * 결제 결과를 알 수 없으면(예외) 주문을 그대로 두므로 같은 주문으로 다시 호출할 수 있다.
    */
-  private void endAfterPossiblePayment(Long orderId, PaymentTarget target, String reason) {
+  private void endAfterPossiblePayment(
+      Long orderId, UUID lock, PaymentTarget target, String reason) {
+    keepLockOrStop(orderId, lock);
     PaymentResult payment =
         paymentClient.pay(orderId, target.totalAmount(), idempotencyKey(orderId));
     String failReason = reason;
     if (payment.isSuccess()) {
-      recordPaymentIdQuietly(orderId, payment.paymentId());
+      recordPaymentIdQuietly(orderId, lock, payment.paymentId());
+      keepLockOrStop(orderId, lock);
       if (!refundQuietly(payment.paymentId())) {
         failReason = reason + "_REFUND_NEEDED";
       }
     }
-    txService.markFailed(orderId, failReason);
-    releaseQuietly(target.holdId());
+    if (failOrder(orderId, lock, failReason)) {
+      releaseQuietly(target.holdId());
+    }
   }
 
-  private void releasePayLockQuietly(Long orderId) {
+  private void releasePayLockQuietly(Long orderId, UUID lock) {
     try {
-      txService.releasePayLock(orderId);
+      txService.releasePayLock(orderId, lock);
     } catch (RuntimeException e) {
       // 놓지 못해도 만료 시각이 지나면 풀린다.
       log.warn("결제 처리 독점을 놓지 못했습니다. 만료되면 풀립니다. orderId={}", orderId, e);
     }
   }
 
-  private void recordPaymentIdQuietly(Long orderId, Long paymentId) {
+  private void recordPaymentIdQuietly(Long orderId, UUID lock, Long paymentId) {
     try {
-      txService.recordPaymentId(orderId, paymentId);
+      txService.recordPaymentId(orderId, lock, paymentId);
     } catch (RuntimeException e) {
       // 확정 단계에서도 저장하므로 여기서 실패해도 흐름은 계속한다. 로그로 남겨 수동 복구에 쓴다.
       log.error("결제 ID 저장 실패, 수동 확인 필요 orderId={} paymentId={}", orderId, paymentId, e);
