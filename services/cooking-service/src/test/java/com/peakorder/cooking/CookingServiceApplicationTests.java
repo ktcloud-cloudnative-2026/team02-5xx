@@ -1,4 +1,4 @@
-package com.example.cooking_service;
+package com.peakorder.cooking;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
