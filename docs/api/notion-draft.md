@@ -276,7 +276,9 @@ Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·
 | 상황 | 처리 |
 | --- | --- |
 | 결제 실패 확정 | 주문 `FAILED`(`PAYMENT_FAILED`), 재고 해제. 재시도는 새 주문 |
-| 재고 확보 시간 만료 | 결제하지 않고 주문 `FAILED`(`HOLD_EXPIRED`). 재시도는 새 주문 |
+| 재고 확보 시간 만료(결제를 요청한 적 없음) | 결제하지 않고 주문 `FAILED`(`HOLD_EXPIRED`). 재시도는 새 주문 |
+| 결제를 요청한 적이 있는 주문이 재시도 중 확보 만료 | 종료하지 않고 같은 `idempotencyKey`로 결제 결과를 확인. 성공이면 재고 확정을 시도하고, 거절되면 환불 후 `FAILED`(`STOCK_CONFIRM_FAILED`), 결과를 계속 모르면 `CREATED` 유지 + `503` |
+| 결제를 요청한 적이 있는 주문이 재시도 중 메뉴 판매 중지 | 결제 결과를 확인해 성공이면 환불 후 `FAILED`(`MENU_NOT_AVAILABLE`). 환불 실패 시 `MENU_NOT_AVAILABLE_REFUND_NEEDED`로 기록해 수동 확인 |
 | 결제 성공 후 재고 확정 거부 | 결제 취소(환불) 후 `FAILED`(`STOCK_CONFIRM_FAILED`). 환불까지 실패하면 `STOCK_CONFIRM_FAILED_REFUND_NEEDED`로 기록해 수동 확인 |
 | 결제 직전 Menu에서 판매 중지 확인 | 결제하지 않고 주문 종료(`MENU_NOT_AVAILABLE`), 재고 반환 |
 | 재고 확보 후 확보 ID 저장 실패(OR-01) | 재고 해제를 시도하고 `FAILED`(`HOLD_SAVE_FAILED`). 해제 실패 시 Inventory 만료에 맡김 |
@@ -465,4 +467,4 @@ orderId와 holdId의 상세 요청·응답 연결 — 위 Inventory 절의 호�
 
 결제 성공 이후 후속 실패시 복구 방식
 
-- **Order 제안·구현 중:** 위 Order Service 절의 "결제 후 실패 처리" 표를 따릅니다. 재고 확정이 거부되면 결제를 취소(PI-03)하고 주문을 종료하며, 환불까지 실패하면 `STOCK_CONFIRM_FAILED_REFUND_NEEDED`로 기록해 수동 확인합니다. 결제·재고 확정 결과를 알 수 없을 때는 주문을 `CREATED`로 두고 같은 주문으로 다시 호출하면 이어서 처리합니다. **한계:** 결제 성공 후 주문 확정 저장이 실패해도 같은 방식으로 재호출해야 하며 자동 재시도·정산 배치는 없습니다. 팀 확정 전입니다.
+- **Order 제안·구현 중:** 위 Order Service 절의 "결제 후 실패 처리" 표를 따릅니다. 재고 확정이 거부되면 결제를 취소(PI-03)하고 주문을 종료하며, 환불까지 실패하면 `STOCK_CONFIRM_FAILED_REFUND_NEEDED`로 기록해 수동 확인합니다. 결제·재고 확정 결과를 알 수 없을 때는 주문을 `CREATED`로 두고 같은 주문으로 다시 호출하면 이어서 처리합니다. 결제를 요청하기 직전에 `orders.payment_requested_at`을 기록하고 결제 성공 직후 `payment_id`를 저장하므로, 응답이 유실돼도 "결제가 됐을 수 있는 주문"을 구분합니다. **한계:** 결제 성공 후 주문 확정 저장이 실패해도 같은 방식으로 재호출해야 하며 자동 재시도·정산 배치는 없습니다. 결제 요청이 Payment에 닿지 않았던 경우 재호출이 새 결제가 될 수 있으나 확정 단계에서 거절되면 바로 환불합니다. 팀 확정 전입니다.
