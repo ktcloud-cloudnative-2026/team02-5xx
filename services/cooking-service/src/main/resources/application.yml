@@ -19,6 +19,11 @@ spring:
     username: ${RABBITMQ_USER}
     password: ${RABBITMQ_PASSWORD}
 
+# 관리자 API 노출: 인증(STORE_ADMIN) 연동 전까지 기본 꺼짐. 로컬·dev에서만 COOKING_ADMIN_ENABLED=true (PR #53 리뷰)
+cooking:
+  admin:
+    enabled: ${COOKING_ADMIN_ENABLED:false}
+
 management:
   endpoints:
     web:

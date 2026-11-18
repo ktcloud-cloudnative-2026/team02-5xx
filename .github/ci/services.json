@@ -9,6 +9,10 @@
       "path": "services/menu-service"
     },
     {
+      "id": "inventory",
+      "path": "services/inventory-service"
+    },
+    {
       "id": "order",
       "path": "services/order-service"
     },
@@ -19,6 +23,10 @@
     {
       "id": "cooking",
       "path": "services/cooking-service"
+    },
+    {
+      "id": "web-frontend",
+      "path": "services/web-frontend"
     }
   ]
 }

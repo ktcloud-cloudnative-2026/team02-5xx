@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: peakorder-dev
+  namespace: argocd
+  labels:
+    app: peakorder
+    team: team02
+spec:
+  description: Peak Order dev application deployments
+  sourceRepos:
+    - https://github.com/ktcloud-cloudnative-2026/team02-5xx.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: peakorder
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+    - group: ""
+      kind: Service
