@@ -114,6 +114,8 @@ AI/Codex는 **새 Issue 개발을 시작하거나 중단된 작업을 재개하�
 1. **로컬 작업 보존 및 최신 `main` 확인**
    - 현재 브랜치, HEAD, 추적·미추적 변경사항을 확인한다(`git branch --show-current`, `git status --short` 등).
    - GitHub/원격 조회가 가능하면 최신 원격 `main`과 관련 PR의 병합 여부를 확인한다. 로컬 저장소에서는 `git fetch origin` 후 `main`·`origin/main`·작업 브랜치의 차이를 비교한다. **로컬 `main`이나 `origin/main`이 최신이라고 가정하지 않는다.**
+   - **현재 체크아웃한 브랜치가 로컬 `main`이고**, `git status --porcelain` 결과가 비어 있으며(추적·미추적 변경 없음), 로컬 `main`에 별도 커밋이 없고 `origin/main`으로 fast-forward가 가능할 때만 `git pull --ff-only origin main`으로 로컬 `main`을 최신화한다. 조건을 확인할 수 없거나 미커밋·미추적 파일, 분기된 이력 또는 충돌 가능성이 있으면 자동 반영하지 않고 기존 작업을 보존한 채 보고한다.
+   - **현재 작업 브랜치에 있다면**, 로컬 `main` 업데이트를 위해 임의로 브랜치를 전환하지 않는다. `origin/main`과의 차이를 확인해 보고하고, 작업 브랜치에 최신 `main`을 통합하는 merge·rebase는 로컬 `main` 최신화와 구분하여 기존 사용자 지시 및 변경 보존 규칙에 따른다.
    - 선행 PR이 병합되었거나 작업 브랜치가 뒤처진 경우 통합 필요성 및 예상 충돌을 보고한다. 미커밋 변경사항이나 무관한 파일이 있으면 보존하고, 임의로 브랜치 전환·reset·rebase·merge·강제 push·삭제하지 않는다.
 2. **내가 처리해야 할 GitHub 작업 확인**
    - 작업 주체의 GitHub 계정 기준으로 **작성한 Open PR**의 리뷰 요청/승인/변경 요청, 미해결 스레드, CI, 충돌, 병합 가능 상태를 확인한다.
