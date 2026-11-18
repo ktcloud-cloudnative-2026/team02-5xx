@@ -76,4 +76,9 @@ public class InventoryReservation {
     this.status = "RESTORED";
     this.updatedAt = OffsetDateTime.now();
   }
+
+  public void expire() {
+    this.status = "EXPIRED";
+    this.updatedAt = OffsetDateTime.now();
+  }
 }

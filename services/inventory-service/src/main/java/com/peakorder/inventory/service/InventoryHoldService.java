@@ -154,6 +154,26 @@ public class InventoryHoldService {
     return new RestoreResponse(orderId, true);
   }
 
+  @Transactional
+  public void expire(Long holdId) {
+    // 1. 예약을 잠그고 찾는다
+    InventoryReservation reservation = findHoldForUpdate(holdId);
+
+    // 2. 그 사이 확정·해제됐거나 아직 시간이 안 됐으면 건드리지 않는다
+    if (!"RESERVED".equals(reservation.getStatus())
+        || !reservation.isExpired(OffsetDateTime.now())) {
+      return;
+    }
+
+    // 3. 메뉴 번호 순서로 재고를 잠그고 찜만 뗀다
+    for (InventoryReservationItem item : sortedItems(holdId)) {
+      lockInventory(item.getMenuId()).release(item.getQuantity());
+    }
+
+    // 4. 예약 상태를 만료로 바꾼다
+    reservation.expire();
+  }
+
   // ===== 반복되는 일을 묶은 도우미 =====
 
   private InventoryReservation findHoldForUpdate(Long holdId) {

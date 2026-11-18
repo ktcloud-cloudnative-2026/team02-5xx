@@ -273,4 +273,47 @@ class InventoryHoldServiceTest {
         .extracting("errorCode")
         .isEqualTo(ErrorCode.RESTORE_NOT_APPLICABLE);
   }
+
+  // ===== 만료 =====
+
+  @Test
+  void expire_frees_reserved_when_overdue() {
+    InventoryReservation reservation =
+        new InventoryReservation(1L, OffsetDateTime.now().minusMinutes(1));
+    Inventory inventory = inventoryOf(10, 3);
+    when(reservationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(reservation));
+    when(itemRepository.findByReservationId(100L))
+        .thenReturn(List.of(new InventoryReservationItem(100L, 10L, 3)));
+    when(inventoryRepository.findByMenuIdForUpdate(10L)).thenReturn(Optional.of(inventory));
+
+    service.expire(100L);
+
+    assertThat(inventory.getStockQty()).isEqualTo(10);
+    assertThat(inventory.getReservedQty()).isEqualTo(0);
+    assertThat(reservation.getStatus()).isEqualTo("EXPIRED");
+  }
+
+  @Test
+  void expire_skips_when_already_confirmed() {
+    InventoryReservation reservation =
+        new InventoryReservation(1L, OffsetDateTime.now().minusMinutes(1));
+    reservation.confirm();
+    when(reservationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(reservation));
+
+    service.expire(100L);
+
+    assertThat(reservation.getStatus()).isEqualTo("CONFIRMED");
+    verify(inventoryRepository, never()).findByMenuIdForUpdate(any());
+  }
+
+  @Test
+  void expire_skips_when_not_yet_due() {
+    InventoryReservation reservation = activeReservation();
+    when(reservationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(reservation));
+
+    service.expire(100L);
+
+    assertThat(reservation.getStatus()).isEqualTo("RESERVED");
+    verify(inventoryRepository, never()).findByMenuIdForUpdate(any());
+  }
 }
