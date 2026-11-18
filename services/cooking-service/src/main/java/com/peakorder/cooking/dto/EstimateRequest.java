@@ -12,7 +12,7 @@ import java.util.List;
  *
  * @param items 1~50개
  */
-public record EstimateRequest(@NotEmpty @Size(max = 50) @Valid List<Item> items) {
+public record EstimateRequest(@NotEmpty @Size(max = 50) List<@NotNull @Valid Item> items) {
 
   /**
    * @param optionIds 선택한 옵션 ID (없으면 생략 가능, 중복 불가)
