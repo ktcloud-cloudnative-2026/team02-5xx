@@ -234,7 +234,7 @@
 ### Order 구현 상태·추가 합의 (2026-11-17)
 
 - **확정·구현 중:** Cooking 장애 시 신규 주문·결제 차단. [PR #56](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/56)은 합의된 `GET /actuator/health`(인증 없음)를 5초 주기·2초 타임아웃으로 확인하고, 3회 연속 실패 시 OR-01·OR-02에 `503 COOKING_UNAVAILABLE`을 반환합니다. 1회 성공 시 해제하며, 기동 직후 정상으로 시작합니다. 조회·확정 주문의 결제 재호출·이벤트 처리는 차단하지 않습니다. 결제를 이미 요청한 적이 있는 주문도 차단하지 않고(같은 키로 기존 결과를 확인하는 것이라 새 결제가 아님) 결과 확인·복구를 이어서 합니다. 이 수치는 해당 PR의 현재 실행 정책이며 운영 조정은 별도 합의 대상입니다.
-- **확정·구현 중 / 구현 불일치:** 조리 시작 전 취소와 Cooking의 최종 판단은 확정됐지만, [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)은 취소 작업의 1단계입니다. 현재 커밋 `cfe5a88`의 OrderController에는 OR-05가 없으며, 재고 복원·환불 후속 처리 기록도 미구현입니다. 취소 API가 이미 호출 가능한 것으로 간주하지 않습니다.
+- **확정·구현 중(미병합):** 조리 시작 전 취소와 Cooking의 최종 판단(CI-03)은 확정됐고, 주문 취소 API(OR-05)와 재고 복원·환불 후속 처리는 [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)에서 구현 중입니다(main 미병합이라 호출 가능한 API로 간주하지 않습니다). 처리 방식은 아래 "주문 취소(OR-05) 처리" 표를 따릅니다.
 - **미확정:** 사용자 식별·권한 검증 위치. 현재 Order PR의 `X-User-Id`는 임시 헤더이며 JWT 검증이나 CUSTOMER 권한 보장이 아닙니다.
 - 확정된 내부 취소·재고 응답 계약은 아래 Inventory·Cooking 절을 따릅니다. Payment 환불(PI-03) 응답은 [Payment PR #71](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/71)의 구현을 확인했으며, 아래 Payment 절의 "Payment 내부 계약 확인"을 따릅니다. 담당자 최종 확인 전입니다.
 
@@ -248,6 +248,7 @@ Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·
 | OR-02 | 본문 없음 | `200`, 주문 상세(`PAID`, `orderNo`, `paidAt`) | 결제(PI-01) → 재고 확정(II-02) → 주문 확정. 같은 주문에 반복 호출해도 현재 상태를 돌려주며 결제는 `idempotencyKey`(`order-{orderId}`)로 중복 방지 |
 | OR-03 | 쿼리 `page`(기본 0, 음수는 0), `size`(기본 20, 1~100으로 보정) | `200`, `data`에 `items[]`(`orderId`, `orderNo`, `status`, `totalAmount`, `orderedAt`, `itemCount`, `representativeMenuName`)와 `page`, `size`, `totalElements` | 본인 주문만, 최신순. `CREATED`·`FAILED`는 제외 |
 | OR-04 | 경로 `orderId` | `200`, `data`에 `orderId`, `orderNo`, `status`, `totalAmount`, `expectedWaitSec`, `orderedAt`, `paidAt`, `canceledAt`, `completedAt`, `holdExpiresAt`, `items[]`(`menuId`, `menuName`, `unitPrice`, `quantity`, `lineAmount`, `options[]`(`optionId`, `optionName`, `extraPrice`)) | 값이 없는 필드는 응답에서 생략. `holdExpiresAt`은 결제 전(`CREATED`) 주문에만 포함. 다른 사용자의 주문은 `404 ORDER_NOT_FOUND` |
+| OR-05 | 경로 `orderId`, 본문 없음. 본인 주문만(다른 사용자는 `404`). 부분 취소 없음 | `200`, 주문 상세(`CANCELED`, `canceledAt`). 복원·환불이 아직 안 끝났어도 `200`이고 주문은 `CANCELED` | 아래 "주문 취소(OR-05) 처리" 참고. 같은 주문의 반복 호출은 현재 상태를 돌려주고 남은 후속 처리를 이어서 함 |
 
 - 사용자 식별은 임시 `X-User-Id` 헤더입니다. 클라이언트가 임의로 보낼 수 있으므로 인증 교체 전에는 외부에 노출하지 않습니다(위 **미확정** 항목).
 - 주문번호(`orderNo`)는 `yyMMdd-0001` 형식(날짜별 일련번호)이며 결제·재고 확정 시 발급합니다. 형식은 Order 구현 기준이며 팀 최종 확정은 아닙니다.
@@ -265,12 +266,34 @@ Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·
 | 409 | `ORDER_NOT_PAYABLE` | 결제할 수 없는 상태의 주문 |
 | 409 | `ORDER_PAY_IN_PROGRESS` | 같은 주문의 결제를 다른 요청이 처리 중. 잠시 후 주문 상태 확인 |
 | 409 | `HOLD_EXPIRED` | 재고 확보 시간이 지나 주문 종료 |
+| 409 | `ORDER_NOT_CANCELABLE` | 취소할 수 없는 주문(조리 완료·실패 주문, 결제 전 주문의 확보가 이미 확정된 이상 상태) |
+| 409 | `ORDER_PAYMENT_PENDING` | 결제를 요청한 적이 있어 결제가 됐을 수 있는 주문은 취소하지 않음. 결제를 다시 호출해 결과 확인 |
+| 409 | `COOKING_ALREADY_STARTED`, `COOKING_ALREADY_DONE` | Cooking이 조리 시작·완료로 취소를 거절 |
+| 409 | `COOKING_ORDER_PENDING` | Cooking이 아직 주문을 접수 처리하지 못함(CI-03 404). 잠시 후 다시 시도 |
 | 409 | `STOCK_CONFIRM_FAILED` | 결제 후 재고 확정이 거부되어 환불 후 주문 종료 |
 | 402 | `PAYMENT_FAILED` | 결제 실패 확정. 주문 종료, 새 주문으로 재시도 |
 | 502 | `UPSTREAM_INVALID_RESPONSE` | 연동 서비스 응답 오류. 결과를 알 수 없는 상태를 성공·실패로 단정하지 않음 |
 | 503 | `MENU_SERVICE_UNAVAILABLE`, `INVENTORY_SERVICE_UNAVAILABLE`, `PAYMENT_SERVICE_UNAVAILABLE` | 연동 서비스 장애·시간 초과. 결제·재고 확정 결과를 모를 때는 주문을 `CREATED`로 두고, 같은 주문으로 다시 호출하면 이어서 처리 |
 | 503 | `COOKING_UNAVAILABLE` | Cooking 장애로 신규 주문·결제 차단 |
+| 503 | `COOKING_SERVICE_UNAVAILABLE` | 주문 취소 중 Cooking 응답을 받지 못함(결과 불명). 주문을 그대로 두고 재호출 |
 | 500 | `INTERNAL_ERROR` | 서버 내부 오류 |
+
+**주문 취소(OR-05) 처리** (PR #61 구현 기준)
+
+| 주문 상태·상황 | 처리 |
+| --- | --- |
+| `CREATED`(결제를 요청한 적 없음) | 재고 확보만 해제(II-03)하고 `CANCELED`. 환불·Cooking 호출 없음. 이미 만료·해제된 확보도 성공 |
+| `CREATED`인데 결제를 요청한 적이 있음 | 취소하지 않고 `409 ORDER_PAYMENT_PENDING` |
+| 결제 전 주문의 확보가 이미 확정됨(II-03 409) | 임의로 취소하지 않고 `409 ORDER_NOT_CANCELABLE`, 수동 확인 |
+| `PAID` 이후, Cooking이 취소 수락(CI-03 200) | `CANCELED`(`cancel_reason`=`CUSTOMER_CANCEL`, `canceled_at`, 상태 이력) 후 재고 복원(II-04)·환불(PI-03) |
+| Cooking `409 COOKING_ALREADY_STARTED`·`COOKING_ALREADY_DONE` | 취소하지 않고 같은 코드로 응답 |
+| Cooking `404 COOKING_TICKET_NOT_FOUND` | 접수 처리 중일 수 있어 취소로 보지 않고 `409 COOKING_ORDER_PENDING` |
+| Cooking 응답을 모름(5xx·타임아웃) | 주문을 그대로 두고 `503 COOKING_SERVICE_UNAVAILABLE`. Cooking 취소는 멱등이라 재호출하면 이어서 처리 |
+| 재고 복원 또는 환불 실패 | 주문은 `CANCELED` 유지, 응답은 `200`. 끝난 단계를 `stock_restored_at`·`refunded_at`에 기록하고 안 끝난 단계는 같은 주문 재호출 또는 스케줄러(30초)가 이어서 처리. 두 단계는 서로 독립 |
+| 재고 복원 `409 RESTORE_NOT_APPLICABLE` | 성공으로 기록하지 않고 에러 로그, 수동 확인 |
+| `COMPLETED`·`FAILED` | `409 ORDER_NOT_CANCELABLE` |
+| 이미 `CANCELED` | 현재 상태 반환(멱등), 남은 후속 처리가 있으면 이어서 처리 |
+| 결제 중이거나 다른 취소가 처리 중 | `409 ORDER_PAY_IN_PROGRESS`(결제와 같은 처리 독점 사용) |
 
 **결제 후 실패 처리**
 
@@ -357,7 +380,7 @@ MI-01의 요청·응답은 [Menu PR #90](https://github.com/ktcloud-cloudnative-
 | II-01 | `409 INSUFFICIENT_STOCK`, `409 STOCK_NOT_LINKED`는 확보 불가 | 두 업무 오류를 Order의 `409 OUT_OF_STOCK`으로 변환. 현재 코드는 errorCode 본문을 읽지 않고 HTTP 409 전체를 같은 오류로 변환하므로 추가 409 도입 시 확인 필요 |
 | II-02 | `409 HOLD_NOT_ACTIVE`는 만료·해제, `404 HOLD_NOT_FOUND`는 확보 없음 | 위 두 HTTP 상태만 `409 STOCK_CONFIRM_FAILED`로 해석. 결제 후라면 환불·주문 종료로 이어짐. 다른 4xx는 `502 UPSTREAM_INVALID_RESPONSE`, 5xx·연결 실패는 `503 INVENTORY_SERVICE_UNAVAILABLE`이며 결과 불명 상태를 임의로 실패 확정하지 않음 |
 | II-03 | 본문 없는 DELETE. 이미 만료·해제됐어도 200, 확정된 확보는 409, 없는 확보는 404 | 현재 release 호출은 모든 RestClientException을 `503 INVENTORY_SERVICE_UNAVAILABLE`로 변환. 취소 흐름에서의 세부 오류 해석은 후속 구현 필요 |
-| II-04 | `POST /internal/v1/inventory/restorations`, 본문 `{"orderId":1}`. 복원 불가 시 `409 RESTORE_NOT_APPLICABLE` | 복원 메서드·OR-05 호출 흐름은 아직 없음. 성공 응답 JSON과 추가 오류 코드는 미확정 |
+| II-04 | `POST /internal/v1/inventory/restorations`, 본문 `{"orderId":1}`. 복원 불가 시 `409 RESTORE_NOT_APPLICABLE` | Order 호출 구현은 PR #61(미병합): 200만 성공(`RESTORED`), 409는 복원 불가로 성공 기록 안 함, 그 밖의 4xx는 `502`, 5xx·연결 실패는 재시도 대상. **성공 응답 JSON과 추가 오류 코드는 Inventory 담당 확인 전** |
 
 II-01의 다음 JSON은 **Order 호출측 PR의 현행 제안**입니다. Inventory 제공자와 요청·응답 전체가 확정됐다는 근거는 없으므로 구현 전에 상호 확인합니다.
 
