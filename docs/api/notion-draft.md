@@ -251,12 +251,12 @@
 
 | ID | Method | URL 초안 | 호출자 | 기능 |
 | --- | --- | --- | --- | --- |
-| MI-01 | POST | /internal/v1/menus/validate-purchase | Order | 메뉴,옵션,가격,판매 가능 상태 검증 |
+| MI-01 | POST | /internal/v1/menus/validate-purchase | Order, Cooking | 메뉴,옵션,가격,판매 가능 상태 검증 |
 | MI-02 | GET | /internal/v1/menus/\{menuId\}/existence | Inventory | 재고 연결 시 메뉴 존재 여부 확인 |
 
 #### 참고
 
-- MI-01: 메뉴 상태가 `ON_SALE`인지 확인하고, 선택한 옵션과 최신 가격을 검증합니다.
+- MI-01: 메뉴 상태가 `ON_SALE`인지 확인하고, 선택한 옵션과 최신 가격을 검증합니다. Order·Cooking 요청/응답·조리시간·현재 오류 매핑은 [MI-01 구현 명세](menu-mi01.md)를 확인합니다.
 
 - MI-02: Inventory가 재고를 메뉴에 연결할 때 메뉴가 실제 존재하는지 확인합니다.
 
