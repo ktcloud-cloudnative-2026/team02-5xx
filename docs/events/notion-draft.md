@@ -66,7 +66,7 @@ Exchange는 양 서비스가 같은 이름·속성으로 선언합니다. 각 �
 }
 ```
 
-Cooking 저장 규칙은 `cook_time_sec = cookTimeSec + Σ options.extraCookTimeSec`(1개 기준), `option_summary = optionName을 ", "로 연결`(옵션 없으면 NULL), `estimated_cook_sec = Σ(cook_time_sec × quantity)`입니다. queued_at은 confirmedAt이 아니라 **Cooking DB 등록 시각**입니다. 현재 PR은 FIFO를 queued_at, id 순으로 조회합니다.
+Cooking 저장 규칙은 `cook_time_sec = cookTimeSec + Σ options.extraCookTimeSec`(1개 기준), `option_summary = optionName을 ", "로 연결`(옵션 없으면 NULL), `estimated_cook_sec = Σ(cook_time_sec × quantity)`입니다. queued_at은 confirmedAt이 아니라 **Cooking DB 등록 시각**입니다. 현재 PR은 FIFO를 queued_at, id 순으로 조회합니다. menu_name(100자)·option_summary(255자)는 표시용 복사 값이라 컬럼 길이를 넘으면 문자 단위로 잘라 저장하고 경고 로그를 남깁니다. 결제가 끝난 주문이 길이 초과로 DLQ에 가지 않게 하기 위해서입니다([#111](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/111)). Order는 생성 단계에서 옵션 이름 합 255자 초과를 거절합니다(#46).
 
 수신 트랜잭션은 ① processed_events에 eventId 삽입(중복이면 업무 처리 없이 종료) → ② 전표·항목 생성 → ③ 커밋 후 ack입니다. cooking_tickets.order_id UNIQUE가 두 번째 중복 방지 장치입니다. Cooking PR은 다른 eventId로 같은 orderId가 다시 오면 경고 후 무시합니다.
 
