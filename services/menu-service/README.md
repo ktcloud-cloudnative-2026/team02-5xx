@@ -53,7 +53,10 @@ java -jar build/libs/menu-service-0.0.1-SNAPSHOT.jar
 - OpenAPI JSON: http://localhost:8080/v3/api-docs
 - Swagger UI 설정: http://localhost:8080/v3/api-docs/swagger-config
 
-업무 API가 없는 초기 프로젝트이므로 OpenAPI의 `paths`는 비어 있습니다.
+MI-02 `GET /internal/v1/menus/{menuId}/existence`를 제공합니다.
+응답·오류·역할 구분은 [MI-02 구현 명세](../../docs/api/menu-mi02.md)를 확인합니다.
+ON_SALE·PAUSED·HIDDEN은 모두 exists=true이며 신규/기존 연결 정책은 Inventory 책임입니다.
+미존재 응답은 제안된 `exists=false, status=null`로 구현했고 status 필드는 생략하지 않습니다.
 문서 테스트는 DB 자동 설정을 제외하고 임의 포트에서 애플리케이션을 시작해 OpenAPI JSON, Swagger UI HTML·JavaScript 및 문서 연결 설정을 실제 HTTP 요청으로 검증합니다.
 
 ## PostgreSQL 실행 및 설정
@@ -121,11 +124,26 @@ $env:MENU_DB_TEST_PASSWORD = $dbCredential.GetNetworkCredential().Password
 
 애플리케이션 진입점은 `com.peakorder.menu.MenuServiceApplication`입니다.
 업무 구현 시 기본 패키지 아래에 `controller`, `service`, `repository`, `dto`, `entity` 계층을 추가합니다.
-현재 `entity`, `repository`에 메뉴 DB 모델과 저장소를 구현했습니다.
+현재 `entity`, `repository`의 메뉴 DB 모델과 저장소를 재사용하며,
+`controller`, `service`, `dto`, `exception`에 MI-02 존재 확인 API를 구현했습니다.
 현재 사용하지 않는 패키지에는 예시 클래스나 설명용 파일을 만들지 않습니다.
-Redis, RabbitMQ, Docker, Kubernetes 및 업무 API는 구현 범위에 포함하지 않습니다.
+Redis, RabbitMQ, Docker, Kubernetes는 구현 범위에 포함하지 않습니다.
 서비스 전용 `.editorconfig`와 `.gitattributes`를 사용합니다.
 DB 구조 및 마이그레이션 변경은 팀 규칙상 작성자 외 팀원 1명의 필수 리뷰 대상입니다.
+
+## MI-02 검증
+
+```powershell
+.\gradlew.bat spotlessCheck test build
+```
+
+Service 단위 테스트 및 Repository를 모의 실행하는 실제 HTTP/OpenAPI 테스트로
+상태 3종, 미존재, 잘못된 ID, DB·서비스 오류와 공통 응답 직렬화를 검증합니다.
+잘못된 ID는 HTTP 400 / INVALID_REQUEST, DB·내부 장애는 HTTP 500 / INTERNAL_ERROR입니다.
+기존 MenuDatabaseTests는 MENU_DB_TEST_URL이 없으면 건너뜁니다.
+공유 menu_dev에서 테스트하거나 Flyway를 재적용하지 않습니다.
+PostgreSQL·실제 Inventory 연동은 별도 검증 대상이며 Notion은 이번 작업에서 갱신하지 않습니다.
+서비스 간 API 계약이므로 추후 PR은 작성자 외 팀원 1명 승인과 CI 통과가 필요합니다.
 
 ## Gradle 배포본 검증
 
