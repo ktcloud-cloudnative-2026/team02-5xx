@@ -9,6 +9,7 @@ public enum ErrorCode {
   MENU_NOT_AVAILABLE(HttpStatus.CONFLICT, "주문할 수 없는 메뉴 또는 옵션이 포함되어 있습니다."),
   OUT_OF_STOCK(HttpStatus.CONFLICT, "재고가 부족하여 주문할 수 없습니다."),
   ORDER_NOT_PAYABLE(HttpStatus.CONFLICT, "결제할 수 없는 주문입니다. 새로 주문해 주세요."),
+  ORDER_PAY_IN_PROGRESS(HttpStatus.CONFLICT, "이 주문의 결제가 처리 중입니다. 잠시 후 주문 상태를 확인해 주세요."),
   HOLD_EXPIRED(HttpStatus.CONFLICT, "재고 확보 시간이 지나 주문이 종료되었습니다. 새로 주문해 주세요."),
   PAYMENT_FAILED(HttpStatus.PAYMENT_REQUIRED, "결제에 실패했습니다. 새로 주문해 주세요."),
   STOCK_CONFIRM_FAILED(HttpStatus.CONFLICT, "재고를 확정하지 못해 주문이 종료되었습니다. 새로 주문해 주세요."),

@@ -47,6 +47,7 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 ### 결제(OR-02) 동작 규칙
 
 - 같은 주문에 `pay`를 여러 번 호출해도 안전하다. 결제는 `idempotencyKey`(`order-{orderId}`)로, 주문 확정은 행 잠금과 상태 확인으로 중복을 막는다. 이미 확정된 주문은 현재 상태를 그대로 돌려준다.
+- **같은 주문을 동시에 결제 처리하지 않는다.** 결제 처리를 시작할 때 `orders.pay_lock_until`을 조건부 UPDATE(주문이 `CREATED`이고 독점이 없거나 만료됐을 때만 성공)로 잡은 요청만 Menu·Payment·Inventory를 호출한다. 독점을 못 잡은 요청은 아무것도 호출하지 않고 현재 상태로 응답한다(확정됐으면 그 결과, 종료됐으면 `ORDER_NOT_PAYABLE`, 처리 중이면 `409 ORDER_PAY_IN_PROGRESS`). 독점을 잡은 뒤 주문 상태를 다시 읽고, 결제 요청 시각 기록도 `CREATED`일 때만 성공하므로 오래된 상태로 결제·환불하지 않는다. 독점은 60초 뒤 자동으로 풀려 서버가 중간에 죽어도 재시도가 이어받는다(외부 호출 타임아웃 합계보다 길게 잡았다).
 - 결제 실패 확정 → 주문 `FAILED`, 재고 해제, 재시도는 새 주문. 결제를 한 번도 요청하지 않았는데 재고 확보가 만료되었으면 결제 없이 `HOLD_EXPIRED`로 종료한다.
 - 결제 성공 후 재고 확정이 거부되면 결제를 취소하고 `FAILED`(`STOCK_CONFIRM_FAILED`)로 종료한다. 취소까지 실패하면 `fail_reason`이 `STOCK_CONFIRM_FAILED_REFUND_NEEDED`로 남아 수동 확인 대상이 된다.
 - 결제·재고 확정 결과를 알 수 없으면(타임아웃, 5xx) 성공·실패를 정하지 않고 주문을 `CREATED`로 두고 503을 돌려준다. 같은 주문으로 다시 호출하면 이어서 처리된다.

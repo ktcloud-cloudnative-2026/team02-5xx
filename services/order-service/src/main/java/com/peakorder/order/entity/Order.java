@@ -72,6 +72,10 @@ public class Order {
   @Column(name = "payment_requested_at")
   private OffsetDateTime paymentRequestedAt;
 
+  /** 결제 처리 독점 만료 시각. 갱신은 {@code OrderRepository}의 조건부 UPDATE로만 한다. */
+  @Column(name = "pay_lock_until")
+  private OffsetDateTime payLockUntil;
+
   @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
   @OrderBy("id ASC")
   private List<OrderItem> items = new ArrayList<>();

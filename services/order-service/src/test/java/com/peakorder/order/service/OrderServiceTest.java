@@ -74,6 +74,8 @@ class OrderServiceTest {
     when(storeRepository.findById(StoreOperation.SINGLE_STORE_ID))
         .thenReturn(Optional.of(new StoreOperation(true, true, now)));
     when(menuClient.validatePurchase(payLines())).thenReturn(cookedMenus());
+    when(txService.tryAcquirePayLock(any())).thenReturn(true);
+    when(txService.markPaymentRequested(any())).thenReturn(true);
   }
 
   private List<PurchaseLine> payLines() {
@@ -400,6 +402,127 @@ class OrderServiceTest {
             BusinessException.class,
             e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.PAYMENT_FAILED));
     verify(txService).markFailed(100L, "PAYMENT_FAILED");
+  }
+
+  // ---- 같은 주문을 동시에 결제 처리하는 경합 (리뷰: 확정된 주문이 환불되는 위험) ----
+
+  @Test
+  void pay_is_answered_without_calling_anyone_while_another_request_is_processing_the_order() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(txService.tryAcquirePayLock(100L)).thenReturn(false);
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.ORDER_PAY_IN_PROGRESS));
+
+    verify(menuClient, never()).validatePurchase(any());
+    verify(paymentClient, never()).pay(any(), org.mockito.ArgumentMatchers.anyInt(), any());
+    verify(paymentClient, never()).refund(any());
+    verify(txService, never()).markFailed(any(), any());
+    verify(txService, never()).releasePayLock(any());
+  }
+
+  @Test
+  void request_that_lost_the_race_returns_the_order_the_winner_already_confirmed() {
+    PaymentTarget paid = target(OrderStatus.PAID, 55L, now.plusMinutes(3));
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable(), paid);
+    when(txService.tryAcquirePayLock(100L)).thenReturn(false);
+
+    assertThat(service.payOrder(7L, 100L)).isSameAs(paid.detail());
+
+    verify(paymentClient, never()).refund(any());
+    verify(txService, never()).markFailed(any(), any());
+  }
+
+  @Test
+  void request_that_lost_the_race_to_a_failed_order_is_rejected_as_not_payable() {
+    when(txService.findPaymentTarget(7L, 100L))
+        .thenReturn(payable(), target(OrderStatus.FAILED, 55L, now.plusMinutes(3)));
+    when(txService.tryAcquirePayLock(100L)).thenReturn(false);
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.ORDER_NOT_PAYABLE));
+  }
+
+  @Test
+  void state_is_read_again_after_the_lock_so_an_order_confirmed_in_between_is_not_refunded() {
+    // 처음 읽을 때는 CREATED(결제 요청 기록 있음), 독점을 잡고 다시 읽으니 이미 PAID, 메뉴는 판매 중지
+    PaymentTarget paid = target(OrderStatus.PAID, 55L, now.plusMinutes(3));
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(retryAfterExpiry(), paid);
+    when(menuClient.validatePurchase(any()))
+        .thenThrow(new BusinessException(ErrorCode.MENU_NOT_AVAILABLE));
+
+    assertThat(service.payOrder(7L, 100L)).isSameAs(paid.detail());
+
+    verify(menuClient, never()).validatePurchase(any());
+    verify(paymentClient, never()).pay(any(), org.mockito.ArgumentMatchers.anyInt(), any());
+    verify(paymentClient, never()).refund(any());
+    verify(txService, never()).markFailed(any(), any());
+    verify(txService).releasePayLock(100L);
+  }
+
+  @Test
+  void payment_is_not_requested_when_the_order_is_no_longer_created_at_marker_time() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(txService.markPaymentRequested(100L)).thenReturn(false);
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.ORDER_NOT_PAYABLE));
+
+    verify(paymentClient, never()).pay(any(), org.mockito.ArgumentMatchers.anyInt(), any());
+    verify(txService, never()).markFailed(any(), any());
+    verify(txService).releasePayLock(100L);
+  }
+
+  @Test
+  void the_lock_is_released_after_success_and_after_any_failure() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
+    when(txService.confirmOrder(eq(100L), eq(9L), any()))
+        .thenReturn(mock(OrderDetailResponse.class));
+    service.payOrder(7L, 100L);
+    verify(txService).releasePayLock(100L);
+
+    org.mockito.Mockito.clearInvocations(txService);
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(paymentClient.pay(100L, 11000, "order-100"))
+        .thenThrow(new BusinessException(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE));
+    assertThatThrownBy(() -> service.payOrder(7L, 100L)).isInstanceOf(BusinessException.class);
+    verify(txService).releasePayLock(100L);
+  }
+
+  @Test
+  void failing_to_release_the_lock_does_not_change_the_result() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
+    OrderDetailResponse confirmed = mock(OrderDetailResponse.class);
+    when(txService.confirmOrder(eq(100L), eq(9L), any())).thenReturn(confirmed);
+    org.mockito.Mockito.doThrow(new IllegalStateException("db down"))
+        .when(txService)
+        .releasePayLock(100L);
+
+    assertThat(service.payOrder(7L, 100L)).isSameAs(confirmed);
+  }
+
+  @Test
+  void the_lock_is_taken_before_menu_and_payment_are_called() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
+    when(txService.confirmOrder(eq(100L), eq(9L), any()))
+        .thenReturn(mock(OrderDetailResponse.class));
+
+    service.payOrder(7L, 100L);
+
+    org.mockito.InOrder order = org.mockito.Mockito.inOrder(txService, menuClient, paymentClient);
+    order.verify(txService).tryAcquirePayLock(100L);
+    order.verify(menuClient).validatePurchase(any());
+    order.verify(paymentClient).pay(100L, 11000, "order-100");
+    order.verify(txService).releasePayLock(100L);
   }
 
   // ---- 결제 결과를 모른 채 재시도하는 경로 (리뷰: 결제 성공 + 응답 유실 + 확보 만료) ----

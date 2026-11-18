@@ -27,6 +27,9 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 public class OrderTxService {
 
+  /** 외부 호출 타임아웃(연결 2초·읽기 3초)으로 환불까지 이어져도 끝나는 시간보다 충분히 길게 잡는다. */
+  static final java.time.Duration PAY_LOCK_TTL = java.time.Duration.ofSeconds(60);
+
   private static final DateTimeFormatter ORDER_NO_DATE = DateTimeFormatter.ofPattern("yyMMdd");
 
   private final OrderRepository orderRepository;
@@ -129,13 +132,37 @@ public class OrderTxService {
     return OrderDetailResponse.from(order);
   }
 
-  /** 결제를 요청하기 직전에 호출한다(별도 트랜잭션). 기록에 실패하면 예외가 나므로 결제는 요청되지 않는다. 이미 기록돼 있으면 처음 시각을 유지한다. */
+  /**
+   * 결제를 요청하기 직전에 호출한다(별도 트랜잭션). 기록에 실패하면 예외가 나므로 결제는 요청되지 않는다. 이미 기록돼 있으면 처음 시각을 유지한다. 주문이 더 이상
+   * CREATED가 아니면 기록하지 않고 false를 돌려주며, 호출자는 결제를 요청하지 않아야 한다.
+   */
   @Transactional
-  public void markPaymentRequested(Long orderId) {
-    orderRepository
+  public boolean markPaymentRequested(Long orderId) {
+    return orderRepository
         .findWithLockById(orderId)
         .filter(order -> order.getStatus() == OrderStatus.CREATED)
-        .ifPresent(order -> order.markPaymentRequested(now()));
+        .map(
+            order -> {
+              order.markPaymentRequested(now());
+              return true;
+            })
+        .orElse(false);
+  }
+
+  /**
+   * 결제 처리 독점을 잡는다. 같은 주문을 동시에 결제 처리하는 요청이 없고 주문이 CREATED일 때만 true. 독점은 {@link #PAY_LOCK_TTL} 뒤 자동으로
+   * 풀려, 처리 중 서버가 죽어도 재시도가 이어받을 수 있다.
+   */
+  @Transactional
+  public boolean tryAcquirePayLock(Long orderId) {
+    OffsetDateTime now = now();
+    return orderRepository.acquirePayLock(orderId, now, now.plus(PAY_LOCK_TTL)) == 1;
+  }
+
+  /** 결제 처리 독점을 놓는다. */
+  @Transactional
+  public void releasePayLock(Long orderId) {
+    orderRepository.releasePayLock(orderId);
   }
 
   /** 결제 성공 직후 결제 ID를 저장한다(별도 트랜잭션). 확정 전에 실패해도 환불·수동 확인에 쓸 수 있다. */

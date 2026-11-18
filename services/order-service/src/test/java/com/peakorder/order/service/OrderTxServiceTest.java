@@ -67,6 +67,40 @@ class OrderTxServiceTest {
   }
 
   @Test
+  void payment_requested_marker_is_saved_only_while_the_order_is_created() {
+    Order created = orderWithItems();
+    when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(created));
+    assertThat(service.markPaymentRequested(100L)).isTrue();
+    assertThat(created.getPaymentRequestedAt()).isEqualTo(now);
+
+    Order failed = orderWithItems();
+    failed.markFailed("HOLD_EXPIRED", now);
+    when(orderRepository.findWithLockById(101L)).thenReturn(Optional.of(failed));
+    assertThat(service.markPaymentRequested(101L)).isFalse();
+    assertThat(failed.getPaymentRequestedAt()).isNull();
+
+    Order paid = orderWithItems();
+    paid.markConfirmed("261113-0001", 9L, now);
+    when(orderRepository.findWithLockById(102L)).thenReturn(Optional.of(paid));
+    assertThat(service.markPaymentRequested(102L)).isFalse();
+    assertThat(paid.getPaymentRequestedAt()).isNull();
+
+    when(orderRepository.findWithLockById(103L)).thenReturn(Optional.empty());
+    assertThat(service.markPaymentRequested(103L)).isFalse();
+  }
+
+  @Test
+  void pay_lock_is_acquired_only_when_exactly_one_row_was_updated() {
+    when(orderRepository.acquirePayLock(100L, now, now.plus(OrderTxService.PAY_LOCK_TTL)))
+        .thenReturn(1);
+    when(orderRepository.acquirePayLock(101L, now, now.plus(OrderTxService.PAY_LOCK_TTL)))
+        .thenReturn(0);
+
+    assertThat(service.tryAcquirePayLock(100L)).isTrue();
+    assertThat(service.tryAcquirePayLock(101L)).isFalse();
+  }
+
+  @Test
   void confirm_issues_order_no_and_saves_outbox_event_in_same_call() throws Exception {
     Order order = orderWithItems();
     when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(order));

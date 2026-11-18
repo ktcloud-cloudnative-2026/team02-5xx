@@ -139,14 +139,48 @@ public class OrderService {
    * 돌려준다), 성공했는데 확정할 수 없으면 환불하며, 환불까지 실패하면 {@code *_REFUND_NEEDED}로 남겨 수동 확인한다.
    */
   public OrderDetailResponse payOrder(Long userId, Long orderId) {
-    PaymentTarget target = txService.findPaymentTarget(userId, orderId);
-
-    if (target.status().isConfirmed()) {
-      return target.detail();
+    PaymentTarget first = txService.findPaymentTarget(userId, orderId);
+    if (first.status().isConfirmed()) {
+      return first.detail();
     }
-    if (target.status() != OrderStatus.CREATED || target.holdId() == null) {
+    if (first.status() != OrderStatus.CREATED || first.holdId() == null) {
       throw new BusinessException(ErrorCode.ORDER_NOT_PAYABLE);
     }
+
+    // 같은 주문을 동시에 결제 처리하면 한쪽은 확정하고 다른 쪽은 환불·종료하는 모순이 생길 수 있다.
+    // 한 요청만 처리 독점을 잡고, 나머지는 기다리지 않고 현재 상태로 응답한다.
+    if (!txService.tryAcquirePayLock(orderId)) {
+      return answerWithoutPaying(userId, orderId);
+    }
+    try {
+      // 독점을 잡기 전에 읽은 값은 오래됐을 수 있으므로 독점을 잡은 뒤 다시 읽는다.
+      PaymentTarget target = txService.findPaymentTarget(userId, orderId);
+      if (target.status().isConfirmed()) {
+        return target.detail();
+      }
+      if (target.status() != OrderStatus.CREATED || target.holdId() == null) {
+        throw new BusinessException(ErrorCode.ORDER_NOT_PAYABLE);
+      }
+      return pay(orderId, target);
+    } finally {
+      releasePayLockQuietly(orderId);
+    }
+  }
+
+  /** 다른 요청이 결제를 처리 중이거나 이미 끝난 경우의 응답. 결제는 호출하지 않는다. */
+  private OrderDetailResponse answerWithoutPaying(Long userId, Long orderId) {
+    PaymentTarget current = txService.findPaymentTarget(userId, orderId);
+    if (current.status().isConfirmed()) {
+      return current.detail();
+    }
+    if (current.status() != OrderStatus.CREATED) {
+      throw new BusinessException(ErrorCode.ORDER_NOT_PAYABLE);
+    }
+    throw new BusinessException(ErrorCode.ORDER_PAY_IN_PROGRESS);
+  }
+
+  /** 처리 독점을 잡은 요청만 호출한다. */
+  private OrderDetailResponse pay(Long orderId, PaymentTarget target) {
     // 결제를 이미 요청한 적이 있으면 결제가 됐을 수 있다(응답을 받지 못했을 뿐일 수 있다).
     boolean paymentMayExist = target.paymentRequestedAt() != null;
     boolean holdExpired =
@@ -162,7 +196,10 @@ public class OrderService {
     List<ValidatedMenu> menus = fetchCookTimes(orderId, target, paymentMayExist);
 
     // 결제 요청 직전에 기록한다. 기록에 실패하면 예외가 나 결제는 요청되지 않는다.
-    txService.markPaymentRequested(orderId);
+    if (!txService.markPaymentRequested(orderId)) {
+      // 그 사이 주문 상태가 바뀌었다. 결제를 요청하지 않는다.
+      throw new BusinessException(ErrorCode.ORDER_NOT_PAYABLE);
+    }
     PaymentResult payment =
         paymentClient.pay(orderId, target.totalAmount(), idempotencyKey(orderId));
     if (!payment.isSuccess()) {
@@ -265,6 +302,15 @@ public class OrderService {
     }
     txService.markFailed(orderId, failReason);
     releaseQuietly(target.holdId());
+  }
+
+  private void releasePayLockQuietly(Long orderId) {
+    try {
+      txService.releasePayLock(orderId);
+    } catch (RuntimeException e) {
+      // 놓지 못해도 만료 시각이 지나면 풀린다.
+      log.warn("결제 처리 독점을 놓지 못했습니다. 만료되면 풀립니다. orderId={}", orderId, e);
+    }
   }
 
   private void recordPaymentIdQuietly(Long orderId, Long paymentId) {
