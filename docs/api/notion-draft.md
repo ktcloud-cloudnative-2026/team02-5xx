@@ -9,7 +9,7 @@
 - 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
 - Order API 상세 갱신: 2026-11-18. Order PR(#28·#29·#46·#52·#56)의 구현과 Menu PR #90·Payment PR #71의 호출 계약을 확인해 Order Service 절과 Menu·Payment 내부 API 절에 보완 내용을 추가했습니다. Notion 원본의 같은 부분도 맞춰 수정해야 합니다.
 - 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
-- 구현 기준(현재, 2026-11-18): main `7e736f4`에는 Order Flyway V1·V2와 주문 생성·조회 API(OR-01·03·04, PR #28·#29), Menu MI-01·MI-02(PR #90·#100)가 병합되어 있습니다. 결제(PR #46)·이벤트(PR #52)·Cooking 장애 차단(PR #56)·Payment(PR #71)·Cooking 취소(PR #62) 등 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
+- 구현 기준(현재, 2026-11-18): main `38c1bab`에는 Order Flyway V1~V3와 주문 생성·조회·결제 API(OR-01~04, PR #28·#29·#46), Menu MI-01·MI-02(PR #90·#100)가 병합되어 있습니다. 이벤트(PR #52)·Cooking 장애 차단(PR #56)·Payment(PR #71)·Cooking 취소(PR #62) 등 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
 
 - 원문의 Menu Service 수정 전·후 표와 논의 사항을 함께 보존했습니다. 이 문서는 원문 보관본이며 두 표를 동시에 유효한 계약으로 간주하지 않습니다.
 
@@ -240,11 +240,11 @@
 
 ### Order 외부 API 상세 (2026-11-18)
 
-Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·[#29](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/29)·[#46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)·[#52](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/52)·[#56](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/56))의 구현 기준입니다. **병합 상태(2026-11-18 기준):** #28(Flyway V1)·#29(OR-01·03·04, V2)는 main에 병합됐고, #46(OR-02, V3)·#52(이벤트)·#56(Cooking 장애 차단)은 병합 전입니다. 병합 전 항목은 main에서 호출 가능한 API로 간주하지 않습니다. OR-05~09는 아직 구현되지 않았습니다.
+Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·[#29](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/29)·[#46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)·[#52](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/52)·[#56](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/56))의 구현 기준입니다. **병합 상태(2026-11-18 기준):** #28(Flyway V1)·#29(OR-01·03·04, V2)·#46(OR-02, V3)은 main에 병합됐고, #52(이벤트)·#56(Cooking 장애 차단)은 병합 전입니다. 병합 전 항목은 main에서 호출 가능한 API로 간주하지 않습니다. OR-05~09는 아직 구현되지 않았습니다.
 
 | API | 요청 | 성공 응답 | 비고 |
 | --- | --- | --- | --- |
-| OR-01 | 본문 `{"items":[{"menuId":1,"quantity":2,"optionIds":[10]}]}`. 항목 1~20개, 수량 1~99, 옵션 최대 20개(없으면 생략·빈 배열) | `201`, 주문 상세(OR-04와 같은 형식). 상태 `CREATED`, `orderNo` 없음, `holdExpiresAt` 포함 | 접수 확인 → Cooking 장애 확인 → Menu 검증(MI-01) → 임시 주문 저장 → 재고 확보(II-01). 금액은 Menu 응답으로 서버가 계산하며 같은 메뉴가 여러 줄이면 재고 확보는 메뉴별로 수량을 합산 |
+| OR-01 | 본문 `{"items":[{"menuId":1,"quantity":2,"optionIds":[10]}]}`. 항목 1~20개, 수량 1~99, 옵션 최대 20개(없으면 생략·빈 배열) | `201`, 주문 상세(OR-04와 같은 형식). 상태 `CREATED`, `orderNo` 없음, `holdExpiresAt` 포함 | 접수 확인 → Cooking 장애 확인 → Menu 검증(MI-01) → 임시 주문 저장 → 재고 확보(II-01). 각 항목의 옵션 이름을 `, `로 이어붙인 길이가 255자를 넘으면 `400 INVALID_REQUEST`(Cooking이 255자 컬럼에 저장하므로 결제 뒤 조리 전표 실패를 막기 위해 주문 생성에서 거절). 금액은 Menu 응답으로 서버가 계산하며 같은 메뉴가 여러 줄이면 재고 확보는 메뉴별로 수량을 합산 |
 | OR-02 | 본문 없음 | `200`, 주문 상세(`PAID`, `orderNo`, `paidAt`) | 결제(PI-01) → 재고 확정(II-02) → 주문 확정. 같은 주문에 반복 호출해도 현재 상태를 돌려주며 결제는 `idempotencyKey`(`order-{orderId}`)로 중복 방지 |
 | OR-03 | 쿼리 `page`(기본 0, 음수는 0), `size`(기본 20, 1~100으로 보정) | `200`, `data`에 `items[]`(`orderId`, `orderNo`, `status`, `totalAmount`, `orderedAt`, `itemCount`, `representativeMenuName`)와 `page`, `size`, `totalElements` | 본인 주문만, 최신순. `CREATED`·`FAILED`는 제외 |
 | OR-04 | 경로 `orderId` | `200`, `data`에 `orderId`, `orderNo`, `status`, `totalAmount`, `expectedWaitSec`, `orderedAt`, `paidAt`, `canceledAt`, `completedAt`, `holdExpiresAt`, `items[]`(`menuId`, `menuName`, `unitPrice`, `quantity`, `lineAmount`, `options[]`(`optionId`, `optionName`, `extraPrice`)) | 값이 없는 필드는 응답에서 생략. `holdExpiresAt`은 결제 전(`CREATED`) 주문에만 포함. 다른 사용자의 주문은 `404 ORDER_NOT_FOUND` |
@@ -401,7 +401,7 @@ PI-01·PI-03은 [Payment PR #71](https://github.com/ktcloud-cloudnative-2026/tea
 
 | API | 요청·응답 | Order 호출측 |
 | --- | --- | --- |
-| PI-01 | 요청 `{"orderId":1,"amount":4500,"idempotencyKey":"order-1"}`. 응답 `{"paymentId":1,"status":"SUCCESS"}`이며 `status`는 `SUCCESS`·`FAILED`. 같은 `idempotencyKey` 재요청은 처음 결과를 `200`으로 반환. `409 IDEMPOTENCY_KEY_CONFLICT`(같은 키에 다른 주문·금액), `409 PAYMENT_ALREADY_EXISTS`(이미 결제 기록이 있는 주문), `400 INVALID_REQUEST` | 키는 `order-{orderId}`. `FAILED`는 `402 PAYMENT_FAILED`로 주문 종료. 4xx는 결과를 알 수 없으므로 `502 UPSTREAM_INVALID_RESPONSE`, 5xx·시간 초과는 `503 PAYMENT_SERVICE_UNAVAILABLE`로 두고 주문은 `CREATED` 유지 |
+| PI-01 | 요청 `{"orderId":1,"amount":4500,"idempotencyKey":"order-1"}`. 응답 `{"paymentId":1,"status":"SUCCESS"}`이며 `status`는 `SUCCESS`·`FAILED`, 그리고 이미 환불된 결제를 같은 키로 다시 호출했을 때의 `REFUNDED`. 같은 `idempotencyKey` 재요청은 처음 결과를 `200`으로 반환(환불 뒤에는 `REFUNDED`). `409 IDEMPOTENCY_KEY_CONFLICT`(같은 키에 다른 주문·금액), `409 PAYMENT_ALREADY_EXISTS`(이미 결제 기록이 있는 주문), `400 INVALID_REQUEST` | 키는 `order-{orderId}`. `FAILED`는 `402 PAYMENT_FAILED`로 주문 종료. `REFUNDED`는 돈이 이미 돌아간 상태라 다시 환불하지 않고 `FAILED`(`PAYMENT_REFUNDED`)로 종료. 4xx는 결과를 알 수 없으므로 `502 UPSTREAM_INVALID_RESPONSE`, 5xx·시간 초과는 `503 PAYMENT_SERVICE_UNAVAILABLE`로 두고 주문은 `CREATED` 유지 |
 | PI-02 | `GET`, 응답은 PI-01과 같은 형식. 없는 `paymentId`는 `404 PAYMENT_NOT_FOUND` | 현재 Order는 호출하지 않음 |
 | PI-03 | `POST /internal/v1/payments/{paymentId}/refund`, 응답 `{"paymentId":1,"status":"REFUNDED"}`. 이미 환불된 결제도 `200`. `404 PAYMENT_NOT_FOUND`, `409 PAYMENT_NOT_REFUNDABLE`(승인되지 않은 결제) | 결제 후 재고 확정 거부 시 호출 중이며, 주문 취소(OR-05)에서도 사용 예정. 오류별 세부 해석은 취소 구현 때 확정 |
 
