@@ -8,7 +8,8 @@
 - 공통 확정 규칙: [CLAUDE.md](../../CLAUDE.md)
 - 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
 - Order API 상세 갱신: 2026-11-18. Order PR(#28·#29·#46·#52·#56)의 구현과 Menu PR #90·Payment PR #71의 호출 계약을 확인해 Order Service 절과 Menu·Payment 내부 API 절에 보완 내용을 추가했습니다. Notion 원본의 같은 부분도 맞춰 수정해야 합니다.
-- 구현 기준: main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없습니다. 열린 PR의 구현을 main 반영 완료로 표시하지 않습니다.
+- 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
+- 구현 기준(현재, 2026-11-18): main `7e736f4`에는 Order Flyway V1·V2와 주문 생성·조회 API(OR-01·03·04, PR #28·#29), Menu MI-01·MI-02(PR #90·#100)가 병합되어 있습니다. 결제(PR #46)·이벤트(PR #52)·Cooking 장애 차단(PR #56)·Payment(PR #71)·Cooking 취소(PR #62) 등 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
 
 - 원문의 Menu Service 수정 전·후 표와 논의 사항을 함께 보존했습니다. 이 문서는 원문 보관본이며 두 표를 동시에 유효한 계약으로 간주하지 않습니다.
 
@@ -239,14 +240,14 @@
 
 ### Order 외부 API 상세 (2026-11-18)
 
-Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·[#29](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/29)·[#46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)·[#52](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/52)·[#56](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/56))의 구현 기준입니다. **구현 중:** 모두 main에 병합되기 전이며, 병합 전까지 main에서 호출 가능한 API로 간주하지 않습니다. OR-05~09는 아직 구현되지 않았습니다.
+Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·[#29](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/29)·[#46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)·[#52](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/52)·[#56](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/56))의 구현 기준입니다. **병합 상태(2026-11-18 기준):** #28(Flyway V1)·#29(OR-01·03·04, V2)는 main에 병합됐고, #46(OR-02, V3)·#52(이벤트)·#56(Cooking 장애 차단)은 병합 전입니다. 병합 전 항목은 main에서 호출 가능한 API로 간주하지 않습니다. OR-05~09는 아직 구현되지 않았습니다.
 
 | API | 요청 | 성공 응답 | 비고 |
 | --- | --- | --- | --- |
 | OR-01 | 본문 `{"items":[{"menuId":1,"quantity":2,"optionIds":[10]}]}`. 항목 1~20개, 수량 1~99, 옵션 최대 20개(없으면 생략·빈 배열) | `201`, 주문 상세(OR-04와 같은 형식). 상태 `CREATED`, `orderNo` 없음, `holdExpiresAt` 포함 | 접수 확인 → Cooking 장애 확인 → Menu 검증(MI-01) → 임시 주문 저장 → 재고 확보(II-01). 금액은 Menu 응답으로 서버가 계산하며 같은 메뉴가 여러 줄이면 재고 확보는 메뉴별로 수량을 합산 |
 | OR-02 | 본문 없음 | `200`, 주문 상세(`PAID`, `orderNo`, `paidAt`) | 결제(PI-01) → 재고 확정(II-02) → 주문 확정. 같은 주문에 반복 호출해도 현재 상태를 돌려주며 결제는 `idempotencyKey`(`order-{orderId}`)로 중복 방지 |
-| OR-03 | 쿼리 `page`(기본 0, 음수는 0), `size`(기본 20, 1~100으로 보정) | `200`, `{"items":[{orderId, orderNo, status, totalAmount, orderedAt, itemCount, representativeMenuName}],"page","size","totalElements"}` | 본인 주문만, 최신순. `CREATED`·`FAILED`는 제외 |
-| OR-04 | 경로 `orderId` | `200`, `{orderId, orderNo, status, totalAmount, expectedWaitSec, orderedAt, paidAt, canceledAt, completedAt, holdExpiresAt, items[{menuId, menuName, unitPrice, quantity, lineAmount, options[{optionId, optionName, extraPrice}]}]}` | 값이 없는 필드는 응답에서 생략. `holdExpiresAt`은 결제 전(`CREATED`) 주문에만 포함. 다른 사용자의 주문은 `404 ORDER_NOT_FOUND` |
+| OR-03 | 쿼리 `page`(기본 0, 음수는 0), `size`(기본 20, 1~100으로 보정) | `200`, `data`에 `items[]`(`orderId`, `orderNo`, `status`, `totalAmount`, `orderedAt`, `itemCount`, `representativeMenuName`)와 `page`, `size`, `totalElements` | 본인 주문만, 최신순. `CREATED`·`FAILED`는 제외 |
+| OR-04 | 경로 `orderId` | `200`, `data`에 `orderId`, `orderNo`, `status`, `totalAmount`, `expectedWaitSec`, `orderedAt`, `paidAt`, `canceledAt`, `completedAt`, `holdExpiresAt`, `items[]`(`menuId`, `menuName`, `unitPrice`, `quantity`, `lineAmount`, `options[]`(`optionId`, `optionName`, `extraPrice`)) | 값이 없는 필드는 응답에서 생략. `holdExpiresAt`은 결제 전(`CREATED`) 주문에만 포함. 다른 사용자의 주문은 `404 ORDER_NOT_FOUND` |
 
 - 사용자 식별은 임시 `X-User-Id` 헤더입니다. 클라이언트가 임의로 보낼 수 있으므로 인증 교체 전에는 외부에 노출하지 않습니다(위 **미확정** 항목).
 - 주문번호(`orderNo`)는 `yyMMdd-0001` 형식(날짜별 일련번호)이며 결제·재고 확정 시 발급합니다. 형식은 Order 구현 기준이며 팀 최종 확정은 아닙니다.
@@ -307,12 +308,12 @@ Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·
 
 ### Menu 내부 계약 확인 (2026-11-18)
 
-MI-01의 요청·응답은 [Menu PR #90](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/90)의 구현을 확인한 내용입니다. **구현 중:** main 미병합이며 담당자 최종 확인 전입니다.
+MI-01의 요청·응답은 [Menu PR #90](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/90)(2026-11-18 main 병합)에서 Menu 담당자가 확인한 계약입니다. **확정·병합:** 상세 요청·응답·오류는 [MI-01 구현 명세](menu-mi01.md)를 따르며, 아래는 Order 호출 관점의 요약입니다. 메뉴·옵션별 세부 오류 코드와 400/404/409 구분은 아직 합의되지 않았습니다.
 
 | 구분 | 내용 |
 | --- | --- |
 | 요청 | `{"items":[{"menuId":10,"quantity":2,"optionIds":[1,2]}]}`. 옵션이 없으면 빈 배열 |
-| 성공 응답 | 요청 순서대로 `{"items":[{"menuId","menuName","unitPrice","cookTimeSec","options":[{"optionId","optionName","extraPrice","extraCookTimeSec"}]}]}`. `unitPrice`는 옵션·수량을 뺀 메뉴 단가, `cookTimeSec`는 메뉴 1개 조리 시간(초), `extraCookTimeSec`는 옵션별 추가 조리 시간(초) |
+| 성공 응답 | `200`, 요청 순서대로 `data.items[]`에 `menuId`, `menuName`, `unitPrice`, `cookTimeSec`, `options[]`(`optionId`, `optionName`, `extraPrice`, `extraCookTimeSec`)를 반환. 예: `{"success":true,"data":{"items":[{"menuId":1,"menuName":"버거","unitPrice":6500,"cookTimeSec":90,"options":[{"optionId":3,"optionName":"세트","extraPrice":2500,"extraCookTimeSec":30}]}]},"message":"OK"}`. `unitPrice`는 옵션·수량을 뺀 메뉴 1개 가격, `cookTimeSec`는 메뉴 1개 조리 시간(초), `extraCookTimeSec`는 선택 옵션 1개 추가 조리 시간(초) |
 | 오류 | 요청 오류·구매 불가(판매 중이 아닌 메뉴, 비활성 옵션)는 `400 INVALID_REQUEST`, 저장 데이터 오류·내부 장애는 `500 INTERNAL_ERROR`. 재고는 확인하지 않음 |
 | Order 호출측 | 주문 생성과 **결제 직전**에 각각 호출. 4xx는 `409 MENU_NOT_AVAILABLE`, 연결 실패·5xx는 `503 MENU_SERVICE_UNAVAILABLE`로 변환. 조리 시간은 Order DB에 저장하지 않고 `OrderConfirmed`에 담아 전달 |
 
