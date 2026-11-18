@@ -33,6 +33,15 @@ public class InventoryReservation {
 
   protected InventoryReservation() {}
 
+  public InventoryReservation(Long orderId, OffsetDateTime expiresAt) {
+    OffsetDateTime now = OffsetDateTime.now();
+    this.orderId = orderId;
+    this.status = "RESERVED";
+    this.expiresAt = expiresAt;
+    this.createdAt = now;
+    this.updatedAt = now;
+  }
+
   public Long getId() {
     return id;
   }
@@ -47,5 +56,14 @@ public class InventoryReservation {
 
   public OffsetDateTime getExpiresAt() {
     return expiresAt;
+  }
+
+  public boolean isExpired(OffsetDateTime now) {
+    return expiresAt.isBefore(now);
+  }
+
+  public void confirm() {
+    this.status = "CONFIRMED";
+    this.updatedAt = OffsetDateTime.now();
   }
 }

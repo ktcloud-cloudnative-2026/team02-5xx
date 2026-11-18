@@ -1,5 +1,7 @@
 package com.peakorder.inventory.entity;
 
+import com.peakorder.inventory.exception.BusinessException;
+import com.peakorder.inventory.exception.ErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -54,5 +56,19 @@ public class Inventory {
 
   public int getAvailableQty() {
     return stockQty - reservedQty;
+  }
+
+  public void reserve(int quantity) {
+    if (getAvailableQty() < quantity) {
+      throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
+    }
+    reservedQty += quantity;
+    updatedAt = OffsetDateTime.now();
+  }
+
+  public void confirm(int quantity) {
+    stockQty -= quantity;
+    reservedQty -= quantity;
+    updatedAt = OffsetDateTime.now();
   }
 }
