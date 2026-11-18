@@ -7,8 +7,10 @@ import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.LongStream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -52,5 +54,21 @@ class EstimateRequestValidationTest {
     assertThat(validate(List.of(new EstimateRequest.Item(1L, 0, null)))).isNotEmpty();
     assertThat(validate(List.of(new EstimateRequest.Item(1L, 1, Arrays.asList(10L, null)))))
         .isNotEmpty();
+  }
+
+  @Test
+  void Order_주문_요청과_같은_제한을_적용한다() {
+    // 예상 시간이 나온 장바구니는 Order에서도 주문할 수 있어야 한다 (PR #113 Codex 리뷰, Order CreateOrderRequest)
+    EstimateRequest.Item one = new EstimateRequest.Item(1L, 1, null);
+    assertThat(validate(Collections.nCopies(20, one))).isEmpty();
+    assertThat(validate(Collections.nCopies(21, one))).isNotEmpty();
+
+    assertThat(validate(List.of(new EstimateRequest.Item(1L, 99, null)))).isEmpty();
+    assertThat(validate(List.of(new EstimateRequest.Item(1L, 100, null)))).isNotEmpty();
+
+    List<Long> twentyOptions = LongStream.rangeClosed(1, 20).boxed().toList();
+    List<Long> twentyOneOptions = LongStream.rangeClosed(1, 21).boxed().toList();
+    assertThat(validate(List.of(new EstimateRequest.Item(1L, 1, twentyOptions)))).isEmpty();
+    assertThat(validate(List.of(new EstimateRequest.Item(1L, 1, twentyOneOptions)))).isNotEmpty();
   }
 }

@@ -18,9 +18,11 @@
 
 MI-01 요청과 같은 모양입니다.
 
-- `items`: 1~50개, 각 항목은 null일 수 없습니다.
-- `menuId`: 양수 Long, `quantity`: 양수 Integer
-- `optionIds`: 생략 가능(생략하면 `[]`로 MI-01에 전달), 각 ID는 양수 Long, 같은 항목 안에서 중복할 수 없습니다.
+- `items`: 1~20개, 각 항목은 null일 수 없습니다.
+- `menuId`: 양수 Long, `quantity`: 1~99
+- `optionIds`: 최대 20개, 생략 가능(생략하면 `[]`로 MI-01에 전달), 각 ID는 양수 Long, 같은 항목 안에서 중복할 수 없습니다.
+
+제한은 Order 주문 생성 요청(`CreateOrderRequest`)과 같습니다. 예상 시간이 나온 장바구니는 실제로 주문할 수 있어야 하기 때문입니다.
 
 ## 성공: HTTP 200
 
@@ -50,7 +52,7 @@ MI-01 요청과 같은 모양입니다.
 
 | 상황 | HTTP | errorCode |
 |---|---|---|
-| 요청 형식 오류 (빈 목록, 51개 이상, 항목 null, 수량 0 이하, 옵션 ID 중복·null, 깨진 JSON) | 400 | `INVALID_REQUEST` |
+| 요청 형식 오류 (빈 목록, 21개 이상, 항목 null, 수량 0 이하·100 이상, 옵션 21개 이상·ID 중복·null, 깨진 JSON) | 400 | `INVALID_REQUEST` |
 | Menu 4xx (판매 중지·숨김·없는 메뉴, 없는 옵션, 다른 메뉴의 옵션) | 409 | `MENU_NOT_AVAILABLE` |
 | Menu 5xx · 연결 실패 · 타임아웃 | 503 | `MENU_SERVICE_UNAVAILABLE` |
 | Menu 응답 이상 (항목 수·menuId·옵션 불일치, 시간 필드 누락, 깨진 JSON) | 502 | `UPSTREAM_INVALID_RESPONSE` |
