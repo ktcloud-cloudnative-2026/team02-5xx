@@ -280,6 +280,7 @@ Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·
 | 재고 확보 시간 만료(결제를 요청한 적 없음) | 결제하지 않고 주문 `FAILED`(`HOLD_EXPIRED`). 재시도는 새 주문 |
 | 결제를 요청한 적이 있는 주문이 재시도 중 확보 만료 | 종료하지 않고 같은 `idempotencyKey`로 결제 결과를 확인. 성공이면 재고 확정을 시도하고, 거절되면 환불 후 `FAILED`(`STOCK_CONFIRM_FAILED`), 결과를 계속 모르면 `CREATED` 유지 + `503` |
 | 결제를 요청한 적이 있는 주문이 재시도 중 메뉴 판매 중지 | 결제 결과를 확인해 성공이면 환불 후 `FAILED`(`MENU_NOT_AVAILABLE`). 환불 실패 시 `MENU_NOT_AVAILABLE_REFUND_NEEDED`로 기록해 수동 확인 |
+| 재시도 중 같은 키의 결제가 이미 환불됨(`REFUNDED`) | 돈이 이미 돌아간 상태라 다시 환불하지 않고 `FAILED`(`PAYMENT_REFUNDED`)로 종료, 재고 반환 |
 | 결제 성공 후 재고 확정 거부 | 결제 취소(환불) 후 `FAILED`(`STOCK_CONFIRM_FAILED`). 환불까지 실패하면 `STOCK_CONFIRM_FAILED_REFUND_NEEDED`로 기록해 수동 확인 |
 | 결제 직전 Menu에서 판매 중지 확인 | 결제하지 않고 주문 종료(`MENU_NOT_AVAILABLE`), 재고 반환 |
 | 재고 확보 후 확보 ID 저장 실패(OR-01) | 재고 해제를 시도하고 `FAILED`(`HOLD_SAVE_FAILED`). 해제 실패 시 Inventory 만료에 맡김 |
