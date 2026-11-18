@@ -274,11 +274,12 @@ Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·
 
 | 상황 | 처리 |
 | --- | --- |
-| 결제 실패 확정 | 주문 `FAILED`, 재고 해제. 재시도는 새 주문 |
+| 결제 실패 확정 | 주문 `FAILED`(`PAYMENT_FAILED`), 재고 해제. 재시도는 새 주문 |
+| 재고 확보 시간 만료 | 결제하지 않고 주문 `FAILED`(`HOLD_EXPIRED`). 재시도는 새 주문 |
 | 결제 성공 후 재고 확정 거부 | 결제 취소(환불) 후 `FAILED`(`STOCK_CONFIRM_FAILED`). 환불까지 실패하면 `STOCK_CONFIRM_FAILED_REFUND_NEEDED`로 기록해 수동 확인 |
 | 결제 직전 Menu에서 판매 중지 확인 | 결제하지 않고 주문 종료(`MENU_NOT_AVAILABLE`), 재고 반환 |
 | 재고 확보 후 확보 ID 저장 실패(OR-01) | 재고 해제를 시도하고 `FAILED`(`HOLD_SAVE_FAILED`). 해제 실패 시 Inventory 만료에 맡김 |
-| 결제·재고 확정 결과 불명(시간 초과, 5xx) | 성공·실패를 정하지 않고 `CREATED` 유지, `503` |
+| 결제·재고 확정 결과 불명(시간 초과, 5xx) | 성공·실패를 정하지 않고 `CREATED` 유지, `503`. 같은 주문으로 다시 호출하면 같은 결제 키로 이어서 처리 |
 
 ## Cooking Service
 
@@ -451,8 +452,16 @@ CO-04의 WAITING 대기열은 `queued_at, id` 오름차순입니다. 관리자 �
 
 orderId와 holdId의 상세 요청·응답 연결 — 위 Inventory 절의 호출측 제안과 확정 오류 의미를 구분하여 확인
 
+- **Order 제안·구현 중 (2026-11-18, [PR #46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)):** 임시 주문 생성 때 `orderId`로 확보를 요청하고 응답의 `holdId`·`expiresAt`을 `orders.hold_id`·`hold_expires_at`에 저장합니다. 결제 후 확정(II-02)과 실패·취소 시 해제(II-03)에는 `holdId`를 씁니다. II-01·II-02·II-03의 오류 의미는 위 Inventory 절의 합의(2026-11-16)를 따르고, 요청·응답 전체는 제공자 확인 전입니다.
+
 재고 확보 유효시간은 기본 5분·테스트 10초(STOCK\_HOLD\_TTL). 만료 처리의 상세 계약은 별도 보완
+
+- **Order 제안·구현 중:** 만료 시각은 Inventory가 정해 응답하고, Order는 결제 전에 만료 여부를 확인해 만료면 주문을 종료(`409 HOLD_EXPIRED`)합니다. 만료된 재고의 실제 반환은 Inventory 담당입니다. 만료 후 `CREATED`로 남은 주문의 정리 방식은 미정이며, 별도 작업으로 다룹니다.
 
 결제 요청 중복 방지 방법
 
+- **Order 제안·구현 중:** 결제는 `idempotencyKey`(`order-{orderId}`)로 중복을 막고, 주문 확정은 행 잠금과 상태 확인으로 한 번만 처리합니다. Payment PR #71은 같은 키의 재요청에 처음 결과를 돌려주고 다른 주문·금액이면 `409 IDEMPOTENCY_KEY_CONFLICT`, 주문당 결제 1건을 적용합니다(위 Payment 절). PI-02(결제 조회)는 응답 전에는 `paymentId`를 알 수 없어, 같은 키 재시도로 대체하므로 Order가 호출하지 않습니다.
+
 결제 성공 이후 후속 실패시 복구 방식
+
+- **Order 제안·구현 중:** 위 Order Service 절의 "결제 후 실패 처리" 표를 따릅니다. 재고 확정이 거부되면 결제를 취소(PI-03)하고 주문을 종료하며, 환불까지 실패하면 `STOCK_CONFIRM_FAILED_REFUND_NEEDED`로 기록해 수동 확인합니다. 결제·재고 확정 결과를 알 수 없을 때는 주문을 `CREATED`로 두고 같은 주문으로 다시 호출하면 이어서 처리합니다. **한계:** 결제 성공 후 주문 확정 저장이 실패해도 같은 방식으로 재호출해야 하며 자동 재시도·정산 배치는 없습니다. 팀 확정 전입니다.
