@@ -7,7 +7,8 @@
 - 가져온 날짜: 2026-11-13 (Asia/Seoul)
 - 공통 확정 규칙: [CLAUDE.md](../../CLAUDE.md)
 - 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
-- 구현 기준: main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없습니다. 열린 PR의 구현을 main 반영 완료로 표시하지 않습니다.
+- 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
+- 구현 기준(현재, 2026-11-18): main `7e736f4`에는 Order Flyway V1·V2와 주문 생성·조회 API(PR #28·#29)가 병합되어 있습니다. 이벤트 발행·수신(PR #52)은 병합 전이며, 열린 PR의 구현을 main 반영 완료로 표시하지 않습니다.
 
 ---
 
@@ -95,7 +96,7 @@ completedAt은 ISO 8601(+09:00)입니다. Order PR은 PAID·WAITING·COOKING인 
 | 발행 성공 판정 | publisher confirm을 받고 라우팅 실패 반환이 없는 경우에만 Outbox SENT |
 | 브로커 장애·확인 타임아웃·라우팅할 큐 없음 | PENDING 유지 후 재발행. 최소 한 번 전달이므로 수신자 멱등 처리 필수 |
 | 일시적 수신 오류 | 최초 포함 최대 3회, 1초·2초 간격. 소진 시 reject(requeue=false)로 DLQ |
-| JSON 형식 오류·필수값 누락·잘못된 값·처리 불가능한 상태 | 재시도 없이 DLQ. PR의 ListenerRetryPolicy는 Jackson/변환·IllegalArgumentException·IllegalStateException 계열을 분류 |
+| JSON 형식 오류·필수값 누락·잘못된 값·존재하지 않는 주문·처리 불가능한 상태 | 재시도 없이 DLQ. PR의 ListenerRetryPolicy는 Jackson/변환·IllegalArgumentException·IllegalStateException 계열을 분류하며, 존재하지 않는 주문(`orderId`에 해당하는 주문 없음)은 재시도해도 결과가 같아 IllegalArgumentException으로 바로 DLQ로 보냄(Cooking 리뷰 반영, 2026-11-18) |
 | 정상·중복 수신 | 업무 트랜잭션 완료 후 ack. 처리 실패의 중복 방지 기록도 같은 트랜잭션에서 롤백 |
 | DLQ 감시 | 합의: 메시지 수 > 0이 1분 지속하면 Grafana 알림. 모니터링 구성 후 적용할 항목이며 배포 완료는 확인되지 않음 |
 
