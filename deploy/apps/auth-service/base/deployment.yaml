@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  labels:
+    app: auth-service
+    team: team02
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+        team: team02
+    spec:
+      containers:
+        - name: auth-service
+          image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/auth:sha-317b6ee68bf4cba0f356b5ebdd19abfc02c715d0
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /v3/api-docs
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /v3/api-docs
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v3/api-docs
+              port: http
+            periodSeconds: 20
