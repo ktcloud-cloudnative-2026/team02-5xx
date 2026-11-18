@@ -107,7 +107,25 @@ public class OrderService {
       txService.markFailed(orderId, reason);
       throw e;
     }
-    return txService.markHeld(orderId, hold);
+    try {
+      return txService.markHeld(orderId, hold);
+    } catch (RuntimeException e) {
+      compensateHoldSaveFailure(orderId, hold);
+      throw e;
+    }
+  }
+
+  /**
+   * 재고는 확보됐는데 확보 ID를 주문에 저장하지 못했을 때의 보상 처리. 확보가 만료(기본 5분)될 때까지 재고가 묶이지 않도록 해제를 시도하고, 주문을 실패로 끝낸다.
+   * 보상도 실패하면 Inventory의 만료 처리에 맡기고 원래 오류를 그대로 돌려준다.
+   */
+  private void compensateHoldSaveFailure(Long orderId, StockHold hold) {
+    releaseQuietly(hold.holdId());
+    try {
+      txService.markFailed(orderId, "HOLD_SAVE_FAILED");
+    } catch (RuntimeException e) {
+      log.warn("확보 저장 실패 후 주문 실패 처리도 실패 orderId={}", orderId, e);
+    }
   }
 
   /**

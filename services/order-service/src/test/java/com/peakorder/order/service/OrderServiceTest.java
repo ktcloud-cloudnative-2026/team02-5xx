@@ -183,6 +183,42 @@ class OrderServiceTest {
   }
 
   @Test
+  void hold_save_failure_releases_the_stock_and_fails_the_order_then_rethrows() {
+    when(menuClient.validatePurchase(any())).thenReturn(menuResponse());
+    when(txService.createTemporaryOrder(eq(7L), any())).thenReturn(100L);
+    StockHold hold = new StockHold(55L, now.plusMinutes(5));
+    when(inventoryClient.hold(eq(100L), any())).thenReturn(hold);
+    IllegalStateException dbError = new IllegalStateException("db down");
+    when(txService.markHeld(100L, hold)).thenThrow(dbError);
+
+    assertThatThrownBy(() -> service.createOrder(7L, request())).isSameAs(dbError);
+
+    verify(inventoryClient).release(55L);
+    verify(txService).markFailed(100L, "HOLD_SAVE_FAILED");
+  }
+
+  @Test
+  void hold_save_failure_still_rethrows_the_original_error_when_compensation_also_fails() {
+    when(menuClient.validatePurchase(any())).thenReturn(menuResponse());
+    when(txService.createTemporaryOrder(eq(7L), any())).thenReturn(100L);
+    StockHold hold = new StockHold(55L, now.plusMinutes(5));
+    when(inventoryClient.hold(eq(100L), any())).thenReturn(hold);
+    IllegalStateException dbError = new IllegalStateException("db down");
+    when(txService.markHeld(100L, hold)).thenThrow(dbError);
+    org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE))
+        .when(inventoryClient)
+        .release(55L);
+    org.mockito.Mockito.doThrow(new IllegalStateException("db still down"))
+        .when(txService)
+        .markFailed(100L, "HOLD_SAVE_FAILED");
+
+    assertThatThrownBy(() -> service.createOrder(7L, request())).isSameAs(dbError);
+
+    verify(inventoryClient).release(55L);
+    verify(txService).markFailed(100L, "HOLD_SAVE_FAILED");
+  }
+
+  @Test
   void same_menu_in_multiple_lines_is_summed_for_stock_hold() {
     CreateOrderRequest req =
         new CreateOrderRequest(
