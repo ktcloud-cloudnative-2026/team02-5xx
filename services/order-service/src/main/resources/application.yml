@@ -35,3 +35,5 @@ clients:
     base-url: ${MENU_SERVICE_URL:http://localhost:8081}
   inventory:
     base-url: ${INVENTORY_SERVICE_URL:http://localhost:8082}
+  payment:
+    base-url: ${PAYMENT_SERVICE_URL:http://localhost:8083}

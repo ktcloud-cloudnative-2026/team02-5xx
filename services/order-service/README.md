@@ -34,6 +34,7 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 | ID | Method | 경로 | 설명 |
 |---|---|---|---|
 | OR-01 | POST | `/api/v1/orders` | 임시 주문 생성 (매장 접수 확인 → Menu 검증 → 저장 → Inventory 재고 확보) |
+| OR-02 | POST | `/api/v1/orders/{orderId}/pay` | 모의 결제 요청 및 주문 확정 (결제 → 재고 확정 → PAID, 주문번호 발급, `OrderConfirmed` outbox 저장) |
 | OR-03 | GET | `/api/v1/orders?page=0&size=20` | 본인 주문 목록 (CREATED·FAILED 제외, 최신순) |
 | OR-04 | GET | `/api/v1/orders/{orderId}` | 본인 주문 상세 (타인 주문은 404) |
 
@@ -42,6 +43,25 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
   - 교체 작업은 별도 이슈로 관리한다(Auth 담당과 JWT 전달 방식 합의 필요).
 - 매장은 기본 영업 종료·주문 미접수 상태이며, 접수 상태를 바꾸는 관리자 API(OR-07)는 아직 없다. 로컬 확인 시 `store_operations`를 직접 갱신한다.
 - Menu·Inventory 내부 API의 요청·응답 필드는 초안이다(`client` 패키지 참고). 담당자와 합의 후 확정한다.
+
+### 결제(OR-02) 동작 규칙
+
+- **주문 생성 단계에서 거르는 것**: 옵션 이름을 `, `로 이어붙인 길이가 255자를 넘는 항목이 있으면 `400 INVALID_REQUEST`로 거절한다. Cooking이 그 값을 255자 컬럼(`option_summary`)에 저장하므로, 결제 뒤에 Cooking 저장이 실패해 돈만 받고 조리가 안 되는 주문을 막기 위해서다.
+- 같은 주문에 `pay`를 여러 번 호출해도 안전하다. 결제는 `idempotencyKey`(`order-{orderId}`)로, 주문 확정은 행 잠금과 상태 확인으로 중복을 막는다. 이미 확정된 주문은 현재 상태를 그대로 돌려준다.
+- **같은 주문을 동시에 결제 처리하지 않는다.** 결제 처리를 시작할 때 `orders.pay_lock_until`을 조건부 UPDATE(주문이 `CREATED`이고 독점이 없거나 만료됐을 때만 성공)로 잡은 요청만 Menu·Payment·Inventory를 호출한다. 독점을 못 잡은 요청은 아무것도 호출하지 않고 현재 상태로 응답한다(확정됐으면 그 결과, 종료됐으면 `ORDER_NOT_PAYABLE`, 처리 중이면 `409 ORDER_PAY_IN_PROGRESS`). 독점을 잡은 뒤 주문 상태를 다시 읽고, 결제 요청 시각 기록도 `CREATED`일 때만 성공하므로 오래된 상태로 결제·환불하지 않는다. 독점은 60초 뒤 자동으로 풀려 서버가 중간에 죽어도 재시도가 이어받는다. 독점을 잡을 때마다 `orders.pay_lock_token`(UUID)이 새로 발급되고, **해제·연장·상태 변경(요청 시각·결제 ID 기록, 확정, 종료)은 토큰이 일치할 때만** 한다. 그래서 독점이 만료돼 다른 요청이 이어받은 뒤에 이전 요청이 늦게 끝나도 새 소유자의 독점을 풀거나 주문을 바꾸지 못한다. 결제·환불·재고 확정 같은 외부 호출 직전에는 독점을 연장하면서 아직 내 것인지 확인하고, 잃었으면 아무것도 하지 않고 `409 ORDER_PAY_IN_PROGRESS`로 멈춘다(이어받은 요청이 같은 멱등키로 결과를 이어서 처리한다).
+- 결제 실패 확정 → 주문 `FAILED`, 재고 해제, 재시도는 새 주문. 결제를 한 번도 요청하지 않았는데 재고 확보가 만료되었으면 결제 없이 `HOLD_EXPIRED`로 종료한다.
+- 결제 성공 후 재고 확정이 거부되면 결제를 취소하고 `FAILED`(`STOCK_CONFIRM_FAILED`)로 종료한다. 취소까지 실패하면 `fail_reason`이 `STOCK_CONFIRM_FAILED_REFUND_NEEDED`로 남아 수동 확인 대상이 된다.
+- 결제·재고 확정 결과를 알 수 없으면(타임아웃, 5xx) 성공·실패를 정하지 않고 주문을 `CREATED`로 두고 503을 돌려준다. 같은 주문으로 다시 호출하면 이어서 처리된다.
+- **결제가 이미 됐을 수 있는 주문**: 결제를 요청하기 직전에 `orders.payment_requested_at`을 기록하고(기록에 실패하면 결제를 요청하지 않는다), 결제가 성공하면 곧바로 `payment_id`를 저장한다. 기록이 있는 주문은 재시도할 때 재고 확보가 만료됐거나 그 사이 메뉴 판매가 중지됐어도 **결과를 확인하기 전에 종료하지 않는다.** 같은 `idempotencyKey`로 PI-01을 다시 호출해 처음 결과를 받는다(PI-02 대신).
+  - 결제 성공 → 재고 확정 시도. 확정되면 `PAID`, 거절되면(확보 만료 포함) 환불 후 `FAILED`(`STOCK_CONFIRM_FAILED`).
+  - 결제 실패 확정 → `FAILED`(`PAYMENT_FAILED`). 결과를 계속 알 수 없으면 `CREATED`로 두고 503.
+  - 같은 키로 다시 호출했는데 이미 환불된 결제(`REFUNDED`)가 오면 돈은 돌아간 상태이므로 다시 환불하지 않고 `FAILED`(`PAYMENT_REFUNDED`)로 종료한다. (환불까지 끝났는데 주문 종료 저장만 실패했던 경우)
+  - 메뉴 판매 중지로 재시도가 막히면 결제 결과를 확인해 성공이면 환불하고 `FAILED`(`MENU_NOT_AVAILABLE`)로 종료한다. 환불까지 실패하면 `fail_reason`이 `*_REFUND_NEEDED`로 남아 수동 확인 대상이 된다.
+  - 결제 요청이 Payment에 닿지 않았던 경우에도 같은 키로 재호출하면 새로 결제될 수 있지만, 이어지는 확정 단계에서 거절되면 바로 환불한다.
+- Inventory 응답 해석(Inventory 담당과 2026-11-16 합의): II-01 `409`(`INSUFFICIENT_STOCK`, `STOCK_NOT_LINKED`)은 재고 부족, II-02 `409`(`HOLD_NOT_ACTIVE`: 만료·해제된 확보)와 `404`(`HOLD_NOT_FOUND`)는 확정 불가(결제 취소 후 주문 종료), 이미 확정된 건의 재호출은 `200`. 그 밖의 `4xx`(요청·인증 오류)는 재고 판단으로 단정하지 않고 `502`로 응답하며 주문을 그대로 둔다. `5xx`·연결 실패는 결과 불명이다.
+- 주문번호는 `yyMMdd-0001` 형식(날짜별 일련번호)이며 확정 트랜잭션에서 발급한다.
+- 조리 시간은 Order DB에 저장하지 않는다. 결제를 시작할 때 Menu(MI-01)에서 다시 받아 `OrderConfirmed`(`cookTimeSec`, 옵션 `extraCookTimeSec`)에 싣는다. Menu에 연결할 수 없으면 결제 전에 503으로 끝나 돈이 나가지 않고, 그 사이 판매가 중지된 메뉴가 있으면 주문을 종료(`MENU_NOT_AVAILABLE`)하고 재고를 반환한다.
+- `OrderConfirmed`는 `outbox_events`에 `PENDING`으로 저장만 한다. 실제 발행은 후속 작업(RabbitMQ 발행기)에서 구현한다.
 
 ## 빌드·테스트
 
@@ -61,6 +81,7 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 | `RABBITMQ_USER` / `RABBITMQ_PASSWORD` | RabbitMQ 계정 | 필수 |
 | `MENU_SERVICE_URL` | Menu Service 내부 주소 | `http://localhost:8081` |
 | `INVENTORY_SERVICE_URL` | Inventory Service 내부 주소 | `http://localhost:8082` |
+| `PAYMENT_SERVICE_URL` | Payment Service 내부 주소 | `http://localhost:8083` |
 
 ## 규칙
 

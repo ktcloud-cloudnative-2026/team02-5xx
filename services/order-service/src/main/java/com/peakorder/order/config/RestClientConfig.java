@@ -25,6 +25,11 @@ public class RestClientConfig {
     return build(baseUrl);
   }
 
+  @Bean
+  public RestClient paymentRestClient(@Value("${clients.payment.base-url}") String baseUrl) {
+    return build(baseUrl);
+  }
+
   private RestClient build(String baseUrl) {
     JdkClientHttpRequestFactory factory =
         new JdkClientHttpRequestFactory(

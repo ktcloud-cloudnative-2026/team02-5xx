@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -65,7 +66,22 @@ public class Order {
   @Column(name = "hold_expires_at")
   private OffsetDateTime holdExpiresAt;
 
+  @Column(name = "payment_id")
+  private Long paymentId;
+
+  @Column(name = "payment_requested_at")
+  private OffsetDateTime paymentRequestedAt;
+
+  /** 결제 처리 독점 만료 시각. 갱신은 {@code OrderRepository}의 조건부 UPDATE로만 한다. */
+  @Column(name = "pay_lock_until")
+  private OffsetDateTime payLockUntil;
+
+  /** 결제 처리 독점을 잡은 요청의 토큰. */
+  @Column(name = "pay_lock_token")
+  private java.util.UUID payLockToken;
+
   @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+  @OrderBy("id ASC")
   private List<OrderItem> items = new ArrayList<>();
 
   @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -96,6 +112,33 @@ public class Order {
     this.holdId = holdId;
     this.holdExpiresAt = holdExpiresAt;
     this.updatedAt = now;
+  }
+
+  /**
+   * 결제 요청 직전에 기록한다. 이후에는 결제가 이미 됐을 수 있어, 응답을 받지 못한 채 재고 확보가 만료돼도 결과를 확인하기 전에는 주문을 종료하지 않는다. 처음 기록한
+   * 시각을 유지한다.
+   */
+  public void markPaymentRequested(OffsetDateTime now) {
+    if (this.paymentRequestedAt == null) {
+      this.paymentRequestedAt = now;
+      this.updatedAt = now;
+    }
+  }
+
+  /** 결제 성공 직후 결제 ID를 남긴다. 이후 확정이 실패해도 환불·수동 확인에 쓸 수 있다. 이미 있으면 바꾸지 않는다. */
+  public void recordPaymentId(Long paymentId, OffsetDateTime now) {
+    if (this.paymentId == null) {
+      this.paymentId = paymentId;
+      this.updatedAt = now;
+    }
+  }
+
+  /** 결제·재고 확정 완료: 주문번호를 발급하고 PAID로 변경한다. */
+  public void markConfirmed(String orderNo, Long paymentId, OffsetDateTime now) {
+    changeStatus(OrderStatus.PAID, null, now);
+    this.orderNo = orderNo;
+    this.paymentId = paymentId;
+    this.paidAt = now;
   }
 
   public void markFailed(String reason, OffsetDateTime now) {
@@ -159,6 +202,18 @@ public class Order {
 
   public OffsetDateTime getUpdatedAt() {
     return updatedAt;
+  }
+
+  public Long getPaymentId() {
+    return paymentId;
+  }
+
+  public java.util.UUID getPayLockToken() {
+    return payLockToken;
+  }
+
+  public OffsetDateTime getPaymentRequestedAt() {
+    return paymentRequestedAt;
   }
 
   public Long getHoldId() {
