@@ -9,8 +9,8 @@ import java.util.UUID;
 import java.util.stream.IntStream;
 
 /**
- * Order → Cooking 이벤트(EV-01). 결제·재고 확정 후 조리 대기열 등록을 요청한다. 필드는 초안이며 Cooking 담당자와 합의 후 확정한다. 조리 시간은
- * Order DB에 저장하지 않으므로 아직 포함하지 않았다(Menu 응답 확장 여부 결정 후 추가).
+ * Order → Cooking 이벤트(EV-01). 결제·재고 확정 후 조리 대기열 등록을 요청한다. 필드는 Cooking 담당자와 합의한 내용이다. 조리 시간은 Order
+ * DB에 저장하지 않고, 결제 직전에 Menu(MI-01)에서 받아 이 이벤트에 담아 전달한다.
  */
 public record OrderConfirmedEvent(
     UUID eventId,
