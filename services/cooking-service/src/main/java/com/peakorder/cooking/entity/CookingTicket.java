@@ -14,8 +14,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import org.hibernate.annotations.CurrentTimestamp;
-import org.hibernate.annotations.SourceType;
+import org.hibernate.annotations.Generated;
 import org.hibernate.generator.EventType;
 
 /** 조리 전표. OrderConfirmed 이벤트 1건당 1개 생성된다. */
@@ -41,11 +40,17 @@ public class CookingTicket {
   private int estimatedCookSec;
 
   /**
-   * Cooking DB 등록 시각 (FIFO 기준). 애플리케이션 시각이 아니라 INSERT 시 DB가 current_timestamp로 기록하고 Hibernate가 다시
-   * 읽어 온다 → 인스턴스가 여러 대여도 같은 DB 시계를 쓰므로 FIFO가 어긋나지 않는다(PR #47 리뷰, #107).
+   * Cooking DB 등록 시각 (FIFO 기준). 애플리케이션은 값을 넣지 않고, INSERT 시 컬럼 기본값 clock_timestamp()(문장 실행 시각, V3)가
+   * 기록한 값을 Hibernate가 다시 읽어 온다.
+   *
+   * <ul>
+   *   <li>앱 시각을 쓰지 않음 → 인스턴스가 여러 대여도 같은 DB 시계 (PR #47 리뷰)
+   *   <li>트랜잭션 시작 시각(now/localtimestamp)을 쓰지 않음 → 먼저 시작했지만 늦게 INSERT한 전표가 더 이른 시각을 받는 역전 방지 (PR
+   *       #109 리뷰)
+   * </ul>
    */
-  @CurrentTimestamp(event = EventType.INSERT, source = SourceType.DB)
-  @Column(name = "queued_at", nullable = false, updatable = false)
+  @Generated(event = EventType.INSERT)
+  @Column(name = "queued_at", nullable = false, insertable = false, updatable = false)
   private Instant queuedAt;
 
   @Column(name = "started_at")
