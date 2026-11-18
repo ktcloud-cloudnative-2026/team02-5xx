@@ -58,6 +58,7 @@ public class OrderTxService {
       int totalAmount,
       Long holdId,
       OffsetDateTime holdExpiresAt,
+      OffsetDateTime paymentRequestedAt,
       List<PurchaseLine> lines,
       OrderDetailResponse detail) {}
 
@@ -93,6 +94,7 @@ public class OrderTxService {
         order.getTotalAmount(),
         order.getHoldId(),
         order.getHoldExpiresAt(),
+        order.getPaymentRequestedAt(),
         order.getItems().stream()
             .map(
                 i ->
@@ -125,6 +127,24 @@ public class OrderTxService {
         jsonMapper.writeValueAsString(OrderConfirmedEvent.from(order, eventId, now, menus));
     outboxEventRepository.insertPending(eventId, OrderConfirmedEvent.EVENT_TYPE, payload, now);
     return OrderDetailResponse.from(order);
+  }
+
+  /** 결제를 요청하기 직전에 호출한다(별도 트랜잭션). 기록에 실패하면 예외가 나므로 결제는 요청되지 않는다. 이미 기록돼 있으면 처음 시각을 유지한다. */
+  @Transactional
+  public void markPaymentRequested(Long orderId) {
+    orderRepository
+        .findWithLockById(orderId)
+        .filter(order -> order.getStatus() == OrderStatus.CREATED)
+        .ifPresent(order -> order.markPaymentRequested(now()));
+  }
+
+  /** 결제 성공 직후 결제 ID를 저장한다(별도 트랜잭션). 확정 전에 실패해도 환불·수동 확인에 쓸 수 있다. */
+  @Transactional
+  public void recordPaymentId(Long orderId, Long paymentId) {
+    orderRepository
+        .findWithLockById(orderId)
+        .filter(order -> order.getStatus() == OrderStatus.CREATED)
+        .ifPresent(order -> order.recordPaymentId(paymentId, now()));
   }
 
   /** CREATED 상태의 주문만 FAILED로 바꾼다. 이미 확정·종료된 주문은 건드리지 않는다. */

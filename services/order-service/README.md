@@ -47,9 +47,14 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 ### 결제(OR-02) 동작 규칙
 
 - 같은 주문에 `pay`를 여러 번 호출해도 안전하다. 결제는 `idempotencyKey`(`order-{orderId}`)로, 주문 확정은 행 잠금과 상태 확인으로 중복을 막는다. 이미 확정된 주문은 현재 상태를 그대로 돌려준다.
-- 결제 실패 확정 → 주문 `FAILED`, 재고 해제, 재시도는 새 주문. 재고 확보가 만료되었으면 `HOLD_EXPIRED`로 종료한다.
+- 결제 실패 확정 → 주문 `FAILED`, 재고 해제, 재시도는 새 주문. 결제를 한 번도 요청하지 않았는데 재고 확보가 만료되었으면 결제 없이 `HOLD_EXPIRED`로 종료한다.
 - 결제 성공 후 재고 확정이 거부되면 결제를 취소하고 `FAILED`(`STOCK_CONFIRM_FAILED`)로 종료한다. 취소까지 실패하면 `fail_reason`이 `STOCK_CONFIRM_FAILED_REFUND_NEEDED`로 남아 수동 확인 대상이 된다.
 - 결제·재고 확정 결과를 알 수 없으면(타임아웃, 5xx) 성공·실패를 정하지 않고 주문을 `CREATED`로 두고 503을 돌려준다. 같은 주문으로 다시 호출하면 이어서 처리된다.
+- **결제가 이미 됐을 수 있는 주문**: 결제를 요청하기 직전에 `orders.payment_requested_at`을 기록하고(기록에 실패하면 결제를 요청하지 않는다), 결제가 성공하면 곧바로 `payment_id`를 저장한다. 기록이 있는 주문은 재시도할 때 재고 확보가 만료됐거나 그 사이 메뉴 판매가 중지됐어도 **결과를 확인하기 전에 종료하지 않는다.** 같은 `idempotencyKey`로 PI-01을 다시 호출해 처음 결과를 받는다(PI-02 대신).
+  - 결제 성공 → 재고 확정 시도. 확정되면 `PAID`, 거절되면(확보 만료 포함) 환불 후 `FAILED`(`STOCK_CONFIRM_FAILED`).
+  - 결제 실패 확정 → `FAILED`(`PAYMENT_FAILED`). 결과를 계속 알 수 없으면 `CREATED`로 두고 503.
+  - 메뉴 판매 중지로 재시도가 막히면 결제 결과를 확인해 성공이면 환불하고 `FAILED`(`MENU_NOT_AVAILABLE`)로 종료한다. 환불까지 실패하면 `fail_reason`이 `*_REFUND_NEEDED`로 남아 수동 확인 대상이 된다.
+  - 결제 요청이 Payment에 닿지 않았던 경우에도 같은 키로 재호출하면 새로 결제될 수 있지만, 이어지는 확정 단계에서 거절되면 바로 환불한다.
 - 주문번호는 `yyMMdd-0001` 형식(날짜별 일련번호)이며 확정 트랜잭션에서 발급한다.
 - 조리 시간은 Order DB에 저장하지 않는다. 결제를 시작할 때 Menu(MI-01)에서 다시 받아 `OrderConfirmed`(`cookTimeSec`, 옵션 `extraCookTimeSec`)에 싣는다. Menu에 연결할 수 없으면 결제 전에 503으로 끝나 돈이 나가지 않고, 그 사이 판매가 중지된 메뉴가 있으면 주문을 종료(`MENU_NOT_AVAILABLE`)하고 재고를 반환한다.
 - `OrderConfirmed`는 `outbox_events`에 `PENDING`으로 저장만 한다. 실제 발행은 후속 작업(RabbitMQ 발행기)에서 구현한다.

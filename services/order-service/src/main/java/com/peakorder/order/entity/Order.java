@@ -69,6 +69,9 @@ public class Order {
   @Column(name = "payment_id")
   private Long paymentId;
 
+  @Column(name = "payment_requested_at")
+  private OffsetDateTime paymentRequestedAt;
+
   @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
   @OrderBy("id ASC")
   private List<OrderItem> items = new ArrayList<>();
@@ -101,6 +104,25 @@ public class Order {
     this.holdId = holdId;
     this.holdExpiresAt = holdExpiresAt;
     this.updatedAt = now;
+  }
+
+  /**
+   * 결제 요청 직전에 기록한다. 이후에는 결제가 이미 됐을 수 있어, 응답을 받지 못한 채 재고 확보가 만료돼도 결과를 확인하기 전에는 주문을 종료하지 않는다. 처음 기록한
+   * 시각을 유지한다.
+   */
+  public void markPaymentRequested(OffsetDateTime now) {
+    if (this.paymentRequestedAt == null) {
+      this.paymentRequestedAt = now;
+      this.updatedAt = now;
+    }
+  }
+
+  /** 결제 성공 직후 결제 ID를 남긴다. 이후 확정이 실패해도 환불·수동 확인에 쓸 수 있다. 이미 있으면 바꾸지 않는다. */
+  public void recordPaymentId(Long paymentId, OffsetDateTime now) {
+    if (this.paymentId == null) {
+      this.paymentId = paymentId;
+      this.updatedAt = now;
+    }
   }
 
   /** 결제·재고 확정 완료: 주문번호를 발급하고 PAID로 변경한다. */
@@ -176,6 +198,10 @@ public class Order {
 
   public Long getPaymentId() {
     return paymentId;
+  }
+
+  public OffsetDateTime getPaymentRequestedAt() {
+    return paymentRequestedAt;
   }
 
   public Long getHoldId() {

@@ -73,6 +73,29 @@ class OrderTest {
   }
 
   @Test
+  void payment_requested_time_keeps_the_first_value() {
+    Order order = Order.createTemporary(7L, now);
+
+    order.markPaymentRequested(now.plusSeconds(10));
+    order.markPaymentRequested(now.plusSeconds(99));
+
+    assertThat(order.getPaymentRequestedAt()).isEqualTo(now.plusSeconds(10));
+    assertThat(order.getStatus()).isEqualTo(OrderStatus.CREATED);
+  }
+
+  @Test
+  void payment_id_is_recorded_once_and_does_not_change_the_status() {
+    Order order = Order.createTemporary(7L, now);
+
+    order.recordPaymentId(9L, now.plusSeconds(10));
+    order.recordPaymentId(10L, now.plusSeconds(20));
+
+    assertThat(order.getPaymentId()).isEqualTo(9L);
+    assertThat(order.getStatus()).isEqualTo(OrderStatus.CREATED);
+    assertThat(order.getHistories()).hasSize(1);
+  }
+
+  @Test
   void confirmed_states_are_paid_and_after() {
     assertThat(OrderStatus.CREATED.isConfirmed()).isFalse();
     assertThat(OrderStatus.FAILED.isConfirmed()).isFalse();

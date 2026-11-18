@@ -133,6 +133,10 @@ public class OrderService {
    *
    * <p>같은 주문에 반복 호출해도 안전하다. 결제는 idempotencyKey로, 재고 확정은 Inventory가, 주문 확정은 행 잠금과 상태 확인으로 중복을 막는다.
    * 결제·재고 확정 결과를 알 수 없을 때는 주문을 그대로 두고 503을 돌려주며, 같은 주문으로 다시 호출하면 이어서 처리된다.
+   *
+   * <p>결제를 한 번이라도 요청했다면(요청 직전에 {@code payment_requested_at}을 기록한다) 결제가 이미 됐을 수 있다. 이 경우에는 재고 확보가
+   * 만료됐거나 그 사이 메뉴 판매가 중지됐어도 결제 결과를 확인하기 전에 주문을 종료하지 않는다. 같은 키로 결제 결과를 확인하고(PI-01은 같은 키에 처음 결과를
+   * 돌려준다), 성공했는데 확정할 수 없으면 환불하며, 환불까지 실패하면 {@code *_REFUND_NEEDED}로 남겨 수동 확인한다.
    */
   public OrderDetailResponse payOrder(Long userId, Long orderId) {
     PaymentTarget target = txService.findPaymentTarget(userId, orderId);
@@ -143,15 +147,22 @@ public class OrderService {
     if (target.status() != OrderStatus.CREATED || target.holdId() == null) {
       throw new BusinessException(ErrorCode.ORDER_NOT_PAYABLE);
     }
-    if (target.holdExpiresAt() == null
-        || !target.holdExpiresAt().isAfter(OffsetDateTime.now(clock))) {
+    // 결제를 이미 요청한 적이 있으면 결제가 됐을 수 있다(응답을 받지 못했을 뿐일 수 있다).
+    boolean paymentMayExist = target.paymentRequestedAt() != null;
+    boolean holdExpired =
+        target.holdExpiresAt() == null
+            || !target.holdExpiresAt().isAfter(OffsetDateTime.now(clock));
+    if (holdExpired && !paymentMayExist) {
+      // 결제한 적이 없으므로 돈이 나가지 않았다. 바로 종료한다.
       txService.markFailed(orderId, "HOLD_EXPIRED");
       throw new BusinessException(ErrorCode.HOLD_EXPIRED);
     }
 
-    // 결제 전에 Menu에서 조리 시간을 받아 둔다. 여기서 실패하면 아직 결제하지 않았으므로 돈이 나가지 않는다.
-    List<ValidatedMenu> menus = fetchCookTimes(orderId, target);
+    // 결제 전에 Menu에서 조리 시간을 받아 둔다. 결제한 적이 없다면 여기서 실패해도 돈이 나가지 않는다.
+    List<ValidatedMenu> menus = fetchCookTimes(orderId, target, paymentMayExist);
 
+    // 결제 요청 직전에 기록한다. 기록에 실패하면 예외가 나 결제는 요청되지 않는다.
+    txService.markPaymentRequested(orderId);
     PaymentResult payment =
         paymentClient.pay(orderId, target.totalAmount(), idempotencyKey(orderId));
     if (!payment.isSuccess()) {
@@ -159,6 +170,7 @@ public class OrderService {
       releaseQuietly(target.holdId());
       throw new BusinessException(ErrorCode.PAYMENT_FAILED);
     }
+    recordPaymentIdQuietly(orderId, payment.paymentId());
 
     try {
       inventoryClient.confirm(target.holdId());
@@ -201,17 +213,22 @@ public class OrderService {
   }
 
   /**
-   * 결제 직전 Menu 재조회(MI-01). 주문 항목과 같은 순서의 조리 시간을 돌려준다. 그 사이 판매가 중지된 메뉴가 있으면 주문을 종료하고 재고를 반환한다. Menu에
-   * 연결할 수 없으면 주문을 그대로 두고 오류만 돌려준다(결제 전이므로 안전).
+   * 결제 직전 Menu 재조회(MI-01). 주문 항목과 같은 순서의 조리 시간을 돌려준다. 그 사이 판매가 중지된 메뉴가 있으면 주문을 종료하고 재고를 반환한다. 다만
+   * 결제를 이미 요청한 적이 있다면(결제가 됐을 수 있다) 결제 결과를 확인해 성공이면 환불한 뒤 종료한다. Menu에 연결할 수 없으면 주문을 그대로 두고 오류만 돌려준다.
    */
-  private List<ValidatedMenu> fetchCookTimes(Long orderId, PaymentTarget target) {
+  private List<ValidatedMenu> fetchCookTimes(
+      Long orderId, PaymentTarget target, boolean paymentMayExist) {
     List<ValidatedMenu> menus;
     try {
       menus = menuClient.validatePurchase(target.lines());
     } catch (BusinessException e) {
       if (e.errorCode() == ErrorCode.MENU_NOT_AVAILABLE) {
-        txService.markFailed(orderId, "MENU_NOT_AVAILABLE");
-        releaseQuietly(target.holdId());
+        if (paymentMayExist) {
+          endAfterPossiblePayment(orderId, target, "MENU_NOT_AVAILABLE");
+        } else {
+          txService.markFailed(orderId, "MENU_NOT_AVAILABLE");
+          releaseQuietly(target.holdId());
+        }
       }
       throw e;
     }
@@ -230,6 +247,33 @@ public class OrderService {
       }
     }
     return menus;
+  }
+
+  /**
+   * 결제가 이미 됐을 수 있는 주문을 종료한다. 같은 키로 결제 결과를 확인하고(처음 결과를 돌려준다), 성공이면 환불한다. 환불까지 실패하면 수동 확인 대상으로 남긴다.
+   * 결제 결과를 알 수 없으면(예외) 주문을 그대로 두므로 같은 주문으로 다시 호출할 수 있다.
+   */
+  private void endAfterPossiblePayment(Long orderId, PaymentTarget target, String reason) {
+    PaymentResult payment =
+        paymentClient.pay(orderId, target.totalAmount(), idempotencyKey(orderId));
+    String failReason = reason;
+    if (payment.isSuccess()) {
+      recordPaymentIdQuietly(orderId, payment.paymentId());
+      if (!refundQuietly(payment.paymentId())) {
+        failReason = reason + "_REFUND_NEEDED";
+      }
+    }
+    txService.markFailed(orderId, failReason);
+    releaseQuietly(target.holdId());
+  }
+
+  private void recordPaymentIdQuietly(Long orderId, Long paymentId) {
+    try {
+      txService.recordPaymentId(orderId, paymentId);
+    } catch (RuntimeException e) {
+      // 확정 단계에서도 저장하므로 여기서 실패해도 흐름은 계속한다. 로그로 남겨 수동 복구에 쓴다.
+      log.error("결제 ID 저장 실패, 수동 확인 필요 orderId={} paymentId={}", orderId, paymentId, e);
+    }
   }
 
   private static boolean hasExactOptions(PurchaseLine line, ValidatedMenu menu) {
