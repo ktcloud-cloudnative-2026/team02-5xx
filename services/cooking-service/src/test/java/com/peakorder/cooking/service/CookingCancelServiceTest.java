@@ -35,10 +35,7 @@ class CookingCancelServiceTest {
 
   private static CookingTicket waitingTicket() {
     return CookingTicket.create(
-        1L,
-        "261116-0001",
-        List.of(CookingTicketItem.of(1L, "아메리카노", null, 1, 120)),
-        NOW.minusSeconds(60));
+        1L, "261116-0001", List.of(CookingTicketItem.of(1L, "아메리카노", null, 1, 120)));
   }
 
   private static ErrorCode errorCodeOf(Throwable e) {

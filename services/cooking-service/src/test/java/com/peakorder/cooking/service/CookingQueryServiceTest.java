@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class CookingQueryServiceTest {
 
@@ -38,12 +39,15 @@ class CookingQueryServiceTest {
   }
 
   /** 예상 조리 시간 = cookTimeSec × quantity */
+  /** queuedAt은 저장 시 DB가 정하므로, 단위 테스트에서는 저장된 상태를 흉내 내 직접 넣는다 */
   private static CookingTicket ticket(long orderId, int cookTimeSec, Instant queuedAt) {
-    return CookingTicket.create(
-        orderId,
-        "261116-%04d".formatted(orderId),
-        List.of(CookingTicketItem.of(1L, "아메리카노", null, 1, cookTimeSec)),
-        queuedAt);
+    CookingTicket ticket =
+        CookingTicket.create(
+            orderId,
+            "261116-%04d".formatted(orderId),
+            List.of(CookingTicketItem.of(1L, "아메리카노", null, 1, cookTimeSec)));
+    ReflectionTestUtils.setField(ticket, "queuedAt", queuedAt);
+    return ticket;
   }
 
   @Test
