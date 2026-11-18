@@ -703,3 +703,246 @@ h2 {
     padding: 10px 8px;
   }
 }
+
+.cart-nav {
+  width: 100%;
+  margin-top: 12px;
+  background: transparent;
+}
+.eyebrow {
+  display: block;
+  margin-bottom: 12px;
+  color: #707070;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+.text-button {
+  min-height: 44px;
+  padding: 12px;
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.action-notice {
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+.action-notice:empty {
+  display: none;
+}
+.selection-feedback {
+  min-height: 28px;
+  margin: 16px 0 8px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.detail-actions .pill-button {
+  flex: 1 1 180px;
+}
+.pill-button:disabled {
+  opacity: 0.45;
+}
+.cart-page .page-heading {
+  margin-bottom: 32px;
+}
+.cart-page h1 {
+  font-weight: 700;
+}
+.cart-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 24px;
+  align-items: start;
+}
+.cart-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 16px;
+}
+.cart-item {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr) auto;
+  gap: 20px;
+  padding: 24px;
+  background: #fff;
+  border-radius: 28px;
+  overflow-wrap: anywhere;
+}
+.cart-photo {
+  display: grid;
+  place-items: center;
+  width: 100px;
+  height: 100px;
+  background: #f2f3f5;
+  border-radius: 24px;
+  color: #707070;
+  font-size: 11px;
+}
+.cart-item h2 {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.cart-item-info {
+  min-width: 0;
+}
+.cart-item-info p {
+  margin: 6px 0;
+  font-size: 14px;
+  color: #666;
+}
+.cart-unit {
+  font-size: 13px;
+  color: #707070;
+}
+.cart-item .quantity-control {
+  width: fit-content;
+  margin-top: 16px;
+  gap: 4px;
+}
+.cart-item .quantity-control button {
+  width: 36px;
+  height: 36px;
+}
+.cart-item .quantity-control output {
+  font-size: 16px;
+  min-width: 28px;
+}
+.cart-item-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  white-space: nowrap;
+}
+.cart-item-actions strong {
+  font-size: 20px;
+}
+.cart-summary {
+  position: sticky;
+  top: 32px;
+  padding: 28px;
+  background: #fff;
+  border-radius: 28px;
+}
+.cart-summary h2 {
+  margin-bottom: 28px;
+  font-size: 20px;
+  font-weight: 700;
+}
+.cart-summary .total-row {
+  flex-wrap: wrap;
+}
+.cart-summary p {
+  margin: 24px 0;
+  font-size: 13px;
+  color: #707070;
+  line-height: 1.8;
+}
+.cart-summary .pill-button {
+  width: 100%;
+}
+.cart-warning {
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  background: #fff;
+  border: 1px solid #999;
+  border-radius: 16px;
+  line-height: 1.6;
+}
+.login-modal {
+  width: min(480px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 0;
+  border-radius: 28px;
+  color: #2e2e2e;
+  background: #fff;
+  overflow-y: auto;
+}
+.login-modal::backdrop {
+  background: #0008;
+}
+.login-content {
+  padding: 8px 32px 32px;
+}
+.login-content h2 {
+  margin-bottom: 20px;
+  font-size: 28px;
+  font-weight: 700;
+}
+.login-content p {
+  font-size: 14px;
+  line-height: 1.8;
+  color: #666;
+}
+.login-placeholder {
+  padding: 20px;
+  margin: 24px 0;
+  border-radius: 20px;
+  background: #f2f3f5;
+}
+.login-content > button {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+}
+@media (max-width: 1100px) {
+  .cart-layout {
+    grid-template-columns: 1fr;
+  }
+  .cart-summary {
+    position: static;
+  }
+}
+@media (max-width: 760px) {
+  .sidebar nav {
+    display: flex;
+    gap: 8px;
+  }
+  .cart-nav {
+    margin-top: 0;
+    width: auto;
+  }
+  .sidebar .nav-item {
+    padding: 0 12px;
+  }
+  .cart-page .page-heading {
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .cart-item {
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 16px;
+    padding: 20px;
+  }
+  .cart-photo {
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+  }
+  .cart-item-actions {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+  }
+  .cart-summary {
+    padding: 24px;
+  }
+  .login-content {
+    padding: 8px 24px 24px;
+  }
+  .detail-actions .pill-button {
+    flex-basis: 100%;
+  }
+}
