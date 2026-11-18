@@ -67,10 +67,11 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 
 Cooking 담당(김지윤)과 합의한 방식이다.
 
-- Order가 Cooking의 `GET /actuator/health`(인증 없음)를 5초 주기로 확인한다. 타임아웃은 2초이고, HTTP 503(DOWN)·그 외 오류 응답·연결 실패·타임아웃은 모두 실패로 센다.
+- Order가 Cooking의 `GET /actuator/health`(인증 없음)를 5초 주기로 확인한다. 응답 타임아웃은 2초(연결 타임아웃 1초를 더해 한 번 확인에 최악 약 3초)이고, HTTP 503(DOWN)·그 외 오류 응답·연결 실패·타임아웃은 모두 실패로 센다.
 - **3회 연속 실패**하면 "Cooking 장애"로 판단하고, **한 번이라도 성공하면 바로 해제**한다. 기동 직후에는 정상으로 간주한다(첫 실패 한 번으로 차단하지 않음). 상태는 인스턴스마다 독립적으로 판단한다.
 - 장애 상태에서는 **신규 주문 생성(OR-01)과 결제(OR-02)**만 `503 COOKING_UNAVAILABLE`로 거절한다. 매장 접수 설정(`store_operations`)과는 별개이며, 접수가 닫혀 있으면 `STORE_NOT_ACCEPTING_ORDERS`(409)가 먼저 나온다.
-- 영향을 받지 않는 것: 주문 목록·상세 조회, 이미 확정된 주문(결제 재호출 시 현재 상태 반환), `CookingCompleted` 수신, outbox 발행. 장애로 결제가 거절된 주문은 `CREATED`로 남고 재고 확보 만료 규칙은 그대로 적용된다(만료되면 종료).
+- 영향을 받지 않는 것: 주문 목록·상세 조회, 이미 확정된 주문(결제 재호출 시 현재 상태 반환), **결제를 이미 요청한 적이 있는 주문**(같은 키로 기존 결과를 확인하는 것이라 새 결제가 아니므로, 결제가 됐을 수 있는데 사용자가 "결제 불가"만 보지 않도록 결과 확인·복구를 이어서 한다), `CookingCompleted` 수신, outbox 발행. 장애로 결제가 거절된 주문은 `CREATED`로 남고 재고 확보 만료 규칙은 그대로 적용된다(만료되면 종료).
+- 스케줄러 스레드: Spring 기본은 1개라서 outbox 발행이 RabbitMQ 확인을 기다리는 동안(최대 5초) 헬스 점검이 함께 멈출 수 있다. `SchedulingConfig`에서 `@Scheduled` 작업 수(outbox 발행, Cooking 헬스 점검)만큼 스레드를 두어 서로 막지 않게 했고, 회귀 테스트(`SchedulerIsolationTest`)가 이를 확인한다. `@Scheduled` 작업을 추가하면 `POOL_SIZE`도 늘린다.
 - 관측: 상태 전환은 로그로 남고, 지표 `order_cooking_available`(1=정상, 0=차단 중)을 `/actuator/prometheus`로 노출한다.
 
 ## 이벤트 (RabbitMQ)

@@ -14,6 +14,10 @@ public class RestClientConfig {
 
   private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
   private static final Duration READ_TIMEOUT = Duration.ofSeconds(3);
+
+  /** 헬스 확인: 연결 1초 + 응답 2초, 한 번 확인에 최악 약 3초(5초 주기 안에서 끝난다). */
+  private static final Duration HEALTH_CONNECT_TIMEOUT = Duration.ofSeconds(1);
+
   private static final Duration HEALTH_TIMEOUT = Duration.ofSeconds(2);
 
   @Bean
@@ -31,10 +35,10 @@ public class RestClientConfig {
     return build(baseUrl);
   }
 
-  /** Cooking 헬스 확인용. 합의한 대로 타임아웃 2초. */
+  /** Cooking 헬스 확인용. 합의한 응답 타임아웃 2초에 연결 타임아웃 1초를 더한다. */
   @Bean
   public RestClient cookingRestClient(@Value("${clients.cooking.base-url}") String baseUrl) {
-    return build(baseUrl, CONNECT_TIMEOUT, HEALTH_TIMEOUT);
+    return build(baseUrl, HEALTH_CONNECT_TIMEOUT, HEALTH_TIMEOUT);
   }
 
   private RestClient build(String baseUrl) {

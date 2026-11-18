@@ -1088,6 +1088,37 @@ class OrderServiceTest {
   }
 
   @Test
+  void
+      order_with_a_payment_request_is_not_blocked_by_a_cooking_outage_so_its_result_can_be_resolved() {
+    // 결제가 됐을 수 있는 주문은 같은 키로 기존 결과를 확인하는 것이라 새 결제가 아니다. 막으면 돈은 나갔는데 사용자는 "결제 불가"만 본다.
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(retryAfterExpiry());
+    cookingDown();
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
+    OrderDetailResponse confirmed = mock(OrderDetailResponse.class);
+    when(txService.confirmOrder(eq(100L), eq(LOCK), eq(9L), any())).thenReturn(confirmed);
+
+    assertThat(service.payOrder(7L, 100L)).isSameAs(confirmed);
+
+    verify(cookingAvailability, never()).ensureAvailable();
+  }
+
+  @Test
+  void
+      order_with_a_payment_request_is_refunded_when_stock_confirm_is_rejected_during_a_cooking_outage() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(retryAfterExpiry());
+    cookingDown();
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
+    org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.STOCK_CONFIRM_FAILED))
+        .when(inventoryClient)
+        .confirm(55L);
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L)).isInstanceOf(BusinessException.class);
+
+    verify(paymentClient).refund(9L);
+    verify(txService).markFailed(100L, LOCK, "STOCK_CONFIRM_FAILED");
+  }
+
+  @Test
   void already_confirmed_order_can_still_be_read_through_pay_while_cooking_is_down() {
     PaymentTarget paid = target(OrderStatus.PAID, 55L, now.plusMinutes(3));
     when(txService.findPaymentTarget(7L, 100L)).thenReturn(paid);
