@@ -208,6 +208,7 @@ erDiagram
         bigint payment_id "Payment 결제 ID (FK 없음)"
         timestamptz payment_requested_at "결제를 처음 요청한 시각 (있으면 결제가 됐을 수 있음)"
         timestamptz pay_lock_until "결제 처리 독점 만료 시각 (동시 결제 방지)"
+        uuid pay_lock_token "독점을 잡은 요청의 토큰 (이어받은 독점을 이전 요청이 건드리지 못하게 함)"
         varchar cancel_reason "취소 사유"
         varchar fail_reason "실패 사유 (결제 실패, 재고 부족 등 / 실제 주문 목록에서는 제외)"
         timestamptz ordered_at "주문 시각"
@@ -483,7 +484,7 @@ erDiagram
 | 대상 | 확인된 설계·동시성 정책 | 열린 PR과의 차이·확인 사항 |
 | --- | --- | --- |
 | Order 확보 정보 | orderId로 확보하고 holdId로 확정·해제 | [PR #29](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/29)의 V2(2026-11-18 main 병합)에 orders.hold_id, hold_expires_at 추가. **도식에 반영함(2026-11-18).** Inventory의 확정·해제 요청·응답은 2026-11-16 담당자(남규리)와 합의 |
-| Order 결제·주문번호 | 결제·재고 확정 후 orderNo 발급 | [PR #46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)의 V3(병합 전)에 orders.payment_id·payment_requested_at·pay_lock_until와 order_no_counters(order_date PK, last_seq > 0) 추가. **도식에 반영함(2026-11-18).** 취소 후속 처리용 컬럼(`stock_restored_at`·`refunded_at`, V4)은 아직 제안 단계라 도식에 넣지 않음 |
+| Order 결제·주문번호 | 결제·재고 확정 후 orderNo 발급 | [PR #46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)의 V3(병합 전)에 orders.payment_id·payment_requested_at·pay_lock_until·pay_lock_token와 order_no_counters(order_date PK, last_seq > 0) 추가. **도식에 반영함(2026-11-18).** 취소 후속 처리용 컬럼(`stock_restored_at`·`refunded_at`, V4)은 아직 제안 단계라 도식에 넣지 않음 |
 | Order 취소 후속 처리 | 취소 확정 후 재고 복원·환불, 중복 처리 방지 | [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)의 stock_restored_at·refunded_at/V4는 제안 단계. 현재 마이그레이션에는 없으므로 도식에 추가하지 않음 |
 | Order 상태 | CREATED, PAID, WAITING, COOKING, COMPLETED, CANCELED, FAILED | Order PR의 CHECK와 enum은 도식과 일치. 현재 이벤트 처리는 PAID→COMPLETED이며 WAITING·COOKING 반영 방식은 미확정 |
 | Cooking 상태·관계 | WAITING→COOKING→DONE, WAITING→CANCELED. order_id UNIQUE, 전표-항목 FK | [PR #62](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/62)의 V1에 상태 CHECK, quantity > 0, cook_time_sec·estimated_cook_sec >= 0, (status, queued_at, id) INDEX 존재. CI-03은 행 잠금으로 취소 경합 제어 |
