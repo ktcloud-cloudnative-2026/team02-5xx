@@ -53,6 +53,9 @@ java -jar build/libs/menu-service-0.0.1-SNAPSHOT.jar
 - OpenAPI JSON: http://localhost:8080/v3/api-docs
 - Swagger UI 설정: http://localhost:8080/v3/api-docs/swagger-config
 
+MI-01 `POST /internal/v1/menus/validate-purchase`를 구현했습니다.
+Order·Cooking 요청 계약과 오류 매핑은 [MI-01 구현 명세](../../docs/api/menu-mi01.md)를 확인합니다.
+
 MI-02 `GET /internal/v1/menus/{menuId}/existence`를 제공합니다.
 응답·오류·역할 구분은 [MI-02 구현 명세](../../docs/api/menu-mi02.md)를 확인합니다.
 ON_SALE·PAUSED·HIDDEN은 모두 exists=true이며 신규/기존 연결 정책은 Inventory 책임입니다.
@@ -124,10 +127,10 @@ $env:MENU_DB_TEST_PASSWORD = $dbCredential.GetNetworkCredential().Password
 
 애플리케이션 진입점은 `com.peakorder.menu.MenuServiceApplication`입니다.
 업무 구현 시 기본 패키지 아래에 `controller`, `service`, `repository`, `dto`, `entity` 계층을 추가합니다.
-현재 `entity`, `repository`의 메뉴 DB 모델과 저장소를 재사용하며,
-`controller`, `service`, `dto`, `exception`에 MI-02 존재 확인 API를 구현했습니다.
+기존 `entity`, `repository`의 메뉴 DB 모델과 저장소를 재사용하며,
+`controller`, `service`, `dto`, `exception`에 MI-01 구매 검증과 MI-02 존재 확인 API를 구현했습니다.
 현재 사용하지 않는 패키지에는 예시 클래스나 설명용 파일을 만들지 않습니다.
-Redis, RabbitMQ, Docker, Kubernetes는 구현 범위에 포함하지 않습니다.
+Redis, RabbitMQ, Docker, Kubernetes는 이번 구현 범위에 포함하지 않습니다.
 서비스 전용 `.editorconfig`와 `.gitattributes`를 사용합니다.
 DB 구조 및 마이그레이션 변경은 팀 규칙상 작성자 외 팀원 1명의 필수 리뷰 대상입니다.
 
@@ -164,3 +167,15 @@ Wrapper JAR은 https://services.gradle.org/distributions/gradle-8.14.3-wrapper.j
 ```text
 7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172
 ```
+
+## MI-01 로컬 회귀 검증
+
+```powershell
+.\gradlew.bat spotlessApply spotlessCheck test build
+```
+
+Service 단위 테스트와 실제 HTTP/OpenAPI 테스트는 Repository 모의 구현을 사용합니다.
+기존 `MenuDatabaseTests`는 `MENU_DB_TEST_URL`이 없으면 건너뜁니다.
+공유 `menu_dev`로 테스트를 실행하지 않습니다.
+MI-01 세부 오류 코드/HTTP 상태 구분은 아직 서비스 간 합의가 필요합니다.
+현재는 기존 `INVALID_REQUEST`/`INTERNAL_ERROR`를 재사용하며 전용 코드를 추가하지 않았습니다.

@@ -54,7 +54,7 @@ DB/서비스 장애를 메뉴 미존재로 변환하지 않습니다. 오류 원
 
 기존 Menu Entity 및 MenuRepository.findById를 읽기 전용 트랜잭션으로 재사용합니다.
 Menu DB·Flyway·다른 서비스·Notion은 변경하지 않습니다.
-PR #90의 미병합 코드는 가져오지 않으며 MI-02 전용 Controller·예외 처리기를 사용합니다.
+main에 병합된 PR #90의 MI-01 구현과 공통 ApiResponse를 재사용하며, MI-02 전용 Controller·예외 처리기를 사용합니다.
 
 Service 단위 테스트와 임의 포트 실제 HTTP 테스트는 Repository를 모의 실행합니다.
 상태 3종, 미존재 및 명시적 null 직렬화, Long 최대값, 잘못된 ID,
