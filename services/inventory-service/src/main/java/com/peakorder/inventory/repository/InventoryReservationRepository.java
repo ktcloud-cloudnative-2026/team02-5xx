@@ -14,4 +14,8 @@ public interface InventoryReservationRepository extends JpaRepository<InventoryR
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select r from InventoryReservation r where r.id = :id")
   Optional<InventoryReservation> findByIdForUpdate(Long id);
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select r from InventoryReservation r where r.orderId = :orderId")
+  Optional<InventoryReservation> findByOrderIdForUpdate(Long orderId);
 }

@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.peakorder.inventory.dto.HoldRequest;
 import com.peakorder.inventory.dto.HoldResponse;
+import com.peakorder.inventory.dto.RestoreResponse;
 import com.peakorder.inventory.entity.Inventory;
 import com.peakorder.inventory.entity.InventoryReservation;
 import com.peakorder.inventory.entity.InventoryReservationItem;
@@ -57,6 +58,13 @@ class InventoryHoldServiceTest {
 
   private InventoryReservation activeReservation() {
     return new InventoryReservation(1L, OffsetDateTime.now().plusMinutes(5));
+  }
+
+  private InventoryReservation confirmedReservation() {
+    InventoryReservation reservation = activeReservation();
+    ReflectionTestUtils.setField(reservation, "id", 100L);
+    reservation.confirm();
+    return reservation;
   }
 
   // ===== II-01 임시 확보 =====
@@ -211,5 +219,58 @@ class InventoryHoldServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.HOLD_NOT_FOUND);
+  }
+
+  // ===== II-04 복원 =====
+
+  @Test
+  void restore_returns_stock_when_confirmed() {
+    InventoryReservation reservation = confirmedReservation();
+    Inventory inventory = inventoryOf(7, 0);
+    when(reservationRepository.findByOrderIdForUpdate(1L)).thenReturn(Optional.of(reservation));
+    when(itemRepository.findByReservationId(100L))
+        .thenReturn(List.of(new InventoryReservationItem(100L, 10L, 3)));
+    when(inventoryRepository.findByMenuIdForUpdate(10L)).thenReturn(Optional.of(inventory));
+
+    RestoreResponse response = service.restore(1L);
+
+    assertThat(inventory.getStockQty()).isEqualTo(10);
+    assertThat(inventory.getReservedQty()).isEqualTo(0);
+    assertThat(reservation.getStatus()).isEqualTo("RESTORED");
+    assertThat(response.restored()).isTrue();
+  }
+
+  @Test
+  void restore_does_nothing_when_already_restored() {
+    InventoryReservation reservation = confirmedReservation();
+    reservation.restore();
+    when(reservationRepository.findByOrderIdForUpdate(1L)).thenReturn(Optional.of(reservation));
+
+    RestoreResponse response = service.restore(1L);
+
+    assertThat(response.restored()).isTrue();
+    verify(inventoryRepository, never()).findByMenuIdForUpdate(any());
+  }
+
+  @Test
+  void restore_throws_not_applicable_when_not_confirmed() {
+    when(reservationRepository.findByOrderIdForUpdate(1L))
+        .thenReturn(Optional.of(activeReservation()));
+
+    assertThatThrownBy(() -> service.restore(1L))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.RESTORE_NOT_APPLICABLE);
+    verify(inventoryRepository, never()).findByMenuIdForUpdate(any());
+  }
+
+  @Test
+  void restore_throws_not_applicable_when_no_hold() {
+    when(reservationRepository.findByOrderIdForUpdate(1L)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.restore(1L))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.RESTORE_NOT_APPLICABLE);
   }
 }

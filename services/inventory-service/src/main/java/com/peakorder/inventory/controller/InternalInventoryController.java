@@ -3,6 +3,8 @@ package com.peakorder.inventory.controller;
 import com.peakorder.inventory.dto.ApiResponse;
 import com.peakorder.inventory.dto.HoldRequest;
 import com.peakorder.inventory.dto.HoldResponse;
+import com.peakorder.inventory.dto.RestoreRequest;
+import com.peakorder.inventory.dto.RestoreResponse;
 import com.peakorder.inventory.service.InventoryHoldService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -37,5 +39,10 @@ public class InternalInventoryController {
   public ApiResponse<Void> release(@PathVariable Long holdId) {
     holdService.release(holdId);
     return ApiResponse.ok(null);
+  }
+
+  @PostMapping("/restorations")
+  public ApiResponse<RestoreResponse> restore(@Valid @RequestBody RestoreRequest request) {
+    return ApiResponse.ok(holdService.restore(request.orderId()));
   }
 }

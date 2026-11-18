@@ -2,6 +2,7 @@ package com.peakorder.inventory.service;
 
 import com.peakorder.inventory.dto.HoldRequest;
 import com.peakorder.inventory.dto.HoldResponse;
+import com.peakorder.inventory.dto.RestoreResponse;
 import com.peakorder.inventory.entity.Inventory;
 import com.peakorder.inventory.entity.InventoryReservation;
 import com.peakorder.inventory.entity.InventoryReservationItem;
@@ -123,6 +124,34 @@ public class InventoryHoldService {
 
     // 5. 예약 상태를 해제로 바꾼다
     reservation.release();
+  }
+
+  @Transactional
+  public RestoreResponse restore(Long orderId) {
+    // 1. 주문 번호로 예약을 잠그고 찾는다. 없으면 복원할 게 없으니 409
+    InventoryReservation reservation =
+        reservationRepository
+            .findByOrderIdForUpdate(orderId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESTORE_NOT_APPLICABLE));
+
+    // 2. 이미 복원됐으면 아무것도 안 하고 성공
+    if ("RESTORED".equals(reservation.getStatus())) {
+      return new RestoreResponse(orderId, true);
+    }
+
+    // 3. 확정된 예약만 복원할 수 있다. 나머지는 409
+    if (!"CONFIRMED".equals(reservation.getStatus())) {
+      throw new BusinessException(ErrorCode.RESTORE_NOT_APPLICABLE);
+    }
+
+    // 4. 메뉴 번호 순서로 재고를 잠그고 실물을 되돌린다
+    for (InventoryReservationItem item : sortedItems(reservation.getId())) {
+      lockInventory(item.getMenuId()).restore(item.getQuantity());
+    }
+
+    // 5. 예약 상태를 복원으로 바꾼다
+    reservation.restore();
+    return new RestoreResponse(orderId, true);
   }
 
   // ===== 반복되는 일을 묶은 도우미 =====

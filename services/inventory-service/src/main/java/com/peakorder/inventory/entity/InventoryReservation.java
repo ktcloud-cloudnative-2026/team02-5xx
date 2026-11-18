@@ -71,4 +71,9 @@ public class InventoryReservation {
     this.status = "RELEASED";
     this.updatedAt = OffsetDateTime.now();
   }
+
+  public void restore() {
+    this.status = "RESTORED";
+    this.updatedAt = OffsetDateTime.now();
+  }
 }

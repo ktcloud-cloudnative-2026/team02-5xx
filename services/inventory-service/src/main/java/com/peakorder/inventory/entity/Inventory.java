@@ -76,4 +76,9 @@ public class Inventory {
     reservedQty -= quantity;
     updatedAt = OffsetDateTime.now();
   }
+
+  public void restore(int quantity) {
+    stockQty += quantity;
+    updatedAt = OffsetDateTime.now();
+  }
 }
