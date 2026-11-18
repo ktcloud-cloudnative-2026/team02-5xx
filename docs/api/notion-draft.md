@@ -263,6 +263,7 @@ Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·
 | 409 | `MENU_NOT_AVAILABLE` | 판매할 수 없는 메뉴·옵션 포함 |
 | 409 | `OUT_OF_STOCK` | 재고 부족 |
 | 409 | `ORDER_NOT_PAYABLE` | 결제할 수 없는 상태의 주문 |
+| 409 | `ORDER_PAY_IN_PROGRESS` | 같은 주문의 결제를 다른 요청이 처리 중. 잠시 후 주문 상태 확인 |
 | 409 | `HOLD_EXPIRED` | 재고 확보 시간이 지나 주문 종료 |
 | 409 | `STOCK_CONFIRM_FAILED` | 결제 후 재고 확정이 거부되어 환불 후 주문 종료 |
 | 402 | `PAYMENT_FAILED` | 결제 실패 확정. 주문 종료, 새 주문으로 재시도 |
@@ -467,4 +468,4 @@ orderId와 holdId의 상세 요청·응답 연결 — 위 Inventory 절의 호�
 
 결제 성공 이후 후속 실패시 복구 방식
 
-- **Order 제안·구현 중:** 위 Order Service 절의 "결제 후 실패 처리" 표를 따릅니다. 재고 확정이 거부되면 결제를 취소(PI-03)하고 주문을 종료하며, 환불까지 실패하면 `STOCK_CONFIRM_FAILED_REFUND_NEEDED`로 기록해 수동 확인합니다. 결제·재고 확정 결과를 알 수 없을 때는 주문을 `CREATED`로 두고 같은 주문으로 다시 호출하면 이어서 처리합니다. 결제를 요청하기 직전에 `orders.payment_requested_at`을 기록하고 결제 성공 직후 `payment_id`를 저장하므로, 응답이 유실돼도 "결제가 됐을 수 있는 주문"을 구분합니다. **한계:** 결제 성공 후 주문 확정 저장이 실패해도 같은 방식으로 재호출해야 하며 자동 재시도·정산 배치는 없습니다. 결제 요청이 Payment에 닿지 않았던 경우 재호출이 새 결제가 될 수 있으나 확정 단계에서 거절되면 바로 환불합니다. 팀 확정 전입니다.
+- **Order 제안·구현 중:** 위 Order Service 절의 "결제 후 실패 처리" 표를 따릅니다. 재고 확정이 거부되면 결제를 취소(PI-03)하고 주문을 종료하며, 환불까지 실패하면 `STOCK_CONFIRM_FAILED_REFUND_NEEDED`로 기록해 수동 확인합니다. 결제·재고 확정 결과를 알 수 없을 때는 주문을 `CREATED`로 두고 같은 주문으로 다시 호출하면 이어서 처리합니다. 같은 주문의 `pay`가 동시에 들어오면 한 요청만 처리 독점(`orders.pay_lock_until`, 60초)을 잡아 Menu·Payment·Inventory를 호출하고, 나머지는 외부 호출 없이 현재 상태(확정 결과·`ORDER_NOT_PAYABLE`·`409 ORDER_PAY_IN_PROGRESS`)로 응답합니다. 독점을 잡은 뒤 주문 상태를 다시 읽으므로 이미 확정된 주문을 환불하지 않습니다. 결제를 요청하기 직전에 `orders.payment_requested_at`을 기록하고 결제 성공 직후 `payment_id`를 저장하므로, 응답이 유실돼도 "결제가 됐을 수 있는 주문"을 구분합니다. **한계:** 결제 성공 후 주문 확정 저장이 실패해도 같은 방식으로 재호출해야 하며 자동 재시도·정산 배치는 없습니다. 결제 요청이 Payment에 닿지 않았던 경우 재호출이 새 결제가 될 수 있으나 확정 단계에서 거절되면 바로 환불합니다. 팀 확정 전입니다.

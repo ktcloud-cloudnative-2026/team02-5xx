@@ -184,7 +184,7 @@ erDiagram
 
 **재고 확보·결제 정보와 주문번호 발급 (2026-11-18 Order 구현 반영)**
 
-주문은 결제 전에 Inventory에서 재고를 임시 확보하므로, 그 확보 ID와 만료 시각을 `orders.hold_id`·`hold_expires_at`에 보관해 결제 후 재고 확정에 씁니다. 결제 성공 시 Payment의 결제 ID를 `orders.payment_id`에 보관해 환불할 때 씁니다. 결제를 요청하기 직전에는 `orders.payment_requested_at`을 기록해, 응답을 받지 못했을 때 결제가 이미 됐을 수 있는 주문임을 구분합니다(재고 확보가 만료됐다는 이유만으로 주문을 종료하지 않기 위해서입니다). 두 서비스의 ID는 다른 DB 소속이라 FK 없이 저장합니다. 주문번호(`order_no`)는 `yyMMdd-0001` 형식으로 날짜별 순번을 `order_no_counters`에서 올려 발급하며, 한 날짜의 마지막 순번 한 줄만 보관합니다. 조리 시간은 Order DB에 저장하지 않고, 결제 직전에 Menu에서 받아 `OrderConfirmed` 이벤트로 Cooking에 전달합니다. `store_operations`는 단일 매장이라 `id = 1` 한 행만 허용하며(CHECK), 초기값은 영업 종료·주문 미접수입니다.<br>
+주문은 결제 전에 Inventory에서 재고를 임시 확보하므로, 그 확보 ID와 만료 시각을 `orders.hold_id`·`hold_expires_at`에 보관해 결제 후 재고 확정에 씁니다. 결제 성공 시 Payment의 결제 ID를 `orders.payment_id`에 보관해 환불할 때 씁니다. 결제를 요청하기 직전에는 `orders.payment_requested_at`을 기록해, 응답을 받지 못했을 때 결제가 이미 됐을 수 있는 주문임을 구분합니다(재고 확보가 만료됐다는 이유만으로 주문을 종료하지 않기 위해서입니다). 같은 주문을 동시에 결제 처리하지 않도록, 처리 시작 때 `orders.pay_lock_until`을 조건부 UPDATE로 잡습니다(한 요청만 성공, 60초 뒤 자동 해제). 두 서비스의 ID는 다른 DB 소속이라 FK 없이 저장합니다. 주문번호(`order_no`)는 `yyMMdd-0001` 형식으로 날짜별 순번을 `order_no_counters`에서 올려 발급하며, 한 날짜의 마지막 순번 한 줄만 보관합니다. 조리 시간은 Order DB에 저장하지 않고, 결제 직전에 Menu에서 받아 `OrderConfirmed` 이벤트로 Cooking에 전달합니다. `store_operations`는 단일 매장이라 `id = 1` 한 행만 허용하며(CHECK), 초기값은 영업 종료·주문 미접수입니다.<br>
 
 **조리 완료 상태 연동**
 
@@ -207,6 +207,7 @@ erDiagram
         timestamptz hold_expires_at "재고 임시 확보 만료 시각"
         bigint payment_id "Payment 결제 ID (FK 없음)"
         timestamptz payment_requested_at "결제를 처음 요청한 시각 (있으면 결제가 됐을 수 있음)"
+        timestamptz pay_lock_until "결제 처리 독점 만료 시각 (동시 결제 방지)"
         varchar cancel_reason "취소 사유"
         varchar fail_reason "실패 사유 (결제 실패, 재고 부족 등 / 실제 주문 목록에서는 제외)"
         timestamptz ordered_at "주문 시각"
@@ -443,7 +444,7 @@ erDiagram
 | `idempotency_key` (UK) | 결제 버튼을 두 번 눌러도 결제·차감이 **한 번만** 되게 합니다 |
 | `임시 Order 먼저 생성 (별도 checkout 표 없음)` | 결제 전에 orderId를 발급하고 메뉴 검증·재고 확보 후 결제합니다. 확정되지 않은 임시 주문은 남기되 주문 목록에서 제외하고, 재시도는 새 임시 주문으로 합니다 |
 | 주문 항목의 스냅샷 | 메뉴 이름·가격은 주문 시점 값을 복사해 둡니다(메뉴가 바뀌어도 지난 주문이 변하지 않도록). 조리 시간은 Order DB에 저장하지 않습니다. 결제 직전에 Menu(MI-01)에서 받아 `OrderConfirmed` 이벤트에 담아 Cooking에 전달합니다(2026-11-18 Order 담당 결정) |
-| `hold_id`·`hold_expires_at`·`payment_id`·`payment_requested_at` (orders) | 결제 후 재고를 확정(Inventory)하고 필요하면 환불(Payment)하려면 두 서비스의 ID가 필요합니다. 다른 서비스 DB의 ID라 FK 없이 저장하고, 확보 만료 시각으로 결제 가능 여부를 먼저 확인합니다. 결제 요청 시각은 결제 결과를 모른 채 재시도할 때 "결제가 됐을 수 있음"을 알기 위한 표시입니다 |
+| `hold_id`·`hold_expires_at`·`payment_id`·`payment_requested_at` (orders) | 결제 후 재고를 확정(Inventory)하고 필요하면 환불(Payment)하려면 두 서비스의 ID가 필요합니다. 다른 서비스 DB의 ID라 FK 없이 저장하고, 확보 만료 시각으로 결제 가능 여부를 먼저 확인합니다. 결제 요청 시각은 결제 결과를 모른 채 재시도할 때 "결제가 됐을 수 있음"을 알기 위한 표시입니다. `pay_lock_until`은 같은 주문을 두 요청이 동시에 처리해 한쪽은 확정하고 다른 쪽은 환불하는 모순을 막는 처리 독점입니다 |
 | `order_no_counters` | 주문번호 `yyMMdd-0001`을 날짜별로 순서대로 발급하기 위한 표입니다. 날짜(PK)마다 마지막 순번 한 줄만 두고, 발급할 때 올려서 같은 번호가 두 번 나오지 않게 합니다 |
 | 주문 표의 CHECK·인덱스 | 상태값 오타나 잘못된 금액이 저장되지 않게 CHECK를 두었고, 내 주문 목록(`user_id`, `ordered_at` 내림차순)·상태별 조회·미발송 이벤트 조회가 느려지지 않도록 인덱스를 추가했습니다 |
 | `order_no (UK)` | 고객·관리자 화면에 같은 주문번호가 두 번 나오지 않게 합니다. 결제·재고 확정 후에만 발급하고, 임시 주문은 NULL입니다 |
@@ -482,7 +483,7 @@ erDiagram
 | 대상 | 확인된 설계·동시성 정책 | 열린 PR과의 차이·확인 사항 |
 | --- | --- | --- |
 | Order 확보 정보 | orderId로 확보하고 holdId로 확정·해제 | [PR #29](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/29)의 V2(2026-11-18 main 병합)에 orders.hold_id, hold_expires_at 추가. **도식에 반영함(2026-11-18).** Inventory의 확정·해제 요청·응답은 2026-11-16 담당자(남규리)와 합의 |
-| Order 결제·주문번호 | 결제·재고 확정 후 orderNo 발급 | [PR #46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)의 V3(병합 전)에 orders.payment_id·payment_requested_at와 order_no_counters(order_date PK, last_seq > 0) 추가. **도식에 반영함(2026-11-18).** 취소 후속 처리용 컬럼(`stock_restored_at`·`refunded_at`, V4)은 아직 제안 단계라 도식에 넣지 않음 |
+| Order 결제·주문번호 | 결제·재고 확정 후 orderNo 발급 | [PR #46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)의 V3(병합 전)에 orders.payment_id·payment_requested_at·pay_lock_until와 order_no_counters(order_date PK, last_seq > 0) 추가. **도식에 반영함(2026-11-18).** 취소 후속 처리용 컬럼(`stock_restored_at`·`refunded_at`, V4)은 아직 제안 단계라 도식에 넣지 않음 |
 | Order 취소 후속 처리 | 취소 확정 후 재고 복원·환불, 중복 처리 방지 | [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)의 stock_restored_at·refunded_at/V4는 제안 단계. 현재 마이그레이션에는 없으므로 도식에 추가하지 않음 |
 | Order 상태 | CREATED, PAID, WAITING, COOKING, COMPLETED, CANCELED, FAILED | Order PR의 CHECK와 enum은 도식과 일치. 현재 이벤트 처리는 PAID→COMPLETED이며 WAITING·COOKING 반영 방식은 미확정 |
 | Cooking 상태·관계 | WAITING→COOKING→DONE, WAITING→CANCELED. order_id UNIQUE, 전표-항목 FK | [PR #62](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/62)의 V1에 상태 CHECK, quantity > 0, cook_time_sec·estimated_cook_sec >= 0, (status, queued_at, id) INDEX 존재. CI-03은 행 잠금으로 취소 경합 제어 |
