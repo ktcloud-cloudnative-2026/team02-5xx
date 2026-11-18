@@ -179,3 +179,23 @@ Service 단위 테스트와 실제 HTTP/OpenAPI 테스트는 Repository 모의 �
 공유 `menu_dev`로 테스트를 실행하지 않습니다.
 MI-01 세부 오류 코드/HTTP 상태 구분은 아직 서비스 간 합의가 필요합니다.
 현재는 기존 `INVALID_REQUEST`/`INTERNAL_ERROR`를 재사용하며 전용 코드를 추가하지 않았습니다.
+
+## ME-01·ME-02 고객 공개 조회 API (#95)
+
+- `GET /api/v1/menus`: `categoryId`(양의 Long, 선택), `query`(메뉴명 부분 검색, 양끝 공백 무시·대소문자 무시), `sort`(`default`/`priceAsc`/`priceDesc`). 비회원 접근 가능
+- 모든 카테고리를 `data.categories`로 반환하고 `data.menus`에는 ON_SALE·PAUSED만 포함합니다. HIDDEN은 노출하지 않습니다.
+- `GET /api/v1/menus/{menuId}`: ON_SALE·PAUSED 상세 및 옵션 반환. 비활성 옵션도 `active=false`로 포함하며 HIDDEN·미존재 메뉴는 동일하게 404 처리합니다.
+- 잘못된 ID·정렬은 400 `INVALID_REQUEST`, 상세 미존재·HIDDEN은 404 `MENU_NOT_FOUND`, 내부 DB 오류는 500 `INTERNAL_ERROR`. DB·예외 메시지 비노출
+- 실제 가격·재고·품절 판단, 주문 검증은 이 조회 API의 역할이 아닙니다. 기존 MI-01·MI-02 계약 및 Flyway는 변경하지 않았습니다.
+
+구현 계약과 응답 예시는 [ME-01·ME-02 문서](../../docs/api/menu-me01-me02.md)를 참고합니다.
+
+### 검증
+
+```bash
+cd services/menu-service
+./gradlew spotlessCheck test build
+```
+
+`CustomerMenuQueryServiceTests`와 `CustomerMenuControllerTests`는 검색·정렬·권한 없는 공개 조회·상태/옵션·오류 응답을 검사합니다.
+PostgreSQL 직접 연결 및 React·Gateway 실연동은 별도 검증 대상입니다. DB 테스트는 `MENU_DB_TEST_URL`이 없으면 기존 정책에 따라 건너뜁니다.
