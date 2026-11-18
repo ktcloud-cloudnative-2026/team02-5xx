@@ -66,4 +66,9 @@ public class InventoryReservation {
     this.status = "CONFIRMED";
     this.updatedAt = OffsetDateTime.now();
   }
+
+  public void release() {
+    this.status = "RELEASED";
+    this.updatedAt = OffsetDateTime.now();
+  }
 }

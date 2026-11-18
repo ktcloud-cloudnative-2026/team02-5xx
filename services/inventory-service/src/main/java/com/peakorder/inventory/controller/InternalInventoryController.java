@@ -5,6 +5,7 @@ import com.peakorder.inventory.dto.HoldRequest;
 import com.peakorder.inventory.dto.HoldResponse;
 import com.peakorder.inventory.service.InventoryHoldService;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,6 +30,12 @@ public class InternalInventoryController {
   @PostMapping("/holds/{holdId}/confirm")
   public ApiResponse<Void> confirm(@PathVariable Long holdId) {
     holdService.confirm(holdId);
+    return ApiResponse.ok(null);
+  }
+
+  @DeleteMapping("/holds/{holdId}")
+  public ApiResponse<Void> release(@PathVariable Long holdId) {
+    holdService.release(holdId);
     return ApiResponse.ok(null);
   }
 }

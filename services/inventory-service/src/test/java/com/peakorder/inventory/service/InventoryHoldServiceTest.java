@@ -55,6 +55,10 @@ class InventoryHoldServiceTest {
     return new HoldRequest(orderId, List.of(new HoldRequest.Item(menuId, quantity)));
   }
 
+  private InventoryReservation activeReservation() {
+    return new InventoryReservation(1L, OffsetDateTime.now().plusMinutes(5));
+  }
+
   // ===== II-01 임시 확보 =====
 
   @Test
@@ -72,8 +76,7 @@ class InventoryHoldServiceTest {
 
   @Test
   void hold_returns_existing_when_same_order() {
-    InventoryReservation existing =
-        new InventoryReservation(1L, OffsetDateTime.now().plusMinutes(5));
+    InventoryReservation existing = activeReservation();
     when(reservationRepository.findByOrderId(1L)).thenReturn(Optional.of(existing));
 
     HoldResponse response = service.hold(requestOf(1L, 10L, 3));
@@ -110,8 +113,7 @@ class InventoryHoldServiceTest {
 
   @Test
   void confirm_moves_reserved_out_of_stock() {
-    InventoryReservation reservation =
-        new InventoryReservation(1L, OffsetDateTime.now().plusMinutes(5));
+    InventoryReservation reservation = activeReservation();
     Inventory inventory = inventoryOf(10, 3);
     when(reservationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(reservation));
     when(itemRepository.findByReservationId(100L))
@@ -127,8 +129,7 @@ class InventoryHoldServiceTest {
 
   @Test
   void confirm_does_nothing_when_already_confirmed() {
-    InventoryReservation reservation =
-        new InventoryReservation(1L, OffsetDateTime.now().plusMinutes(5));
+    InventoryReservation reservation = activeReservation();
     reservation.confirm();
     when(reservationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(reservation));
 
@@ -158,5 +159,57 @@ class InventoryHoldServiceTest {
         .extracting("errorCode")
         .isEqualTo(ErrorCode.HOLD_NOT_ACTIVE);
     verify(inventoryRepository, never()).findByMenuIdForUpdate(any());
+  }
+
+  // ===== II-03 해제 =====
+
+  @Test
+  void release_frees_reserved_and_keeps_stock() {
+    InventoryReservation reservation = activeReservation();
+    Inventory inventory = inventoryOf(10, 3);
+    when(reservationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(reservation));
+    when(itemRepository.findByReservationId(100L))
+        .thenReturn(List.of(new InventoryReservationItem(100L, 10L, 3)));
+    when(inventoryRepository.findByMenuIdForUpdate(10L)).thenReturn(Optional.of(inventory));
+
+    service.release(100L);
+
+    assertThat(inventory.getStockQty()).isEqualTo(10);
+    assertThat(inventory.getReservedQty()).isEqualTo(0);
+    assertThat(reservation.getStatus()).isEqualTo("RELEASED");
+  }
+
+  @Test
+  void release_does_nothing_when_already_released() {
+    InventoryReservation reservation = activeReservation();
+    reservation.release();
+    when(reservationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(reservation));
+
+    service.release(100L);
+
+    verify(inventoryRepository, never()).findByMenuIdForUpdate(any());
+  }
+
+  @Test
+  void release_throws_not_active_when_confirmed() {
+    InventoryReservation reservation = activeReservation();
+    reservation.confirm();
+    when(reservationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(reservation));
+
+    assertThatThrownBy(() -> service.release(100L))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.HOLD_NOT_ACTIVE);
+    verify(inventoryRepository, never()).findByMenuIdForUpdate(any());
+  }
+
+  @Test
+  void release_throws_not_found_when_no_hold() {
+    when(reservationRepository.findByIdForUpdate(100L)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.release(100L))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.HOLD_NOT_FOUND);
   }
 }

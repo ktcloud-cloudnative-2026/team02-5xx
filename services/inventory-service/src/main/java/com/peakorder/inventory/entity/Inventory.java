@@ -71,4 +71,9 @@ public class Inventory {
     reservedQty -= quantity;
     updatedAt = OffsetDateTime.now();
   }
+
+  public void release(int quantity) {
+    reservedQty -= quantity;
+    updatedAt = OffsetDateTime.now();
+  }
 }

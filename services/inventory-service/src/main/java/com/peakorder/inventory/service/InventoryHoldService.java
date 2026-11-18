@@ -79,10 +79,7 @@ public class InventoryHoldService {
   @Transactional
   public void confirm(Long holdId) {
     // 1. 예약을 잠그고 찾는다. 없으면 404
-    InventoryReservation reservation =
-        reservationRepository
-            .findByIdForUpdate(holdId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.HOLD_NOT_FOUND));
+    InventoryReservation reservation = findHoldForUpdate(holdId);
 
     // 2. 이미 확정됐으면 아무것도 안 하고 성공
     if ("CONFIRMED".equals(reservation.getStatus())) {
@@ -96,19 +93,55 @@ public class InventoryHoldService {
     }
 
     // 4. 메뉴 번호 순서로 재고를 잠그고 실제 차감한다
-    List<InventoryReservationItem> items =
-        itemRepository.findByReservationId(holdId).stream()
-            .sorted(Comparator.comparing(InventoryReservationItem::getMenuId))
-            .toList();
-    for (InventoryReservationItem item : items) {
-      Inventory inventory =
-          inventoryRepository
-              .findByMenuIdForUpdate(item.getMenuId())
-              .orElseThrow(() -> new BusinessException(ErrorCode.INVENTORY_NOT_FOUND));
-      inventory.confirm(item.getQuantity());
+    for (InventoryReservationItem item : sortedItems(holdId)) {
+      lockInventory(item.getMenuId()).confirm(item.getQuantity());
     }
 
     // 5. 예약 상태를 확정으로 바꾼다
     reservation.confirm();
+  }
+
+  @Transactional
+  public void release(Long holdId) {
+    // 1. 예약을 잠그고 찾는다. 없으면 404
+    InventoryReservation reservation = findHoldForUpdate(holdId);
+
+    // 2. 이미 해제됐거나 만료됐으면 아무것도 안 하고 성공
+    if ("RELEASED".equals(reservation.getStatus()) || "EXPIRED".equals(reservation.getStatus())) {
+      return;
+    }
+
+    // 3. 확정·복원된 예약은 해제할 수 없다. 409
+    if (!"RESERVED".equals(reservation.getStatus())) {
+      throw new BusinessException(ErrorCode.HOLD_NOT_ACTIVE);
+    }
+
+    // 4. 메뉴 번호 순서로 재고를 잠그고 찜만 뗀다
+    for (InventoryReservationItem item : sortedItems(holdId)) {
+      lockInventory(item.getMenuId()).release(item.getQuantity());
+    }
+
+    // 5. 예약 상태를 해제로 바꾼다
+    reservation.release();
+  }
+
+  // ===== 반복되는 일을 묶은 도우미 =====
+
+  private InventoryReservation findHoldForUpdate(Long holdId) {
+    return reservationRepository
+        .findByIdForUpdate(holdId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.HOLD_NOT_FOUND));
+  }
+
+  private List<InventoryReservationItem> sortedItems(Long holdId) {
+    return itemRepository.findByReservationId(holdId).stream()
+        .sorted(Comparator.comparing(InventoryReservationItem::getMenuId))
+        .toList();
+  }
+
+  private Inventory lockInventory(Long menuId) {
+    return inventoryRepository
+        .findByMenuIdForUpdate(menuId)
+        .orElseThrow(() -> new BusinessException(ErrorCode.INVENTORY_NOT_FOUND));
   }
 }
