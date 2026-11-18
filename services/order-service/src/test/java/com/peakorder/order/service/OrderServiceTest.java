@@ -122,6 +122,35 @@ class OrderServiceTest {
   }
 
   @Test
+  void create_rejects_options_that_cooking_could_not_store_before_anything_is_saved() {
+    // Cooking은 옵션 이름을 ", "로 이어붙여 255자 컬럼에 저장한다. 결제 뒤에 실패하지 않도록 주문 생성에서 거절한다.
+    String longName = "가".repeat(100);
+    when(menuClient.validatePurchase(any()))
+        .thenReturn(
+            List.of(
+                new ValidatedMenu(
+                    1L,
+                    "아메리카노",
+                    3000,
+                    List.of(
+                        new ValidatedOption(10L, longName, 500),
+                        new ValidatedOption(11L, longName, 500),
+                        new ValidatedOption(12L, longName, 500)))));
+
+    assertThatThrownBy(
+            () ->
+                service.createOrder(
+                    7L,
+                    new CreateOrderRequest(List.of(new OrderLine(1L, 1, List.of(10L, 11L, 12L))))))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+
+    verify(txService, never()).createTemporaryOrder(any(), any());
+    verify(inventoryClient, never()).hold(any(), any());
+  }
+
+  @Test
   void menu_failure_leaves_no_order_and_does_not_touch_inventory() {
     when(menuClient.validatePurchase(any()))
         .thenThrow(new BusinessException(ErrorCode.MENU_NOT_AVAILABLE));

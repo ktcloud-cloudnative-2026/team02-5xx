@@ -44,6 +44,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class OrderService {
 
+  /** Cooking cooking_ticket_items.option_summary 컬럼 길이. */
+  private static final int COOKING_OPTION_SUMMARY_MAX = 255;
+
   private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
   /** 고객 주문 목록에서 제외하는 상태 (확정되지 않은 주문). */
@@ -93,6 +96,7 @@ public class OrderService {
                             l.optionIdsOrEmpty().stream().distinct().toList()))
                 .toList());
     List<PricedLine> priced = toPricedLines(lines, validated);
+    ensureCookingCanRegister(priced);
 
     Long orderId;
     try {
@@ -114,6 +118,22 @@ public class OrderService {
     } catch (RuntimeException e) {
       compensateHoldSaveFailure(orderId, hold);
       throw e;
+    }
+  }
+
+  /**
+   * 결제가 끝난 뒤 Cooking이 조리 전표를 만들지 못하는 주문을 미리 거른다. Cooking은 옵션 이름을 ", "로 이어붙여 255자
+   * 컬럼(option_summary)에 저장하므로, 그보다 길어지면 결제·확정 뒤에 Cooking이 저장에 실패해 돈만 받고 조리가 안 되는 주문이 생긴다. 결제 전(주문
+   * 생성 단계)에 거절한다.
+   */
+  private static void ensureCookingCanRegister(List<PricedLine> priced) {
+    for (PricedLine line : priced) {
+      int length =
+          line.options().stream().mapToInt(o -> o.getOptionName().length()).sum()
+              + 2 * Math.max(line.options().size() - 1, 0);
+      if (length > COOKING_OPTION_SUMMARY_MAX) {
+        throw new BusinessException(ErrorCode.INVALID_REQUEST);
+      }
     }
   }
 
