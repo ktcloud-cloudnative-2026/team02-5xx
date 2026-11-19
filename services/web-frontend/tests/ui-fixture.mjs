@@ -4,6 +4,7 @@ import http from 'node:http';
 import { build } from 'vite';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { menuApiHandler } from './menu-api-server.mjs';
 
 export async function startUiFixture() {
   const bundle = await build({
@@ -27,6 +28,7 @@ export async function startUiFixture() {
     .map((file) => `<link rel="stylesheet" href="/${file.fileName}">`)
     .join('');
   const server = http.createServer((request, response) => {
+    if (menuApiHandler(request, response)) return;
     const url = new URL(request.url, 'http://127.0.0.1');
     if (url.pathname === '/') {
       const html = `<!doctype html>
