@@ -80,7 +80,7 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 - **후속 처리 실패**: 재고 복원이나 환불이 실패해도 주문은 `CANCELED`로 두고 응답도 200이다. 끝난 단계는 `orders.stock_restored_at`·`refunded_at`에 기록하고, 안 끝난 단계는 둘 중 하나가 NULL로 남아 재시도 대상이 된다(확정된 주문, 곧 `order_no`가 있는 취소 주문만 해당). 두 단계는 서로 독립이라 한쪽이 실패해도 다른 쪽은 진행한다.
 - **재시도**: 같은 주문의 취소를 다시 호출하거나, `CancelFollowUpScheduler`가 30초마다(`cancel.follow-up.interval-ms`) 남은 단계를 이어서 처리한다. 재고 복원은 `409 RESTORE_NOT_APPLICABLE`이면 성공으로 기록하지 않고 에러 로그를 남겨 수동 확인에 맡긴다(스케줄러가 계속 다시 시도하며 로그가 반복된다).
 - **동시성**: 결제와 같은 처리 독점(`pay_lock_*`, 소유권 토큰)을 잡고 진행한다. 결제 중이거나 다른 취소가 처리 중이면 `409 ORDER_PAY_IN_PROGRESS`. 외부 호출 직전마다 독점을 연장하며 확인하고, 잃었으면 아무것도 하지 않고 멈춘다.
-- **확인 필요(Inventory)**: II-04의 성공 응답 형식과 추가 오류 코드는 아직 확정되지 않았다. 지금은 200만 성공, 409만 복원 불가로 보고 그 밖의 4xx는 502, 5xx는 재시도 대상으로 둔다.
+- **Inventory 확인 완료(남규리, Inventory PR #115 대조)**: II-04는 성공 시 `200 {orderId, restored: true}`이고 이미 복원된 주문도 같은 `200`(중복 복원 없음), 확정되지 않았거나 예약이 없으면 `409 RESTORE_NOT_APPLICABLE`, 요청 형식 오류는 `400`뿐이다. II-03은 해제·이미 해제·만료 `200`, 확정된 확보 `409 HOLD_NOT_ACTIVE`, 없는 확보 `404 HOLD_NOT_FOUND`. 이 PR의 해석(200만 성공, 409는 복원 불가·이미 확정, 그 밖의 4xx는 502, 5xx는 재시도 대상)과 일치한다.
 
 ## Cooking 장애 시 신규 주문·결제 차단 (US-13)
 
