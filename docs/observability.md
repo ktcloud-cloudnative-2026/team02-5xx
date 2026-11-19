@@ -102,9 +102,62 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 | Auth · Menu · Inventory · Payment | (담당자 기입) | | | |
 
 ## 3. 로그 형식 (모든 서비스 같게)
+
+### 3-1. 형식: Spring Boot 내장 ECS JSON — 제안
+- 로그는 표준 출력(stdout)에 **한 줄에 JSON 하나**로 쓴다. 파일에 쓰지 않는다(Alloy가 수집).
+- 형식은 Spring Boot 내장 **ECS**(Elastic Common Schema)를 쓴다. 라이브러리 추가 없이 설정 한 줄이다.
+- **K8s에서만 켠다.** 로컬 개발은 사람이 읽기 쉬운 기존 텍스트 로그를 그대로 쓴다. 그래서 `application.yml`이 아니라 배포 매니페스트(base Deployment)의 환경 변수로 넣는다.
+  ```yaml
+  env:
+    - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+      value: ecs
+  ```
+- 로컬에서 확인하려면 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs ./gradlew bootRun`.
+
+실제 Cooking 로그(2026-11-19 로컬 확인):
 ```json
-{"time":"2026-11-04T09:00:00+09:00","level":"info","service":"<서비스>","request_id":"<id>","message":"<내용>"}
+{"@timestamp":"2026-11-19T06:22:51.793Z","log":{"level":"INFO","logger":"com.peakorder.cooking.service.OrderConfirmedService"},"process":{"pid":83015,"thread":{"name":"org.springframework.amqp.rabbit.RabbitListenerEndpointContainer#0-1"}},"service":{"name":"cooking-service","node":{}},"message":"조리 대기열에 등록했습니다 orderId=990001 orderNo=261119-9001 estimatedCookSec=5 queuedAt=2026-11-19T06:22:51.781Z","ecs":{"version":"8.11"}}
 ```
+
+**필드 대응** (템플릿 이름 → ECS → Loki에서 `| json` 후 이름)
+
+| 의미 | 템플릿 | ECS 필드 | Loki | 비고 |
+|---|---|---|---|---|
+| 시각 | `time` | `@timestamp` | — (로그 시각으로 쓰임) | **UTC**(`Z`). Grafana가 보는 사람 시간대(KST)로 바꿔 보여 준다 |
+| 레벨 | `level` | `log.level` | `log_level` | 대문자 `INFO`·`WARN`·`ERROR` |
+| 서비스 | `service` | `service.name` | `service_name` | `spring.application.name`이 자동으로 들어간다(1-0) |
+| 요청 ID | `request_id` | (MDC `request_id`) | `request_id` | 5절 구현 후 실제 위치 확인 — 미정 |
+| 내용 | `message` | `message` | `message` | |
+| 위치 | — | `log.logger`, `process.thread.name` | `log_logger`, `process_thread_name` | 어느 클래스·스레드에서 남겼는지 |
+
+- Logstash 형식과 비교해 ECS를 고른 이유: 서비스 이름이 설정 없이 들어가고(Logstash 형식에는 없음), 시각이 UTC로 통일되며(Logstash 형식은 `@timestamp`만 +09:00이라 메시지 안 시각과 섞임), 공개 표준이라 필드 이름을 팀이 따로 정할 필요가 없다.
+
+### 3-2. 메시지 쓰는 법 — 제안
+- **문장 + `key=value`** 로 쓴다. 예: `조리를 시작했습니다 orderId=990001 orderNo=261119-9001`
+- 주문을 따라가는 키는 서비스 공통으로 **API·이벤트와 같은 이름**을 쓴다: `orderId`, `orderNo`, `paymentId`, `eventId`
+- Loki에서는 문자열로 찾는다: `{app="cooking-service"} |= "orderId=990001"`
+- 키를 JSON 필드로 따로 빼는 방식(SLF4J `addKeyValue`)은 모든 서비스 코드를 바꿔야 해서 이번 범위 밖이다.
+
+### 3-3. 레벨 기준 — 제안
+
+| 레벨 | 언제 | 예 |
+|---|---|---|
+| ERROR | **사람이 조치해야 할 때**. 요청·이벤트 처리가 실패했고 자동으로 복구되지 않는다 | 이벤트를 DLQ로 보냄, 취소 후속 처리 수동 확인 전환(#135) |
+| WARN | 비정상이지만 처리했다(자동 복구·무시) | 중복 이벤트 무시, 표시용 이름이 길어 잘라 저장(#113), 외부 호출 실패 후 재시도 예정 |
+| INFO | 업무 흐름의 주요 지점 | 전표 등록, 조리 시작·완료, 주문 확정, 결제 완료 |
+| DEBUG | 개발용. 운영에서는 끈다 | 요청 본문 상세 |
+
+- 요청 하나에 INFO를 여러 줄 남기지 않는다. 부하 테스트·피크 때 로그 양이 급증한다.
+- 같은 문제를 단계마다 ERROR로 반복하지 않는다. "사람이 조치해야 하는 순간"에 한 번만 남긴다.
+
+### 3-4. 남기면 안 되는 것 (CLAUDE.md 9절)
+- 비밀번호, API 토큰, JWT·`Authorization` 헤더, DB·RabbitMQ 접속 비밀값
+- 개인정보: 이름, 전화번호, 주소, 이메일
+- 숫자 식별자(`orderId`, `userId`, `paymentId`)는 남겨도 된다. 추적에 필요하다.
+- 요청·응답 본문을 통째로 남기지 않는다(개인정보가 섞일 수 있다).
+
+### 3-5. 요청 ID가 없는 로그
+- RabbitMQ 리스너·스케줄러 로그는 HTTP 요청이 아니라 요청 ID가 없다. 이때는 `orderId`·`eventId`로 이어 본다. 전달 규칙은 5절.
 
 ## 4. 알림 기준
 | 조건 | 받는 사람 | 대응 문서(런북) |
