@@ -2,17 +2,27 @@ package com.peakorder.cooking.repository;
 
 import com.peakorder.cooking.entity.CookingTicket;
 import com.peakorder.cooking.entity.TicketStatus;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface CookingTicketRepository extends JpaRepository<CookingTicket, Long> {
 
-  /** 주문 ID로 전표 조회 (CI-02 상태 조회, CI-03 취소, 등록 여부 확인) */
+  /** 주문 ID로 전표 조회 (CI-02 상태 조회, 등록 여부 확인) */
   Optional<CookingTicket> findByOrderId(Long orderId);
+
+  /**
+   * 주문 ID로 전표를 행 잠금(SELECT … FOR UPDATE)으로 조회한다. 상태를 바꾸는 처리(CI-03 취소, 자동 조리 진행)는 이 잠금 안에서 상태를 다시
+   * 확인해, 동시에 일어나도 한쪽만 성공하게 한다. 트랜잭션 안에서 호출해야 한다.
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select t from CookingTicket t where t.orderId = :orderId")
+  Optional<CookingTicket> findWithLockByOrderId(@Param("orderId") Long orderId);
 
   /** 상태별 FIFO 목록: Cooking DB 등록 순서(queued_at, id) 기준 (CO-04 대기열) */
   List<CookingTicket> findByStatusOrderByQueuedAtAscIdAsc(TicketStatus status);
