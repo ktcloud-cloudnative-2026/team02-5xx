@@ -182,7 +182,8 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 - 모든 알림에 **런북 링크**를 단다. 대응 방법이 없는 알림은 만들지 않는다.
 - 심각도는 두 단계: **critical**(지금 사용자에게 영향, 바로 확인) / **warning**(처리가 쌓이는 중, 업무 시간 안에 확인).
 - DB를 세는 지표는 Pod마다 같은 값이므로 `max`로 본다(2-1).
-- 업무 지표가 비어 있을 때(No data)는 정상으로 둔다. 서비스가 죽어서 값이 없는 경우는 아래 2번(`up == 0`)이 잡는다.
+- **값이 없음(No data)과 수집 실패는 다르다.** `up == 0`(2번)은 Prometheus가 이미 찾은 대상의 수집 실패만 잡는다. Pod가 모두 사라지거나 배포가 잘못돼 대상 자체가 없어지면 `up` 시계열도 없어져 결과가 비고, 알림이 울리지 않는다. 대상 누락은 7번 알림과 Grafana 알림의 No data 처리로 따로 다룬다(설치 후 검증 — 미정). 참고: [Grafana: Handle missing data](https://grafana.com/docs/grafana/latest/alerting/guides/missing-data/)
+- 업무 지표 알림(5·6번)의 No data는 정상으로 둔다. 서비스가 없어서 값이 없는 경우는 2·7번이 잡는다.
 
 ### 4-2. 알림 목록
 
@@ -194,10 +195,11 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 | 4 | `increase(kube_pod_container_status_restarts_total{namespace="peakorder"}[15m]) >= 3` | — (15분 집계 구간이 대신함) | warning | 재시작 반복(메모리 초과·기동 실패) | 제안 | runbook `CrashLoopBackOff` (작성 예정) |
 | 5 | `max(cooking_outbox_pending) > 0` | 5분 | warning | CookingCompleted 발행이 막힘(정상이면 1초 안에 비워짐) | 제안 (#52 후속, 2절 지표 구현 후) | runbook `Outbox` (작성 예정) |
 | 6 | `max(order_cancel_follow_up_manual_required) > 0` | 1분 | warning | 사람이 확인해야 하는 취소 주문이 있음 | 제안 (#135 리뷰) | `services/order-service/README.md` 수동 확인 운영 방법 |
+| 7 | `kube_deployment_status_replicas_available{namespace="peakorder"} == 0` (또는 `absent_over_time(up{…}[5m])`) | 1분 | critical | 서비스 Pod가 하나도 없음(수집 대상 자체가 사라짐 — 2번이 못 잡는 경우) | 미정 — 설치 후 어떤 방식이 동작하는지 검증 | runbook 공통 확인 순서 |
 
 - p95 응답 시간은 기준값(SLO)이 정해지기 전까지 **대시보드에서만** 본다.
 - Order 발행 대기 이벤트 알림(#52 후속)은 Order 지표가 생기면 5번과 같은 방식으로 추가한다.
-- 6번 지표는 DB 장애 중 값을 읽지 못하면 비어 보일 수 있다. 이때는 2·3번이 잡는다.
+- 6번 지표는 DB 장애 중 값을 읽지 못하면 비어 보일 수 있다. 이때는 3번(5xx)이 잡는다.
 
 **RabbitMQ 큐별 지표 (1번)** — 2026-11-19 로컬 RabbitMQ 4.3.7에서 확인
 - `rabbitmq_prometheus` 플러그인(포트 15692)은 공식 이미지에서 켜져 있다.
@@ -215,7 +217,10 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 
 ### 5-1. 지표·로그
 - [ ] 의존성 `spring-boot-starter-actuator`, `micrometer-registry-prometheus` (1-2 표에서 "추가 필요"인 서비스)
-- [ ] `/actuator/prometheus` 노출 (1-2). **Gateway에는 열지 않는다** — 서비스 HTTPRoute는 `/api/v1/**`만 연결한다(`/actuator/**`·`/internal/**`는 클러스터 안에서만).
+- [ ] `/actuator/prometheus` 노출 (1-2). **Gateway에는 열지 않는다.**
+  - 외부 HTTPRoute는 **실제로 공개할 업무 경로만 하나씩** 연결한다. `/api/v1/**` 같은 넓은 범위로 열지 않는다.
+  - `/api/v1/admin/**`(STORE_ADMIN 인가 전, #99·#112), `/internal/**`, `/actuator/**`는 연결하지 않는다.
+  - 공개 경로 목록은 Gateway 담당이 관리한다.
 - [ ] 공통 라벨 `application`, HTTP histogram 설정 (1-2)
 - [ ] 배포 매니페스트에 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs` (3-1)
 - [ ] 업무 지표 (2절, 서비스별)
