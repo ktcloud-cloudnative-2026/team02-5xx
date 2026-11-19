@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: menu-service
+  namespace: peakorder
+  labels:
+    app: menu-service
+    team: team02
+spec:
+  type: ClusterIP
+  selector:
+    app: menu-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
