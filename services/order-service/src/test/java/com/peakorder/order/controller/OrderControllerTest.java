@@ -56,7 +56,8 @@ class OrderControllerTest {
         null,
         null,
         OffsetDateTime.parse("2026-11-13T10:05:00+09:00"),
-        List.of());
+        List.of(),
+        null);
   }
 
   @Test
@@ -140,7 +141,8 @@ class OrderControllerTest {
             null,
             null,
             null,
-            List.of());
+            List.of(),
+            null);
     when(orderService.payOrder(7L, 100L)).thenReturn(confirmed);
 
     mvc.perform(post("/api/v1/orders/100/pay").header("X-User-Id", 7))

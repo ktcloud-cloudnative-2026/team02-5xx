@@ -31,7 +31,7 @@ class HttpCookingClientTest {
   void setUp() {
     RestClient.Builder builder = RestClient.builder().baseUrl("http://cooking");
     server = MockRestServiceServer.bindTo(builder).build();
-    client = new HttpCookingClient(builder.build());
+    client = new HttpCookingClient(builder.build(), builder.build());
   }
 
   private void respondsWithError(HttpStatus status, String errorCode) {
@@ -121,5 +121,126 @@ class HttpCookingClientTest {
     server.reset();
     server.expect(requestTo(CANCEL)).andRespond(withException(new IOException("timeout")));
     assertThat(errorOf()).isEqualTo(ErrorCode.COOKING_SERVICE_UNAVAILABLE);
+  }
+
+  // ---- CI-02 조리 상태 조회 ----
+
+  private static final String STATUS = "http://cooking/internal/v1/cooking/orders/100";
+
+  private void statusReturns(String data) {
+    server
+        .expect(requestTo(STATUS))
+        .andExpect(method(HttpMethod.GET))
+        .andRespond(
+            withSuccess(
+                "{\"success\":true,\"data\":" + data + ",\"message\":\"OK\"}",
+                MediaType.APPLICATION_JSON));
+  }
+
+  private ErrorCode statusErrorOf() {
+    try {
+      client.getStatus(100L);
+    } catch (BusinessException e) {
+      return e.errorCode();
+    }
+    return null;
+  }
+
+  @Test
+  void new_contract_values_are_passed_through() {
+    statusReturns(
+        "{\"orderId\":100,\"status\":\"WAITING\",\"waitingAhead\":2,\"estimatedCookSec\":120,"
+            + "\"expectedWaitSec\":300,\"expectedReadySec\":420}");
+
+    var s = client.getStatus(100L).orElseThrow();
+
+    assertThat(s.status()).isEqualTo("WAITING");
+    assertThat(s.waitingAhead()).isEqualTo(2);
+    assertThat(s.estimatedCookSec()).isEqualTo(120);
+    assertThat(s.expectedWaitSec()).isEqualTo(300);
+    assertThat(s.expectedReadySec()).isEqualTo(420);
+  }
+
+  @Test
+  void old_contract_waiting_converts_wait_to_until_start() {
+    // 변경 전 Cooking: expectedWaitSec가 완료까지 시간이고 expectedReadySec가 없다.
+    statusReturns(
+        "{\"status\":\"WAITING\",\"waitingAhead\":2,\"estimatedCookSec\":120,\"expectedWaitSec\":420}");
+
+    var s = client.getStatus(100L).orElseThrow();
+
+    assertThat(s.expectedReadySec()).isEqualTo(420);
+    assertThat(s.expectedWaitSec()).isEqualTo(300);
+  }
+
+  @Test
+  void old_contract_cooking_has_no_wait_and_ready_is_the_remaining_time() {
+    statusReturns(
+        "{\"status\":\"COOKING\",\"waitingAhead\":0,\"estimatedCookSec\":120,\"expectedWaitSec\":45,"
+            + "\"startedAt\":\"2026-11-19T10:00:00+09:00\"}");
+
+    var s = client.getStatus(100L).orElseThrow();
+
+    assertThat(s.expectedWaitSec()).isZero();
+    assertThat(s.expectedReadySec()).isEqualTo(45);
+    assertThat(s.startedAt()).isNotNull();
+  }
+
+  @Test
+  void old_contract_done_and_canceled_are_zero() {
+    statusReturns(
+        "{\"status\":\"DONE\",\"waitingAhead\":0,\"estimatedCookSec\":120,\"expectedWaitSec\":0}");
+
+    var s = client.getStatus(100L).orElseThrow();
+
+    assertThat(s.expectedWaitSec()).isZero();
+    assertThat(s.expectedReadySec()).isZero();
+  }
+
+  @Test
+  void missing_ticket_is_empty_not_an_error() {
+    server
+        .expect(requestTo(STATUS))
+        .andRespond(
+            withStatus(HttpStatus.NOT_FOUND)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(
+                    "{\"success\":false,\"message\":\"x\",\"errorCode\":\"COOKING_TICKET_NOT_FOUND\"}"));
+
+    assertThat(client.getStatus(100L)).isEmpty();
+  }
+
+  @Test
+  void status_failures_are_split_into_unavailable_and_invalid() {
+    server.expect(requestTo(STATUS)).andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+    assertThat(statusErrorOf()).isEqualTo(ErrorCode.COOKING_SERVICE_UNAVAILABLE);
+
+    server.reset();
+    server.expect(requestTo(STATUS)).andRespond(withException(new IOException("timeout")));
+    assertThat(statusErrorOf()).isEqualTo(ErrorCode.COOKING_SERVICE_UNAVAILABLE);
+
+    server.reset();
+    server.expect(requestTo(STATUS)).andRespond(withStatus(HttpStatus.NOT_FOUND));
+    assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+
+    server.reset();
+    server.expect(requestTo(STATUS)).andRespond(withStatus(HttpStatus.BAD_REQUEST));
+    assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+  }
+
+  @Test
+  void contract_violating_bodies_are_invalid() {
+    statusReturns(
+        "{\"status\":\"SOMETHING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":0}");
+    assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+
+    server.reset();
+    statusReturns("{\"status\":\"WAITING\",\"estimatedCookSec\":1,\"expectedWaitSec\":0}");
+    assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+
+    server.reset();
+    statusReturns(
+        "{\"status\":\"WAITING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":-5}");
+    assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
   }
 }
