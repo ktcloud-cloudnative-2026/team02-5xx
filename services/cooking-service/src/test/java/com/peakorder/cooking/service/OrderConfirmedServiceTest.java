@@ -21,6 +21,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.LongStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -79,6 +80,7 @@ class OrderConfirmedServiceTest {
   void 여러_옵션은_조리시간을_모두_더하고_이름을_쉼표로_잇는다() {
     CookingTicketItem item =
         OrderConfirmedService.toItem(
+            1L,
             new Item(
                 1L, "버거", 1, 300, List.of(new Option(1L, "세트", 60), new Option(2L, "치즈 추가", 20))));
 
@@ -88,10 +90,65 @@ class OrderConfirmedServiceTest {
 
   @Test
   void 옵션이_null이어도_기본_조리시간으로_처리한다() {
-    CookingTicketItem item = OrderConfirmedService.toItem(new Item(1L, "라떼", 1, 90, null));
+    CookingTicketItem item = OrderConfirmedService.toItem(1L, new Item(1L, "라떼", 1, 90, null));
 
     assertThat(item.getCookTimeSec()).isEqualTo(90);
     assertThat(item.getOptionSummary()).isNull();
+  }
+
+  @Test
+  void 메뉴_이름이_100자를_넘으면_100자로_잘라_전표를_만든다() {
+    String longName = "가".repeat(150);
+    OrderConfirmedEvent event =
+        new OrderConfirmedEvent(
+            UUID.randomUUID(),
+            1L,
+            "261116-0001",
+            7L,
+            null,
+            List.of(new Item(1L, longName, 1, 90, null)));
+    when(processedEventRepository.insertIfAbsent(event.eventId())).thenReturn(1);
+    when(ticketRepository.findByOrderId(1L)).thenReturn(Optional.empty());
+
+    service.handle(event); // 예외 없이 저장 → DLQ로 가지 않음
+
+    ArgumentCaptor<CookingTicket> captor = ArgumentCaptor.forClass(CookingTicket.class);
+    verify(ticketRepository).save(captor.capture());
+    assertThat(captor.getValue().getItems().get(0).getMenuName()).isEqualTo("가".repeat(100));
+  }
+
+  @Test
+  void 옵션_요약이_255자를_넘으면_255자로_자른다() {
+    List<Option> options =
+        LongStream.rangeClosed(1, 40)
+            .mapToObj(id -> new Option(id, "치즈추가옵션", 0)) // 6자 × 40 + ", " 2자 × 39 = 318자
+            .toList();
+
+    CookingTicketItem item = OrderConfirmedService.toItem(1L, new Item(1L, "버거", 1, 300, options));
+
+    assertThat(item.getOptionSummary()).hasSize(255).startsWith("치즈추가옵션, 치즈추가옵션");
+  }
+
+  @Test
+  void 길이_이내면_그대로_둔다_경계값() {
+    String exactly100 = "a".repeat(100);
+    assertThat(OrderConfirmedService.truncate(exactly100, 100)).isSameAs(exactly100);
+    assertThat(OrderConfirmedService.truncate("a".repeat(101), 100)).isEqualTo(exactly100);
+    assertThat(OrderConfirmedService.truncate(null, 100)).isNull();
+    assertThat(OrderConfirmedService.truncate("", 100)).isEmpty();
+  }
+
+  @Test
+  void 이모지는_한_문자로_세고_중간에서_자르지_않는다() {
+    String emoji = "\uD83C\uDF54"; // 🍔 — UTF-16으로 2단위, 1문자
+    String hundredEmoji = emoji.repeat(100); // 100자, String.length()는 200
+
+    assertThat(OrderConfirmedService.truncate(hundredEmoji, 100)).isSameAs(hundredEmoji);
+
+    String cut = OrderConfirmedService.truncate("가" + emoji.repeat(100), 100); // 101자
+    assertThat(cut.codePointCount(0, cut.length())).isEqualTo(100);
+    assertThat(cut).isEqualTo("가" + emoji.repeat(99)); // 마지막 이모지가 반쪽으로 남지 않음
+    assertThat(Character.isHighSurrogate(cut.charAt(cut.length() - 1))).isFalse();
   }
 
   @Test
