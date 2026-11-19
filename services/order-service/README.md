@@ -63,6 +63,15 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 - 조리 시간은 Order DB에 저장하지 않는다. 결제를 시작할 때 Menu(MI-01)에서 다시 받아 `OrderConfirmed`(`cookTimeSec`, 옵션 `extraCookTimeSec`)에 싣는다. Menu에 연결할 수 없으면 결제 전에 503으로 끝나 돈이 나가지 않고, 그 사이 판매가 중지된 메뉴가 있으면 주문을 종료(`MENU_NOT_AVAILABLE`)하고 재고를 반환한다.
 - `OrderConfirmed`는 `outbox_events`에 `PENDING`으로 저장만 한다. 실제 발행은 후속 작업(RabbitMQ 발행기)에서 구현한다.
 
+## 관리자 영업·주문 접수 상태 (OR-06·OR-07)
+
+`GET`·`PATCH /api/v1/admin/store/operations` (권한 STORE_ADMIN). 단일 매장의 `store_operations`(id=1) 한 행을 조회·변경한다.
+
+- 요청·응답 필드: `isOpen`(영업 여부), `acceptingOrders`(주문 접수 여부), `updatedAt`(마지막 변경 시각, KST). `PATCH`는 **보낸 항목만** 바꾸며 둘 다 비었거나 값이 불린이 아니면 `400 INVALID_REQUEST`다. 값이 바뀐 경우에만 `updatedAt`을 갱신한다.
+- 주문 생성(OR-01)은 `isOpen`과 `acceptingOrders`가 **둘 다 true**일 때만 받고, 변경은 다음 요청부터 바로 반영된다(아니면 `409 STORE_NOT_ACCEPTING_ORDERS`). 이미 만들어진 주문의 결제(OR-02)·조회·취소는 이 설정과 무관하다. 초기값은 영업 종료·접수 안 함이다.
+- 동시에 두 관리자가 서로 다른 항목을 보내도 행 잠금으로 직렬화해 서로의 값을 덮어쓰지 않는다. 인증이 없어 "누가" 바꿨는지는 남기지 못하고 변경 전후 값만 로그로 남긴다.
+- **기본 꺼짐**: 관리자 권한 검사 방식은 Auth·Gateway·JWT 공통 계약(#112)에서 정해진다. 그 전에는 누구나 영업을 열고 닫을 수 있으므로 `order.admin.enabled`(환경 변수 `ORDER_ADMIN_ENABLED`, 기본 `false`)가 켜진 로컬·dev에서만 이 API를 등록한다. 꺼져 있으면 경로가 존재하지 않는 것처럼 `404`다. 운영(prod)에서는 켜지 않는다. Cooking 관리자 API(`COOKING_ADMIN_ENABLED`)와 같은 방식이다.
+
 ## 주문 취소 (OR-05)
 
 `POST /api/v1/orders/{orderId}/cancel` (본인 주문만, 다른 사용자의 주문은 404, 부분 취소 없음). 취소 가능 여부는 Cooking이 최종 판단한다(CI-03).
