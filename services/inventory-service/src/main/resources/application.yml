@@ -15,6 +15,10 @@ spring:
 inventory:
   stock-hold-ttl: ${STOCK_HOLD_TTL:5m} # 재고 임시 확보 유효시간 (기본 5분, 테스트 10s)
 
+clients:
+  menu:
+    base-url: ${MENU_SERVICE_URL:http://localhost:8081} # Menu 서비스 주소 (MI-02 호출)
+
 management:
   endpoints:
     web:

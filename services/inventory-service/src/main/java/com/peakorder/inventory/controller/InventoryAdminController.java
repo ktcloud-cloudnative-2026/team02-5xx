@@ -1,6 +1,7 @@
 package com.peakorder.inventory.controller;
 
 import com.peakorder.inventory.dto.ApiResponse;
+import com.peakorder.inventory.dto.MenuLinkRequest;
 import com.peakorder.inventory.dto.StockItemCreateRequest;
 import com.peakorder.inventory.dto.StockItemResponse;
 import com.peakorder.inventory.dto.StockRestockRequest;
@@ -9,6 +10,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -35,5 +37,11 @@ public class InventoryAdminController {
   public ApiResponse<StockItemResponse> restock(
       @PathVariable Long stockItemId, @Valid @RequestBody StockRestockRequest request) {
     return ApiResponse.ok(adminService.restock(stockItemId, request));
+  }
+
+  @PutMapping("/{stockItemId}/menu-link")
+  public ApiResponse<StockItemResponse> linkMenu(
+      @PathVariable Long stockItemId, @Valid @RequestBody MenuLinkRequest request) {
+    return ApiResponse.ok(adminService.linkMenu(stockItemId, request));
   }
 }
