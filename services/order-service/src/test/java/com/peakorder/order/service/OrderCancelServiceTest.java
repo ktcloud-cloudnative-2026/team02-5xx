@@ -31,6 +31,8 @@ import org.mockito.InOrder;
 
 class OrderCancelServiceTest {
 
+  private static final CancelFollowUpPolicy POLICY =
+      new CancelFollowUpPolicy(3, java.time.Duration.ofSeconds(30), java.time.Duration.ofHours(1));
   private static final UUID LOCK = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
   private final OffsetDateTime now = OffsetDateTime.parse("2026-11-18T10:00:00+09:00");
 
@@ -46,7 +48,8 @@ class OrderCancelServiceTest {
     cookingClient = mock(CookingClient.class);
     inventoryClient = mock(InventoryClient.class);
     paymentClient = mock(PaymentClient.class);
-    service = new OrderCancelService(txService, cookingClient, inventoryClient, paymentClient);
+    service =
+        new OrderCancelService(txService, cookingClient, inventoryClient, paymentClient, POLICY);
     when(txService.tryAcquireCancelLock(100L)).thenReturn(Optional.of(LOCK));
     when(txService.renewPayLock(any(), any())).thenReturn(true);
     when(txService.markCanceled(any(), any(), any())).thenReturn(true);
@@ -552,6 +555,99 @@ class OrderCancelServiceTest {
     assertThat(resolved).isZero();
     verify(cookingClient, never()).cancel(any());
     verify(txService, never()).findCancelTargetById(101L);
+  }
+
+  // ---- 재시도 상한·수동 확인 (이슈 #125) ----
+
+  private CancelTarget canceledWithBothStepsLeft() {
+    return target(OrderStatus.CANCELED); // 복원·환불 둘 다 남음
+  }
+
+  private void cancelAgainOnCanceledOrder(CancelTarget canceled) {
+    reads(canceled, canceled);
+    when(txService.findCancelTargetById(100L)).thenReturn(canceled);
+    service.cancelOrder(7L, 100L);
+  }
+
+  @Test
+  void a_transient_failure_records_the_failure_with_the_policy_instead_of_marking_manual() {
+    doThrow(new BusinessException(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE))
+        .when(paymentClient)
+        .refund(9L);
+
+    cancelAgainOnCanceledOrder(canceledWithBothStepsLeft());
+
+    verify(txService).recordCancelFollowUpFailure(100L, LOCK, POLICY);
+    verify(txService, never()).markCancelFollowUpManual(any(), any(), any());
+  }
+
+  @Test
+  void when_every_remaining_step_fails_for_good_the_order_is_marked_manual_right_away() {
+    when(inventoryClient.restore(100L)).thenReturn(RestoreResult.NOT_APPLICABLE);
+    doThrow(new BusinessException(ErrorCode.PAYMENT_NOT_REFUNDABLE)).when(paymentClient).refund(9L);
+
+    cancelAgainOnCanceledOrder(canceledWithBothStepsLeft());
+
+    verify(txService)
+        .markCancelFollowUpManual(100L, LOCK, "RESTORE_NOT_APPLICABLE,REFUND_NOT_REFUNDABLE");
+    verify(txService, never()).recordCancelFollowUpFailure(any(), any(), any());
+  }
+
+  @Test
+  void a_permanent_failure_next_to_a_finished_step_is_marked_manual_with_its_reason() {
+    doThrow(new BusinessException(ErrorCode.UPSTREAM_INVALID_RESPONSE))
+        .when(paymentClient)
+        .refund(9L);
+
+    cancelAgainOnCanceledOrder(canceledWithBothStepsLeft());
+
+    verify(txService).markStockRestored(100L, LOCK);
+    verify(txService).markCancelFollowUpManual(100L, LOCK, "REFUND_INVALID_RESPONSE");
+  }
+
+  @Test
+  void a_permanent_failure_next_to_a_retryable_one_keeps_retrying_instead_of_marking_manual() {
+    // 복원은 영구 실패, 환불은 장애: 돈이 걸린 환불은 계속 자동 재시도해야 한다
+    when(inventoryClient.restore(100L)).thenReturn(RestoreResult.NOT_APPLICABLE);
+    doThrow(new BusinessException(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE))
+        .when(paymentClient)
+        .refund(9L);
+
+    cancelAgainOnCanceledOrder(canceledWithBothStepsLeft());
+
+    verify(txService).recordCancelFollowUpFailure(100L, LOCK, POLICY);
+    verify(txService, never()).markCancelFollowUpManual(any(), any(), any());
+  }
+
+  @Test
+  void nothing_is_recorded_when_everything_succeeds_or_the_lock_was_lost() {
+    cancelAgainOnCanceledOrder(canceledWithBothStepsLeft());
+    verify(txService, never()).recordCancelFollowUpFailure(any(), any(), any());
+    verify(txService, never()).markCancelFollowUpManual(any(), any(), any());
+
+    org.mockito.Mockito.clearInvocations(txService);
+    when(txService.tryAcquireCancelLock(100L)).thenReturn(Optional.of(LOCK));
+    when(txService.renewPayLock(any(), any())).thenReturn(true, false); // 환불 직전에 독점을 잃음
+    doThrow(new BusinessException(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE))
+        .when(paymentClient)
+        .refund(9L);
+    cancelAgainOnCanceledOrder(canceledWithBothStepsLeft());
+    verify(txService, never()).recordCancelFollowUpFailure(any(), any(), any());
+    verify(txService, never()).markCancelFollowUpManual(any(), any(), any());
+  }
+
+  @Test
+  void a_failure_to_record_does_not_break_the_cancel_response() {
+    doThrow(new BusinessException(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE))
+        .when(paymentClient)
+        .refund(9L);
+    doThrow(new IllegalStateException("db"))
+        .when(txService)
+        .recordCancelFollowUpFailure(any(), any(), any());
+
+    cancelAgainOnCanceledOrder(canceledWithBothStepsLeft()); // 예외 없이 끝나야 한다
+
+    verify(txService).releasePayLock(100L, LOCK);
   }
 
   // ---- 스케줄러가 부르는 재시도 ----
