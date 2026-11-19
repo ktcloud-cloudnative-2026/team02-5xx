@@ -112,7 +112,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 | Cooking | `cooking_order_confirmed_received_total{result="created"\|"duplicate"}` | Counter | OrderConfirmed(EV-01)가 끊기지 않고 들어오나. `duplicate` 증가는 재발행 신호 | 제안 |
 | Cooking | `cooking_outbox_pending` | Gauge | CookingCompleted(EV-02) 발행이 막혔나 (정상이면 1초 안에 0, 계속 남아 있으면 이상 — 4-2 5번) | 제안 (#52 후속) |
 | Order | `order_cancel_follow_up_manual_required` | Gauge | 사람이 확인해야 하는 취소 주문 수 | 구현 (#135) |
-| Order | (담당자 기입) — 예: 발행 대기 이벤트 수 | | | #52 후속 |
+| Order | `order_outbox_pending` | Gauge | OrderConfirmed(EV-01) 발행이 막혔나 (정상이면 1초 안에 0 — 4-2 5번) | 제안 (#52 후속, 김민규 님 제안) |
 | RabbitMQ | `rabbitmq_detailed_queue_messages{queue=~".+\\.dlq"}` | Gauge (RabbitMQ) | 처리 못 한 이벤트가 있나 | 합의됨 (#52) |
 | Auth · Menu · Inventory · Payment | (담당자 기입) | | | |
 
@@ -193,12 +193,11 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 | 2 | `up{namespace="peakorder"} == 0` | 1분 | critical | 서비스가 죽었거나 지표를 가져오지 못함 | 제안 — `namespace` 라벨은 수집 설정 후 확인 | runbook 공통 확인 순서 |
 | 3 | 5xx 비율(1-1) > 5% | 5분 | critical | 서비스가 요청을 처리하지 못함 | 제안 — 기준값은 성공 기준(plan.md 5절)이 정해지면 조정 | runbook 공통 확인 순서 |
 | 4 | `increase(kube_pod_container_status_restarts_total{namespace="peakorder"}[15m]) >= 3` | — (15분 집계 구간이 대신함) | warning | 재시작 반복(메모리 초과·기동 실패) | 제안 | runbook `CrashLoopBackOff` (작성 예정) |
-| 5 | `max(cooking_outbox_pending) > 0` | 5분 | warning | CookingCompleted 발행이 막힘(정상이면 1초 안에 비워짐) | 제안 (#52 후속, 2절 지표 구현 후) | runbook `Outbox` (작성 예정) |
+| 5 | `max(cooking_outbox_pending) > 0`, `max(order_outbox_pending) > 0` (서비스별 규칙) | 5분 | warning | 이벤트 발행이 막힘(정상이면 1초 안에 비워짐) | 제안 (#52 후속, 각 지표 구현 후) | runbook `Outbox` (작성 예정) |
 | 6 | `max(order_cancel_follow_up_manual_required) > 0` | 1분 | warning | 사람이 확인해야 하는 취소 주문이 있음 | 제안 (#135 리뷰) | `services/order-service/README.md` 수동 확인 운영 방법 |
 | 7 | `kube_deployment_status_replicas_available{namespace="peakorder"} == 0` (또는 `absent_over_time(up{…}[5m])`) | 1분 | critical | 서비스 Pod가 하나도 없음(수집 대상 자체가 사라짐 — 2번이 못 잡는 경우) | 미정 — 설치 후 어떤 방식이 동작하는지 검증 | runbook 공통 확인 순서 |
 
 - p95 응답 시간은 기준값(SLO)이 정해지기 전까지 **대시보드에서만** 본다.
-- Order 발행 대기 이벤트 알림(#52 후속)은 Order 지표가 생기면 5번과 같은 방식으로 추가한다.
 - 6번 지표는 DB 장애 중 값을 읽지 못하면 비어 보일 수 있다. 이때는 3번(5xx)이 잡는다.
 
 **RabbitMQ 큐별 지표 (1번)** — 2026-11-19 로컬 RabbitMQ 4.3.7에서 확인
@@ -241,4 +240,4 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 
 ### 5-3. 요청 ID가 없는 처리
 - RabbitMQ 리스너·스케줄러는 HTTP 요청이 아니다. 로그에 `orderId`·`eventId`를 남겨 이어 본다(3-5).
-- **이벤트에 요청 ID 싣기는 2단계(후속)** 로 미룬다. Outbox는 발행 스레드가 따로라 저장 시점에 요청 ID를 함께 저장해야 하고, 이는 DB(마이그레이션) 또는 이벤트 계약 변경이라 Order·Cooking 합의가 필요하다(#138 결정 요청 4).
+- **이벤트에 요청 ID 싣기는 2단계(후속)** 로 미룬다 — **합의됨** (Order 김민규 님 동의, #146 리뷰). Outbox는 발행 스레드가 따로라 저장 시점에 요청 ID를 함께 저장해야 하고, 이는 DB(마이그레이션) 또는 이벤트 계약 변경이라 Order·Cooking 합의가 필요하다(#138 결정 요청 4).
