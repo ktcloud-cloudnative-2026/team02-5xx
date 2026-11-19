@@ -44,6 +44,24 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 - 매장은 기본 영업 종료·주문 미접수 상태이며, 접수 상태를 바꾸는 관리자 API(OR-07)는 아직 없다. 로컬 확인 시 `store_operations`를 직접 갱신한다.
 - Menu·Inventory 내부 API의 요청·응답 필드는 초안이다(`client` 패키지 참고). 담당자와 합의 후 확정한다.
 
+### 주문 상세의 조리 상태 (OR-04, CI-02 연동)
+
+결제된 주문(`PAID`·`WAITING`·`COOKING`·`COMPLETED`)의 상세 응답에는 `cooking` 객체가 붙는다. 결제 전·실패·취소 주문은 `cooking`이 없다. 화면 구성·문구·폴링 주기는 프론트엔드가 정한다.
+
+| 필드 | 설명 |
+|---|---|
+| `lookup` | `OK`(조리 정보 있음) / `PENDING`(조리 전표 등록 대기, Cooking 404) / `UNAVAILABLE`(Cooking 장애·시간 초과·계약과 다른 응답) |
+| `status` | `WAITING` / `COOKING` / `DONE` / `CANCELED` |
+| `waitingAhead`, `estimatedCookSec` | 내 앞 대기 수, 이 주문의 예상 조리 시간(초) |
+| `expectedWaitSec` | 지금부터 조리 시작까지(초). 대기 중이 아니면 0 |
+| `expectedReadySec` | 지금부터 조리 완료까지(초). 조리 중은 남은 시간, 완료·취소는 0 |
+| `startedAt` | 조리 시작 시각(KST) |
+
+- `lookup`이 `OK`가 아니면 조리 정보 필드는 모두 생략한다.
+- Cooking 조회가 실패해도 상세 조회는 성공하고 주문 상태는 바뀌지 않는다(`UNAVAILABLE`). Cooking 호출은 연결 1초·응답 2초로 제한하고, 주문을 읽는 DB 트랜잭션은 호출 전에 닫는다.
+- 최상위 `expectedWaitSec`(주문 시점 예상)와 주문 목록(OR-03)은 바뀌지 않는다.
+- Cooking CI-02가 `expectedWaitSec`=조리 시작까지, `expectedReadySec`=조리 완료까지로 바뀌기 전에는 응답에 `expectedReadySec`가 없다. 이 경우 `HttpCookingClient`가 기존 값(완료까지)을 변환해 같은 의미로 내려준다. Cooking 변경이 병합되면 변환 분기(`HttpCookingClient.toStatus`의 TODO)를 삭제한다.
+
 ### 결제(OR-02) 동작 규칙
 
 - **주문 생성 단계에서 거르는 것**: 옵션 이름을 `, `로 이어붙인 길이가 255자를 넘는 항목이 있으면 `400 INVALID_REQUEST`로 거절한다. Cooking이 그 값을 255자 컬럼(`option_summary`)에 저장하므로, 결제 뒤에 Cooking 저장이 실패해 돈만 받고 조리가 안 되는 주문을 막기 위해서다.
