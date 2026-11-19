@@ -14,6 +14,7 @@ import com.peakorder.order.entity.OrderStatus;
 import com.peakorder.order.exception.BusinessException;
 import com.peakorder.order.exception.ErrorCode;
 import com.peakorder.order.exception.GlobalExceptionHandler;
+import com.peakorder.order.service.OrderCancelService;
 import com.peakorder.order.service.OrderService;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -27,15 +28,17 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 class OrderControllerTest {
 
   private OrderService orderService;
+  private OrderCancelService cancelService;
   private MockMvc mvc;
 
   @BeforeEach
   void setUp() {
     orderService = mock(OrderService.class);
+    cancelService = mock(OrderCancelService.class);
     LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
     validator.afterPropertiesSet();
     mvc =
-        MockMvcBuilders.standaloneSetup(new OrderController(orderService))
+        MockMvcBuilders.standaloneSetup(new OrderController(orderService, cancelService))
             .setControllerAdvice(new GlobalExceptionHandler())
             .setValidator(validator)
             .build();
@@ -161,5 +164,32 @@ class OrderControllerTest {
     mvc.perform(post("/api/v1/orders/101/pay").header("X-User-Id", 7))
         .andExpect(status().isServiceUnavailable())
         .andExpect(jsonPath("$.errorCode").value("PAYMENT_SERVICE_UNAVAILABLE"));
+  }
+
+  @Test
+  void cancel_returns_the_canceled_order_in_the_common_response_format() throws Exception {
+    when(cancelService.cancelOrder(7L, 100L)).thenReturn(detail());
+
+    mvc.perform(post("/api/v1/orders/100/cancel").header("X-User-Id", 7))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.success").value(true))
+        .andExpect(jsonPath("$.message").value("주문이 취소되었습니다."))
+        .andExpect(jsonPath("$.data.orderId").value(100));
+  }
+
+  @Test
+  void cancel_rejection_is_reported_with_its_error_code_and_status() throws Exception {
+    when(cancelService.cancelOrder(7L, 100L))
+        .thenThrow(new BusinessException(ErrorCode.COOKING_ALREADY_STARTED));
+
+    mvc.perform(post("/api/v1/orders/100/cancel").header("X-User-Id", 7))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.success").value(false))
+        .andExpect(jsonPath("$.errorCode").value("COOKING_ALREADY_STARTED"));
+  }
+
+  @Test
+  void cancel_requires_the_user_header() throws Exception {
+    mvc.perform(post("/api/v1/orders/100/cancel")).andExpect(status().isBadRequest());
   }
 }

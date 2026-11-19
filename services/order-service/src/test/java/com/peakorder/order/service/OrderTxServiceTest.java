@@ -135,10 +135,10 @@ class OrderTxServiceTest {
   @Test
   void pay_lock_is_acquired_only_when_exactly_one_row_was_updated_and_the_token_is_returned() {
     when(orderRepository.acquirePayLock(
-            eq(100L), eq(now), eq(now.plus(OrderTxService.PAY_LOCK_TTL)), any()))
+            eq(100L), eq(now), eq(now.plus(OrderTxService.PAY_LOCK_TTL)), any(), any()))
         .thenReturn(1);
     when(orderRepository.acquirePayLock(
-            eq(101L), eq(now), eq(now.plus(OrderTxService.PAY_LOCK_TTL)), any()))
+            eq(101L), eq(now), eq(now.plus(OrderTxService.PAY_LOCK_TTL)), any(), any()))
         .thenReturn(0);
 
     assertThat(service.tryAcquirePayLock(100L)).isPresent();
@@ -147,7 +147,7 @@ class OrderTxServiceTest {
 
   @Test
   void every_acquisition_uses_a_new_token_so_the_previous_owner_is_told_apart() {
-    when(orderRepository.acquirePayLock(any(), any(), any(), any())).thenReturn(1);
+    when(orderRepository.acquirePayLock(any(), any(), any(), any(), any())).thenReturn(1);
 
     assertThat(service.tryAcquirePayLock(100L).orElseThrow())
         .isNotEqualTo(service.tryAcquirePayLock(100L).orElseThrow());
@@ -165,6 +165,134 @@ class OrderTxServiceTest {
 
     service.releasePayLock(100L, TOKEN);
     verify(orderRepository).releasePayLock(100L, TOKEN);
+  }
+
+  // ---- 주문 취소(OR-05) ----
+
+  @Test
+  void cancel_lock_is_allowed_for_confirmed_and_canceled_orders_but_pay_lock_only_for_created() {
+    when(orderRepository.acquirePayLock(any(), any(), any(), any(), any())).thenReturn(1);
+
+    service.tryAcquirePayLock(100L);
+    service.tryAcquireCancelLock(100L);
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<java.util.Collection<OrderStatus>> statuses =
+        ArgumentCaptor.forClass(java.util.Collection.class);
+    verify(orderRepository, org.mockito.Mockito.times(2))
+        .acquirePayLock(any(), any(), any(), any(), statuses.capture());
+    assertThat(statuses.getAllValues().get(0)).containsExactly(OrderStatus.CREATED);
+    assertThat(statuses.getAllValues().get(1))
+        .containsExactlyInAnyOrder(
+            OrderStatus.CREATED,
+            OrderStatus.PAID,
+            OrderStatus.WAITING,
+            OrderStatus.COOKING,
+            OrderStatus.CANCELED);
+  }
+
+  @Test
+  void only_the_lock_owner_can_cancel_and_record_follow_up_steps() {
+    Order paid = lockedBy(OTHER);
+    paid.markConfirmed("261113-0001", 9L, now);
+    when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(paid));
+
+    assertThat(service.markCanceled(100L, TOKEN, "CUSTOMER_CANCEL")).isFalse();
+    assertThat(paid.getStatus()).isEqualTo(OrderStatus.PAID);
+
+    Order mine = lockedBy(TOKEN);
+    mine.markConfirmed("261113-0002", 10L, now);
+    when(orderRepository.findWithLockById(101L)).thenReturn(Optional.of(mine));
+    assertThat(service.markCanceled(101L, TOKEN, "CUSTOMER_CANCEL")).isTrue();
+    assertThat(mine.getStatus()).isEqualTo(OrderStatus.CANCELED);
+    assertThat(mine.getCancelReason()).isEqualTo("CUSTOMER_CANCEL");
+    assertThat(mine.getCanceledAt()).isEqualTo(now);
+
+    assertThat(service.markStockRestored(101L, OTHER)).isFalse();
+    assertThat(service.markRefunded(101L, OTHER)).isFalse();
+    assertThat(mine.getStockRestoredAt()).isNull();
+    assertThat(service.markStockRestored(101L, TOKEN)).isTrue();
+    assertThat(service.markRefunded(101L, TOKEN)).isTrue();
+    assertThat(mine.getStockRestoredAt()).isEqualTo(now);
+    assertThat(mine.getRefundedAt()).isEqualTo(now);
+  }
+
+  @Test
+  void completed_and_failed_orders_cannot_be_canceled_and_a_second_cancel_is_a_no_op() {
+    Order completed = lockedBy(TOKEN);
+    completed.markConfirmed("261113-0003", 9L, now);
+    completed.markCompleted(now, now);
+    when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(completed));
+    assertThat(service.markCanceled(100L, TOKEN, "CUSTOMER_CANCEL")).isFalse();
+    assertThat(completed.getStatus()).isEqualTo(OrderStatus.COMPLETED);
+
+    Order failed = lockedBy(TOKEN);
+    failed.markFailed("PAYMENT_FAILED", now);
+    when(orderRepository.findWithLockById(101L)).thenReturn(Optional.of(failed));
+    assertThat(service.markCanceled(101L, TOKEN, "CUSTOMER_CANCEL")).isFalse();
+
+    Order canceled = lockedBy(TOKEN);
+    canceled.markCanceled("CUSTOMER_CANCEL", now);
+    when(orderRepository.findWithLockById(102L)).thenReturn(Optional.of(canceled));
+    assertThat(service.markCanceled(102L, TOKEN, "OTHER_REASON")).isTrue();
+    assertThat(canceled.getCancelReason()).isEqualTo("CUSTOMER_CANCEL");
+    assertThat(canceled.getHistories()).hasSize(2);
+  }
+
+  @Test
+  void cancel_request_is_recorded_only_for_the_lock_owner_of_a_cancelable_confirmed_order() {
+    Order paid = lockedBy(TOKEN);
+    paid.markConfirmed("261113-0001", 9L, now);
+    when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(paid));
+    assertThat(service.markCancelRequested(100L, OTHER)).isFalse();
+    assertThat(paid.getCancelRequestedAt()).isNull();
+    assertThat(service.markCancelRequested(100L, TOKEN)).isTrue();
+    assertThat(paid.getCancelRequestedAt()).isEqualTo(now);
+
+    service.clearCancelRequested(100L, OTHER);
+    assertThat(paid.getCancelRequestedAt()).isEqualTo(now);
+    service.clearCancelRequested(100L, TOKEN);
+    assertThat(paid.getCancelRequestedAt()).isNull();
+
+    Order created = lockedBy(TOKEN);
+    when(orderRepository.findWithLockById(101L)).thenReturn(Optional.of(created));
+    assertThat(service.markCancelRequested(101L, TOKEN)).isFalse();
+
+    Order completed = lockedBy(TOKEN);
+    completed.markConfirmed("261113-0002", 9L, now);
+    completed.markCompleted(now, now);
+    when(orderRepository.findWithLockById(102L)).thenReturn(Optional.of(completed));
+    assertThat(service.markCancelRequested(102L, TOKEN)).isFalse();
+  }
+
+  @Test
+  void cancel_target_tells_which_follow_up_steps_remain() {
+    Order order = lockedBy(TOKEN);
+    order.markConfirmed("261113-0004", 9L, now);
+    order.markCanceled("CUSTOMER_CANCEL", now);
+    when(orderRepository.findByIdAndUserId(100L, 7L)).thenReturn(Optional.of(order));
+
+    var target = service.findCancelTarget(7L, 100L);
+    assertThat(target.stockRestoreRemaining()).isTrue();
+    assertThat(target.refundRemaining()).isTrue();
+
+    order.markStockRestored(now);
+    order.markRefunded(now);
+    var done = service.findCancelTarget(7L, 100L);
+    assertThat(done.stockRestoreRemaining()).isFalse();
+    assertThat(done.refundRemaining()).isFalse();
+  }
+
+  @Test
+  void orders_canceled_before_confirmation_have_no_follow_up_steps() {
+    Order order = lockedBy(TOKEN);
+    order.markCanceled("CUSTOMER_CANCEL", now);
+    when(orderRepository.findByIdAndUserId(100L, 7L)).thenReturn(Optional.of(order));
+
+    var target = service.findCancelTarget(7L, 100L);
+
+    assertThat(target.stockRestoreRemaining()).isFalse();
+    assertThat(target.refundRemaining()).isFalse();
   }
 
   @Test

@@ -4,6 +4,7 @@ import com.peakorder.order.dto.ApiResponse;
 import com.peakorder.order.dto.CreateOrderRequest;
 import com.peakorder.order.dto.OrderDetailResponse;
 import com.peakorder.order.dto.OrderListResponse;
+import com.peakorder.order.service.OrderCancelService;
 import com.peakorder.order.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -33,9 +34,11 @@ public class OrderController {
   private static final String USER_ID_HEADER = "X-User-Id";
 
   private final OrderService orderService;
+  private final OrderCancelService orderCancelService;
 
-  public OrderController(OrderService orderService) {
+  public OrderController(OrderService orderService, OrderCancelService orderCancelService) {
     this.orderService = orderService;
+    this.orderCancelService = orderCancelService;
   }
 
   @PostMapping
@@ -51,6 +54,13 @@ public class OrderController {
   public ApiResponse<OrderDetailResponse> pay(
       @RequestHeader(USER_ID_HEADER) Long userId, @PathVariable Long orderId) {
     return ApiResponse.ok(orderService.payOrder(userId, orderId), "결제가 완료되었습니다.");
+  }
+
+  @PostMapping("/{orderId}/cancel")
+  @Operation(summary = "주문 취소 (OR-05)")
+  public ApiResponse<OrderDetailResponse> cancel(
+      @RequestHeader(USER_ID_HEADER) Long userId, @PathVariable Long orderId) {
+    return ApiResponse.ok(orderCancelService.cancelOrder(userId, orderId), "주문이 취소되었습니다.");
   }
 
   @GetMapping
