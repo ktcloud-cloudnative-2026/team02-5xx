@@ -40,9 +40,9 @@ class MenuServiceApplicationTests {
 
   @LocalServerPort private int port;
   @MockitoBean private MenuRepository menus;
+  @MockitoBean private CategoryRepository categories;
   @MockitoBean private MenuOptionRepository options;
   @MockitoBean private AdminMenuQueryRepository adminMenus;
-  @MockitoBean private CategoryRepository categories;
 
   @Test
   void administratorRoutesDenyAccessBeforeAnyDataQuery() throws Exception {

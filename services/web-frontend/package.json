@@ -9,6 +9,8 @@
   },
   "packageManager": "npm@11.19.1",
   "scripts": {
+    "test": "node --test tests/*.test.js",
+    "test:ui": "node tests/ui-fixture.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",

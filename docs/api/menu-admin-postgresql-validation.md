@@ -164,3 +164,60 @@ main 대상 전체 diff는 관리자 Menu 소스·테스트·README 및 API/검�
 #112는 검토용 제안 상태이며 기본 차단은 유지됩니다. 실제 STORE_ADMIN 200·비회원 401·CUSTOMER 403은 미검증입니다.
 #105도 조회 시 미병합이므로 고객 API 통합 회귀는 미완료입니다. 이 상태를 명시한 Draft PR만 제출하며 Issue 종료·리뷰 요청·승인·병합은 하지 않습니다.
 이번 실행의 해시 기준·스크립트·로그·XML 사본은 TEMP의 `peak108-draft-6f46e449e08741d88fd45c6b971889fc`에 보존했습니다.
+
+## PR #117 최신 main 통합 검증 (2026-11-19)
+
+기존 HEAD `237b2eb95803b6bbbd49926fd77761d26ac8f9f1`에
+`origin/main`의 `6167671c583e6b6f90f8590883187433c07810c2`를
+`git merge --no-commit --no-ff origin/main`으로 반영했습니다.
+#105 고객 조회 API는 main을 통해 반영했으며 #119·#123·#127 코드는 가져오지 않았습니다.
+
+충돌은 `MenuServiceApplicationTests.java` 한 파일입니다. 관리자 Repository import를
+유지하고 고객/관리자 공통 CategoryRepository MockitoBean은 한 번만 선언했습니다.
+기존 관리자·내부 API 테스트와 main의 고객 조회 구현은 모두 보존했습니다.
+고객용 MenuRepository의 `findByStatusIn`과 관리자 전용 읽기 Repository는 별개로 공존합니다.
+
+첫 실행에서 고객 HTTP 테스트 35건이 컨텍스트 생성 실패로 실패했습니다.
+AdminMenuQueryService에 필요한 AdminMenuQueryRepository가 고객 테스트의 DataSource 제외
+환경에 없었던 것이 원인입니다. CustomerMenuHttpTests에 import와 MockitoBean 선언
+각 한 줄을 추가한 뒤 전체 검증을 재실행했습니다. #128 리허설 전체를 병합하지 않았습니다.
+main 대비 고유 범위는 기존 19개 파일에 이 고객 테스트 보완 1개를 더한 **20개 파일**입니다.
+
+기존 PostgreSQL 16.16 바이너리를 재사용하고 새 TEMP 데이터 디렉터리·전용 역할
+`menu117_owner`·DB `menu_117_main_integration`을 만들었습니다.
+최종 실행은 `127.0.0.1:61683`에만 바인딩했으며 기존 DB·역할·데이터 디렉터리나 공유 DB는
+변경하지 않았습니다. 임시 비밀번호는 실행 중에만 사용하고 파일·환경 변수는 종료 시 제거했습니다.
+
+Java 21.0.7에서 다음을 실행했습니다.
+
+```powershell
+.\gradlew.bat --no-daemon spotlessCheck test build --rerun-tasks --console=plain
+git diff --check
+```
+
+최종 XML의 실제 합산 결과입니다.
+
+| 검사 | 실행·통과 | 실패·오류·생략 |
+| --- | --- | --- |
+| CustomerMenuHttpTests / CustomerMenuServiceTests | 35 / 21 | 0 |
+| AdminMenuHttpTests / AdminMenuQueryServiceTests | 45 / 34 | 0 |
+| AdminMenuDtoTests / AdminMenuAuthorizationBoundaryTests | 2 / 2 | 0 |
+| MenuServiceApplicationTests (내부 HTTP·OpenAPI·기본 차단) | 54 | 0 |
+| MenuExistenceServiceTests / PurchaseValidationServiceTests | 9 / 23 | 0 |
+| MenuDatabaseTests / AdminMenuQueryDatabaseTests | 36 / 13 | 0 |
+| 전체 | **274** | **0** |
+
+실제 PostgreSQL 검사는 **49건**입니다. 고객 공개 상태 조회·기존 제약/관계와 관리자 세 상태
+조회·검색·정렬·상세 옵션을 함께 확인했습니다. Flyway V1 성공과 검증 후 categories,
+menus, menu_options 각각 0행을 확인하고 전용 서버를 종료했습니다.
+제품 Entity·Flyway·의존성·관리자 조회 로직은 이번 충돌 해결에서 변경하지 않았습니다.
+
+관리자 기본 403과 위조 역할/사용자 헤더·검증되지 않은 JWT·Servlet 신원 거부를 확인했습니다.
+#112의 Auth AU 계약 정리와 별개로 Gateway 검증·신뢰 경계가 미확정이므로 실제
+STORE_ADMIN 200·비회원 401·CUSTOMER 403 연결 완료를 의미하지 않습니다.
+제품의 AdminMenuAuthorization 기본 차단은 그대로 유지합니다.
+
+최종 로그·DB 확인·XML 사본은 TEMP의
+`peak117-main-final-349c7830c7c042dd8a7cc050d4faa15b`에 보관했습니다.
+최초 실패 XML은 `peak117-main-validation-f0e8cd65ae6b4aaa846622b9f84b723d/failed-test-results`에
+별도로 보존했습니다. 이번 단계에서는 병합 커밋·Push·PR 상태 변경을 수행하지 않습니다.

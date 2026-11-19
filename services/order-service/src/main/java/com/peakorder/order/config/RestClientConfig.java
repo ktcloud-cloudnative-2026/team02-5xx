@@ -41,6 +41,18 @@ public class RestClientConfig {
     return build(baseUrl, HEALTH_CONNECT_TIMEOUT, HEALTH_TIMEOUT);
   }
 
+  /** 주문 상세의 조리 상태 조회(CI-02)용. 고객 화면 응답이 느려지지 않도록 헬스와 같은 짧은 타임아웃(연결 1초·응답 2초)을 쓴다. */
+  @Bean
+  public RestClient cookingQueryRestClient(@Value("${clients.cooking.base-url}") String baseUrl) {
+    return build(baseUrl, HEALTH_CONNECT_TIMEOUT, HEALTH_TIMEOUT);
+  }
+
+  /** Cooking 취소(CI-03)용. 헬스와 달리 전표 행 잠금을 기다릴 수 있어 응답 대기를 3초로 둔다. */
+  @Bean
+  public RestClient cookingCommandRestClient(@Value("${clients.cooking.base-url}") String baseUrl) {
+    return build(baseUrl);
+  }
+
   private RestClient build(String baseUrl) {
     return build(baseUrl, CONNECT_TIMEOUT, READ_TIMEOUT);
   }

@@ -44,6 +44,24 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 - 매장은 기본 영업 종료·주문 미접수 상태이며, 접수 상태를 바꾸는 관리자 API(OR-07)는 아직 없다. 로컬 확인 시 `store_operations`를 직접 갱신한다.
 - Menu·Inventory 내부 API의 요청·응답 필드는 초안이다(`client` 패키지 참고). 담당자와 합의 후 확정한다.
 
+### 주문 상세의 조리 상태 (OR-04, CI-02 연동)
+
+결제된 주문(`PAID`·`WAITING`·`COOKING`·`COMPLETED`)의 상세 응답에는 `cooking` 객체가 붙는다. 결제 전·실패·취소 주문은 `cooking`이 없다. 화면 구성·문구·폴링 주기는 프론트엔드가 정한다.
+
+| 필드 | 설명 |
+|---|---|
+| `lookup` | `OK`(조리 정보 있음) / `PENDING`(조리 전표 등록 대기, Cooking 404) / `UNAVAILABLE`(Cooking 장애·시간 초과·계약과 다른 응답) |
+| `status` | `WAITING` / `COOKING` / `DONE` / `CANCELED` |
+| `waitingAhead`, `estimatedCookSec` | 내 앞 대기 수, 이 주문의 예상 조리 시간(초) |
+| `expectedWaitSec` | 지금부터 조리 시작까지(초). 대기 중이 아니면 0 |
+| `expectedReadySec` | 지금부터 조리 완료까지(초). 조리 중은 남은 시간, 완료·취소는 0 |
+| `startedAt` | 조리 시작 시각(KST) |
+
+- `lookup`이 `OK`가 아니면 조리 정보 필드는 모두 생략한다.
+- Cooking 조회가 실패해도 상세 조회는 성공하고 주문 상태는 바뀌지 않는다(`UNAVAILABLE`). Cooking 호출은 연결 1초·응답 2초로 제한하고, 주문을 읽는 DB 트랜잭션은 호출 전에 닫는다.
+- 최상위 `expectedWaitSec`(주문 시점 예상)와 주문 목록(OR-03)은 바뀌지 않는다.
+- Cooking CI-02가 `expectedWaitSec`=조리 시작까지, `expectedReadySec`=조리 완료까지로 바뀌기 전에는 응답에 `expectedReadySec`가 없다. 이 경우 `HttpCookingClient`가 기존 값(완료까지)을 변환해 같은 의미로 내려준다. Cooking 변경이 병합되면 변환 분기(`HttpCookingClient.toStatus`의 TODO)를 삭제한다.
+
 ### 결제(OR-02) 동작 규칙
 
 - **주문 생성 단계에서 거르는 것**: 옵션 이름을 `, `로 이어붙인 길이가 255자를 넘는 항목이 있으면 `400 INVALID_REQUEST`로 거절한다. Cooking이 그 값을 255자 컬럼(`option_summary`)에 저장하므로, 결제 뒤에 Cooking 저장이 실패해 돈만 받고 조리가 안 되는 주문을 막기 위해서다.
@@ -62,6 +80,39 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 - 주문번호는 `yyMMdd-0001` 형식(날짜별 일련번호)이며 확정 트랜잭션에서 발급한다.
 - 조리 시간은 Order DB에 저장하지 않는다. 결제를 시작할 때 Menu(MI-01)에서 다시 받아 `OrderConfirmed`(`cookTimeSec`, 옵션 `extraCookTimeSec`)에 싣는다. Menu에 연결할 수 없으면 결제 전에 503으로 끝나 돈이 나가지 않고, 그 사이 판매가 중지된 메뉴가 있으면 주문을 종료(`MENU_NOT_AVAILABLE`)하고 재고를 반환한다.
 - `OrderConfirmed`는 `outbox_events`에 `PENDING`으로 저장만 한다. 실제 발행은 후속 작업(RabbitMQ 발행기)에서 구현한다.
+
+## 관리자 영업·주문 접수 상태 (OR-06·OR-07)
+
+`GET`·`PATCH /api/v1/admin/store/operations` (권한 STORE_ADMIN). 단일 매장의 `store_operations`(id=1) 한 행을 조회·변경한다.
+
+- 요청·응답 필드: `isOpen`(영업 여부), `acceptingOrders`(주문 접수 여부), `updatedAt`(마지막 변경 시각, KST). `PATCH`는 **보낸 항목만** 바꾸며 둘 다 비었거나 값이 불린이 아니면 `400 INVALID_REQUEST`다. 값이 바뀐 경우에만 `updatedAt`을 갱신한다.
+- 주문 생성(OR-01)은 `isOpen`과 `acceptingOrders`가 **둘 다 true**일 때만 받고, 변경은 다음 요청부터 바로 반영된다(아니면 `409 STORE_NOT_ACCEPTING_ORDERS`). 이미 만들어진 주문의 결제(OR-02)·조회·취소는 이 설정과 무관하다. 초기값은 영업 종료·접수 안 함이다.
+- 동시에 두 관리자가 서로 다른 항목을 보내도 행 잠금으로 직렬화해 서로의 값을 덮어쓰지 않는다. 인증이 없어 "누가" 바꿨는지는 남기지 못하고 변경 전후 값만 로그로 남긴다.
+- **기본 꺼짐**: 관리자 권한 검사 방식은 Auth·Gateway·JWT 공통 계약(#112)에서 정해진다. 그 전에는 누구나 영업을 열고 닫을 수 있으므로 `order.admin.enabled`(환경 변수 `ORDER_ADMIN_ENABLED`, 기본 `false`)가 켜진 로컬·dev에서만 이 API를 등록한다. 꺼져 있으면 경로가 존재하지 않는 것처럼 `404`다. 운영(prod)에서는 켜지 않는다. Cooking 관리자 API(`COOKING_ADMIN_ENABLED`)와 같은 방식이다.
+
+## 주문 취소 (OR-05)
+
+`POST /api/v1/orders/{orderId}/cancel` (본인 주문만, 다른 사용자의 주문은 404, 부분 취소 없음). 취소 가능 여부는 Cooking이 최종 판단한다(CI-03).
+
+| 주문 상태 | 처리 |
+|---|---|
+| `CREATED`(결제 전) | 재고 확보만 해제(II-03)하고 `CANCELED`. 환불·Cooking 호출 없음. 이미 만료·해제된 확보도 성공으로 본다 |
+| `CREATED`인데 결제를 요청한 적이 있음 | 결제가 됐을 수 있어 취소하지 않고 `409 ORDER_PAYMENT_PENDING`. 결제를 다시 호출해 결과를 확인한 뒤 처리한다 |
+| `PAID` 이후(조리 전) | Cooking에 취소 요청(CI-03). 받아들이면 `CANCELED`로 바꾸고 재고 복원(II-04)과 환불(PI-03) |
+| `COMPLETED`, `FAILED` | `409 ORDER_NOT_CANCELABLE` |
+| 이미 `CANCELED` | 현재 상태를 그대로 돌려준다(멱등). 남은 후속 처리가 있으면 이어서 한다 |
+
+- **응답을 모른 채 끝난 취소 요청**: Cooking을 호출하기 직전에 `orders.cancel_requested_at`을 기록한다. 타임아웃·5xx로 결과를 모르면(`503 COOKING_SERVICE_UNAVAILABLE`) 이 기록이 남고, 고객이 다시 호출하지 않아도 `CancelFollowUpScheduler`가 CI-03을 다시 호출해 확정한다(Cooking 취소는 멱등). Cooking이 취소를 받아들이면 `CANCELED`와 후속 처리로 이어지고, 조리 시작·완료·접수 전으로 거절하면 기록을 지워 더 이상 확인하지 않는다. 계약과 다른 응답(502)도 재확인해도 소용없으므로 기록을 지우고 에러 로그를 남긴다. (Cooking은 취소를 커밋했는데 Order가 응답을 못 받으면 "결제는 됐는데 조리도 환불도 안 되는 주문"이 생길 수 있어서 둔 장치다 — #61 리뷰.)
+- **Cooking 응답 해석(CI-03)**: 200만 취소 확정. `409 COOKING_ALREADY_STARTED`·`409 COOKING_ALREADY_DONE`은 각각 같은 코드로 응답하고 주문은 그대로 둔다. `404 COOKING_TICKET_NOT_FOUND`는 "접수 처리 중"일 수 있어 취소로 보지 않고 `409 COOKING_ORDER_PENDING`으로 안내한다(errorCode가 다른 404는 계약 위반으로 502). 5xx·타임아웃은 결과를 알 수 없어 주문을 그대로 두고 `503 COOKING_SERVICE_UNAVAILABLE`로 응답하며, 재호출하거나 위 재확인으로 이어진다. Cooking 취소는 멱등이라 우리 쪽 저장이 실패해도 재호출로 이어진다.
+- **후속 처리 실패**: 재고 복원이나 환불이 실패해도 주문은 `CANCELED`로 두고 응답도 200이다. 끝난 단계는 `orders.stock_restored_at`·`refunded_at`에 기록하고, 안 끝난 단계는 둘 중 하나가 NULL로 남아 재시도 대상이 된다(확정된 주문, 곧 `order_no`가 있는 취소 주문만 해당). 두 단계는 서로 독립이라 한쪽이 실패해도 다른 쪽은 진행한다.
+- **환불 응답 해석(PI-03, Payment 정진혁 확인)**: `200`이면서 본문이 `status: REFUNDED`·같은 `paymentId`일 때만 환불됨으로 본다(이미 환불된 결제도 같은 `200`이라 재호출이 안전하다). `409 PAYMENT_NOT_REFUNDABLE`(승인되지 않은 결제)과 그 밖의 4xx(없는 결제 등)·계약과 다른 응답은 다시 호출해도 결과가 같아 성공으로 기록하지 않고 **에러 로그(수동 확인)**를 남긴다. `5xx`·타임아웃만 재시도 대상이다. 결제 후 재고 확정 거절로 환불할 때도 같은 해석을 쓴다.
+- **재시도**: 같은 주문의 취소를 다시 호출하거나, `CancelFollowUpScheduler`가 30초마다(`cancel.follow-up.interval-ms`) 남은 단계를 이어서 처리한다. 재고 복원은 `409 RESTORE_NOT_APPLICABLE`이면 성공으로 기록하지 않고 에러 로그를 남겨 수동 확인에 맡긴다(스케줄러가 계속 다시 시도하며 로그가 반복된다).
+- **재시도 상한·수동 확인(이슈 #125)**: 후속 처리가 실패하면 `orders.cancel_follow_up_attempts`(실패 횟수)를 늘리고 `cancel_follow_up_next_attempt_at`(다음 시도 시각)을 정해, 실패할수록 간격을 두 배로 늘려(기본 30초 → 최대 1시간) 다시 시도한다. 실패가 **12번**(`cancel.follow-up.max-attempts`, 간격 합 약 5시간 반)에 닿으면 `cancel_follow_up_manual_at`·`cancel_follow_up_manual_reason`(`RETRY_LIMIT_EXCEEDED`)으로 **수동 확인 필요**를 표시하고 스케줄러 대상에서 뺀다. 남은 단계가 전부 **다시 호출해도 결과가 같은 실패**(환불 불가 409·복원 불가 409·계약과 다른 응답)이면 상한을 기다리지 않고 바로 수동 확인 필요로 표시한다(`REFUND_NOT_REFUNDABLE`, `RESTORE_NOT_APPLICABLE`, `REFUND_INVALID_RESPONSE`, `RESTORE_INVALID_RESPONSE`). 한 단계가 영구 실패여도 다른 단계(예: 환불)가 재시도로 풀릴 수 있으면 자동 재시도를 계속한다. 설정: `cancel.follow-up.max-attempts`·`retry-base-sec`·`retry-max-sec`.
+- **알림**: 수동 확인이 필요해지는 순간 에러 로그 한 줄(`수동 확인 필요: 취소 후속 처리를 더 이상 자동 재시도하지 않습니다 orderId=… paymentId=… reason=…`)을 남기고, 지표 `order_cancel_follow_up_manual_required`(수동 확인이 필요한 미완료 취소 주문 수)를 `/actuator/prometheus`로 노출한다. 0보다 크면 확인이 필요하다. 알림 규칙(Grafana 등)은 모니터링 담당과 정한다.
+- **수동 확인 운영 방법**: 목록은 `select id, order_no, payment_id, stock_restored_at, refunded_at, cancel_follow_up_manual_reason from orders where status = 'CANCELED' and cancel_follow_up_manual_at is not null and (stock_restored_at is null or refunded_at is null);`. 원인을 해결한 뒤 같은 주문의 취소를 다시 호출하면 남은 단계를 이어서 처리하고(성공하면 지표에서 빠진다), 자동 재시도를 다시 켜려면 `cancel_follow_up_manual_at`·`cancel_follow_up_manual_reason`·`cancel_follow_up_next_attempt_at`을 NULL로, `cancel_follow_up_attempts`를 0으로 되돌린다. Payment나 Inventory에서 직접 처리했다면 `refunded_at`·`stock_restored_at`을 기록해 완료로 표시한다.
+- **범위 밖**: Cooking 응답을 모른 채 남은 취소 요청(`cancel_requested_at`) 재확인에는 아직 상한이 없다(주문은 `PAID`로 유지되어 조리는 계속되므로 돈·재고 손실은 없다). 필요하면 별도 이슈로 다룬다.
+- **동시성**: 결제와 같은 처리 독점(`pay_lock_*`, 소유권 토큰)을 잡고 진행한다. 결제 중이거나 다른 취소가 처리 중이면 `409 ORDER_PAY_IN_PROGRESS`. 외부 호출 직전마다 독점을 연장하며 확인하고, 잃었으면 아무것도 하지 않고 멈춘다.
+- **Inventory 확인 완료(남규리, Inventory PR #115 대조)**: II-04는 성공 시 `200 {orderId, restored: true}`이고 이미 복원된 주문도 같은 `200`(중복 복원 없음), 확정되지 않았거나 예약이 없으면 `409 RESTORE_NOT_APPLICABLE`, 요청 형식 오류는 `400`뿐이다. II-03은 해제·이미 해제·만료 `200`, 확정된 확보 `409 HOLD_NOT_ACTIVE`, 없는 확보 `404 HOLD_NOT_FOUND`. 이 PR의 해석(200만 성공, 409는 복원 불가·이미 확정, 그 밖의 4xx는 502, 5xx는 재시도 대상)과 일치한다.
 
 ## Cooking 장애 시 신규 주문·결제 차단 (US-13)
 

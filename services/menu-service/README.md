@@ -49,6 +49,11 @@ java -jar build/libs/menu-service-0.0.1-SNAPSHOT.jar
 
 ## API 문서
 
+ME-01 `GET /api/v1/menus`, ME-02 `GET /api/v1/menus/{menuId}`는 비회원 고객의
+메뉴 목록·상세 조회를 제공합니다. 필터·정렬·상태·옵션 및 오류 계약은
+[ME-01·ME-02 상세 명세](../../docs/api/menu-me01-me02.md)를 확인합니다.
+ON_SALE·PAUSED를 조회할 수 있고 HIDDEN은 노출하지 않습니다.
+
 - Swagger UI: http://localhost:8080/swagger-ui.html (`/swagger-ui/index.html`로 이동)
 - OpenAPI JSON: http://localhost:8080/v3/api-docs
 - Swagger UI 설정: http://localhost:8080/v3/api-docs/swagger-config
@@ -128,11 +133,20 @@ $env:MENU_DB_TEST_PASSWORD = $dbCredential.GetNetworkCredential().Password
 애플리케이션 진입점은 `com.peakorder.menu.MenuServiceApplication`입니다.
 업무 구현 시 기본 패키지 아래에 `controller`, `service`, `repository`, `dto`, `entity` 계층을 추가합니다.
 기존 `entity`, `repository`의 메뉴 DB 모델과 저장소를 재사용하며,
-`controller`, `service`, `dto`, `exception`에 MI-01 구매 검증과 MI-02 존재 확인 API를 구현했습니다.
+`controller`, `service`, `dto`, `exception`에 MI-01 구매 검증·MI-02 존재 확인과 ME-01·ME-02 고객 조회 API를 구현했습니다.
 현재 사용하지 않는 패키지에는 예시 클래스나 설명용 파일을 만들지 않습니다.
 Redis, RabbitMQ, Docker, Kubernetes는 이번 구현 범위에 포함하지 않습니다.
 서비스 전용 `.editorconfig`와 `.gitattributes`를 사용합니다.
 DB 구조 및 마이그레이션 변경은 팀 규칙상 작성자 외 팀원 1명의 필수 리뷰 대상입니다.
+
+## ME-01·ME-02 검증
+
+Java 21에서 `spotlessCheck test build`를 검증했습니다.
+고객 조회 Service 21건·실제 HTTP 35건 및 기존 MI-01·MI-02 회귀 78건을 합해 134건 통과했습니다.
+실제 PostgreSQL 테스트 10건은 별도 테스트 DB 미설정으로 건너뛰었습니다.
+공유 DB·Gateway·React·실제 Inventory 연동은 검증하지 않았습니다.
+카테고리 동시 조회와 옵션 정렬의 DB 테스트는 별도 폐기 가능한 PostgreSQL에서 실행해야 합니다.
+상세 계약과 검증 범위는 [ME-01·ME-02 명세](../../docs/api/menu-me01-me02.md)를 확인합니다.
 
 ## MI-02 검증
 
@@ -186,16 +200,21 @@ Issue #108의 기존 관리자 조회 Service·전용 읽기 Repository·DTO를 
 세 판매 상태 전체 조회·카테고리/이름/상태 필터·정렬·상세 옵션을 지원합니다.
 `/api/v1/admin/menus`와 상세 경로는 등록됐지만 실제 실행에서 항상 403 / FORBIDDEN으로 차단합니다.
 권한 검사는 파라미터 검증과 조회보다 먼저 실행되며 헤더·프로필·설정으로 해제하는 기능이 없습니다.
-STORE_ADMIN 권한 요구사항은 확정됐으나 JWT 검증·Gateway 신원 전달·401/403 계약은 미확정입니다.
+STORE_ADMIN 권한 요구사항은 확정됐습니다. #112의 Auth AU 계약이 정리됐어도
+Gateway A/B 검증 방식과 Menu가 신뢰할 신원 경계는 아직 미확정이므로 기본 차단을 유지합니다.
 제안 데이터 계약·검증 범위·#105와의 관계는 [관리자 조회 초안](../../docs/api/menu-me03-me04-draft.md)을 확인합니다.
 공유 DB/Flyway·의존성·기존 MI-01·MI-02는 변경하지 않았습니다.
 격리 PostgreSQL 16.16에서 Flyway V1과 실제 관리자 JPQL·검색/정렬·상세 옵션을 검증했습니다.
 허용·미인증·권한 부족 HTTP 분기는 테스트에서만 권한 경계를 모의했습니다.
 이는 실제 인증 연동 성공이 아니며 최종 STORE_ADMIN 접근 제한·401/403 계약은 여전히 미충족입니다.
-Java 21의 Spotless·test·build와 공백 검사를 통과했습니다. 비DB 169건·기존 DB 35건·관리자 DB 13건,
-전체 217건 통과·실패/생략 0건입니다. 실제 기본 차단·헤더 위조 방지 검사도 포함합니다.
+최초 독립 검증은 Java 21에서 비DB 169건·기존 DB 35건·관리자 DB 13건,
+전체 217건 통과·실패/생략 0건이었습니다. 아래 최신 main 통합 결과와 구분합니다.
 기존 DB 생략 9건은 메서드 수이며 실제 실행 시 파라미터 사례가 35건으로 확장됩니다.
 임시 DB 격리·롤백·종료 내역은 [PostgreSQL 검증 기록](../../docs/api/menu-admin-postgresql-validation.md)을 확인합니다.
-#105 고객 API와 통합하지 않았으며, 향후 고객 HTTP 테스트에 관리자 Repository mock 추가와 전체 회귀 실행이 필요합니다.
+#105가 병합된 main `6167671`을 이번에 통합했습니다. 중복 CategoryRepository mock을 제거하고
+고객 HTTP 테스트에 AdminMenuQueryRepository mock을 추가해 의존성을 보완했습니다.
+통합 후 **274건 통과, 실패·오류·생략 0건**이며 실제 PostgreSQL 16 테스트 49건을 포함합니다.
+ME-01·02·03·04 및 MI-01·02, HTTP/OpenAPI·공통 오류·기본 403·위조 신원 거부 회귀,
+Spotless·Java 컴파일·test·build·diff 검사를 확인했습니다.
 실제 Auth/JWT·Gateway 구현 상태, 담당자 결정 사항과 권장안은 [인증 연동 점검](../../docs/api/menu-admin-auth-integration.md)에 기록했습니다.
 추가한 위조 JWT/Servlet 신원 거부 테스트를 실제 STORE_ADMIN 인증 연동 완료로 해석하지 않습니다.
