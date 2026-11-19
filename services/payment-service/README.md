@@ -50,3 +50,14 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 
 - DB 구조 변경은 Flyway 마이그레이션(`src/main/resources/db/migration`)으로만 한다. `ddl-auto`는 `none`.
 - 응답은 공통 형식(`success`, `data`, `message`, 실패 시 `errorCode`).
+- 요청 값 검증 오류(400 `INVALID_REQUEST`)의 `message`는 DTO에 적은 한글 문구를 그대로 쓴다(예: `amount는 0보다 커야 합니다.`). 새 필드를 추가할 때도 검증 애너테이션에 `message`를 한글로 적는다.
+
+## 실제 PG로 바꿀 때 (메모)
+
+지금은 모의 결제라 승인 결과가 즉시 나오므로 **승인 → 결과 저장** 순서로 한 번에 처리한다(`REQUESTED` 상태를 쓰지 않음).
+실제 PG(외부 결제 대행사)로 바꾸면 이 순서를 그대로 두면 안 된다.
+
+- 바꿀 순서: **`REQUESTED` 행을 먼저 저장 → PG 승인 요청 → 결과에 따라 `APPROVED`/`FAILED`로 갱신**
+- 이유: 지금 순서대로면 PG에서 돈이 빠져나간 뒤 저장 전에 서버가 죽었을 때 **결제 기록이 하나도 남지 않는다**. 먼저 남겨 둔 `REQUESTED` 행이 있어야 "결과를 모르는 결제"를 찾아 PG에 다시 조회하고 정리할 수 있다.
+- 함께 필요한 것: `REQUESTED`로 오래 남은 결제를 PG에 다시 조회하는 확인 작업, PG 승인 요청의 시간 초과 처리, PG 쪽 멱등 키(지금의 `idempotencyKey`) 전달.
+- DB 구조는 이미 `REQUESTED` 상태를 허용하므로 마이그레이션은 필요 없을 것으로 본다(전환 시 다시 확인).

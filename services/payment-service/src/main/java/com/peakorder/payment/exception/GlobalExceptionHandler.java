@@ -23,12 +23,14 @@ public class GlobalExceptionHandler {
     return ResponseEntity.status(code.status()).body(ApiResponse.fail(code.name(), code.message()));
   }
 
+  /** 요청 값 검증 실패. 첫 번째 필드 오류의 한글 메시지(DTO에 적은 문구)를 그대로 돌려준다. */
   @ExceptionHandler(MethodArgumentNotValidException.class)
   public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException e) {
     String message =
         e.getBindingResult().getFieldErrors().stream()
             .findFirst()
-            .map(f -> f.getField() + ": " + f.getDefaultMessage())
+            .map(f -> f.getDefaultMessage())
+            .filter(m -> m != null && !m.isBlank())
             .orElse(ErrorCode.INVALID_REQUEST.message());
     return ResponseEntity.status(ErrorCode.INVALID_REQUEST.status())
         .body(ApiResponse.fail(ErrorCode.INVALID_REQUEST.name(), message));
