@@ -37,6 +37,7 @@ class MenuServiceApplicationTests {
   @LocalServerPort private int port;
   @MockitoBean private MenuRepository menus;
   @MockitoBean private MenuOptionRepository options;
+  @MockitoBean private com.peakorder.menu.repository.MenuStatusRepository statusWrites;
 
   @Test
   void documentsPurchaseValidationEndpoint() throws Exception {
