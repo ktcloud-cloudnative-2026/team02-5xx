@@ -61,7 +61,7 @@ class CookingQueryServiceTest {
   }
 
   @Test
-  void WAITING은_조리중_남은시간과_앞_대기시간과_내_조리시간을_더한다() {
+  void WAITING은_시작까지_조리중_남은시간과_앞_대기시간을_더하고_완료까지_내_조리시간을_더한다() {
     CookingTicket mine = ticket(3L, 200, NOW.minusSeconds(10));
     CookingTicket cooking = ticket(1L, 300, NOW.minusSeconds(120));
     cooking.start(NOW.minusSeconds(100)); // 100초 경과 → 남은 200초
@@ -79,12 +79,27 @@ class CookingQueryServiceTest {
 
     assertThat(res.status()).isEqualTo(TicketStatus.WAITING);
     assertThat(res.waitingAhead()).isEqualTo(1);
-    assertThat(res.expectedWaitSec()).isEqualTo(200 + 150 + 200);
+    assertThat(res.estimatedCookSec()).isEqualTo(200);
+    assertThat(res.expectedWaitSec()).isEqualTo(200 + 150); // 시작까지
+    assertThat(res.expectedReadySec()).isEqualTo(200 + 150 + 200); // 완료까지
     assertThat(res.queuedAt().getOffset().getTotalSeconds()).isEqualTo(9 * 3600); // KST
   }
 
   @Test
-  void COOKING은_남은_조리시간만_반환하고_음수가_되지_않는다() {
+  void COOKING은_시작까지_0이고_완료까지_남은_조리시간() {
+    CookingTicket mine = ticket(1L, 300, NOW.minusSeconds(200));
+    mine.start(NOW.minusSeconds(100)); // 100초 경과 → 남은 200초
+    when(repository.findByOrderId(1L)).thenReturn(Optional.of(mine));
+
+    CookingStatusResponse res = service.getStatus(1L);
+
+    assertThat(res.status()).isEqualTo(TicketStatus.COOKING);
+    assertThat(res.expectedWaitSec()).isZero();
+    assertThat(res.expectedReadySec()).isEqualTo(200);
+  }
+
+  @Test
+  void COOKING이_예상보다_오래_걸려도_완료까지는_음수가_되지_않는다() {
     CookingTicket mine = ticket(1L, 300, NOW.minusSeconds(500));
     mine.start(NOW.minusSeconds(400)); // 예상보다 오래 걸림
     when(repository.findByOrderId(1L)).thenReturn(Optional.of(mine));
@@ -93,10 +108,11 @@ class CookingQueryServiceTest {
 
     assertThat(res.status()).isEqualTo(TicketStatus.COOKING);
     assertThat(res.expectedWaitSec()).isZero();
+    assertThat(res.expectedReadySec()).isZero();
   }
 
   @Test
-  void DONE은_예상시간_0() {
+  void DONE은_예상시간_모두_0() {
     CookingTicket mine = ticket(1L, 300, NOW.minusSeconds(500));
     mine.start(NOW.minusSeconds(400));
     mine.complete(NOW.minusSeconds(50));
@@ -106,7 +122,22 @@ class CookingQueryServiceTest {
 
     assertThat(res.status()).isEqualTo(TicketStatus.DONE);
     assertThat(res.expectedWaitSec()).isZero();
+    assertThat(res.expectedReadySec()).isZero();
     assertThat(res.completedAt()).isNotNull();
+  }
+
+  @Test
+  void CANCELED는_예상시간_모두_0() {
+    CookingTicket mine = ticket(1L, 300, NOW.minusSeconds(30));
+    mine.cancel(NOW.minusSeconds(10));
+    when(repository.findByOrderId(1L)).thenReturn(Optional.of(mine));
+
+    CookingStatusResponse res = service.getStatus(1L);
+
+    assertThat(res.status()).isEqualTo(TicketStatus.CANCELED);
+    assertThat(res.expectedWaitSec()).isZero();
+    assertThat(res.expectedReadySec()).isZero();
+    assertThat(res.canceledAt()).isNotNull();
   }
 
   @Test
