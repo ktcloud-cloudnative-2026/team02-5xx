@@ -40,6 +40,10 @@ test('actual React SSR renders separate admin page, editor and unchanged custome
     assert.ok(html.includes('새 메뉴 등록'));
     assert.ok(html.includes('불러오는 중'));
     assert.ok(html.includes('전체 상태'));
+    assert.ok(html.includes('aria-label="판매 상태 필터"'));
+    assert.equal((html.match(/aria-pressed="true"/g) ?? []).length, 1);
+    assert.equal((html.match(/aria-pressed="false"/g) ?? []).length, 3);
+    assert.ok(!html.includes('품절'));
     const editHtml = renderToStaticMarkup(
       createElement(editor, {
         menu: adminMenuFixtures[0],
@@ -52,6 +56,9 @@ test('actual React SSR renders separate admin page, editor and unchanged custome
     assert.ok(editHtml.includes('비활성'));
     assert.ok(editHtml.includes('aria-labelledby="am-dialog-title"'));
     assert.ok(editHtml.includes('options.0.name'));
+    assert.ok(editHtml.includes('class="am-dialog am-drawer"'));
+    assert.ok(editHtml.includes('이미지 주소 (선택)'));
+    assert.ok(!editHtml.includes('type="file"'));
     assert.ok(!editHtml.includes('name="status"'));
     const createHtml = renderToStaticMarkup(
       createElement(editor, {
@@ -63,6 +70,7 @@ test('actual React SSR renders separate admin page, editor and unchanged custome
     assert.ok(createHtml.includes('name="status"'));
     assert.ok(createHtml.includes('기본 가격 (원)'));
     assert.ok(createHtml.includes('메뉴 등록'));
+    assert.ok(createHtml.includes('class="am-dialog am-drawer"'));
     const customerHtml = renderToStaticMarkup(createElement(customer));
     assert.ok(customerHtml.includes('메뉴'));
     assert.ok(customerHtml.includes('클래식 버거'));

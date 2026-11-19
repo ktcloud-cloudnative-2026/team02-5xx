@@ -7,6 +7,7 @@ export default function AdminDialog({
   children,
   busy = false,
   returnFocusRef,
+  drawer = false,
 }) {
   const ref = useRef(null);
   useEffect(() => {
@@ -15,7 +16,7 @@ export default function AdminDialog({
   return (
     <dialog
       ref={ref}
-      className="am-dialog"
+      className={`am-dialog${drawer ? ' am-drawer' : ''}`}
       aria-labelledby="am-dialog-title"
       aria-busy={busy}
       onCancel={(event) => {

@@ -189,15 +189,15 @@ export default function AdminMenuPage({ adapter }) {
           </span>
           PEAK ORDER
         </div>
-        <span className="am-workspace">매장 워크스페이스</span>
+        <span className="am-workspace">매장 관리</span>
         <div className="am-nav-current" aria-current="page">
           <span aria-hidden="true">▦</span> 메뉴 관리
         </div>
         <div className="am-sidebar-note">
-          <span className="am-dot" />
-          독립 Mock 미리보기
+          ♙<br />
+          관리자
           <br />
-          <small>실제 서버·인증 미연동</small>
+          <small>Mock 전용</small>
         </div>
       </aside>
       <main className="am-main">
@@ -210,23 +210,9 @@ export default function AdminMenuPage({ adapter }) {
         </div>
         <header className="am-page-heading">
           <div>
-            <span className="am-eyebrow">STORE / MENU MANAGEMENT</span>
-            <h1>
-              메뉴 관리<span className="am-title-dot">.</span>
-            </h1>
+            <h1>메뉴 관리</h1>
             <p>메뉴 정보와 옵션, 판매 상태를 한곳에서 관리하세요.</p>
           </div>
-          <button
-            data-admin-focus-fallback=""
-            className="am-button am-create"
-            disabled={!result.categories.length}
-            onClick={(event) => {
-              opener.current = event.currentTarget;
-              setModal({ type: 'create' });
-            }}
-          >
-            <span aria-hidden="true">＋</span> 새 메뉴 등록
-          </button>
         </header>
         {notice && (
           <div className="am-notice" role="status">
@@ -245,170 +231,79 @@ export default function AdminMenuPage({ adapter }) {
             </button>
           </div>
         )}
-        <section className="am-panel" aria-label="메뉴 조회 조건">
-          <div className="am-filter-grid">
-            <label className="am-field am-search">
-              <span>메뉴 검색</span>
-              <input
-                type="search"
-                placeholder="메뉴 이름으로 검색"
-                value={filters.query}
-                onChange={(event) => filter('query', event.target.value)}
-              />
-            </label>
-            <label className="am-field">
-              <span>카테고리</span>
-              <select
-                value={filters.categoryId}
-                onChange={(event) => filter('categoryId', event.target.value)}
+        <div className="am-management-card">
+          <section className="am-panel" aria-label="메뉴 조회 조건">
+            <div className="am-toolbar">
+              <div
+                className="am-state-tabs"
+                role="group"
+                aria-label="판매 상태 필터"
               >
-                <option value="">전체 카테고리</option>
-                {result.categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
+                {['', ...STATUSES].map((state) => (
+                  <button
+                    key={state}
+                    type="button"
+                    aria-pressed={filters.status === state}
+                    onClick={() => filter('status', state)}
+                  >
+                    {state ? STATUS_LABELS[state] : '전체 상태'}
+                  </button>
                 ))}
-              </select>
-            </label>
-            <label className="am-field">
-              <span>판매 상태</span>
-              <select
-                value={filters.status}
-                onChange={(event) => filter('status', event.target.value)}
+              </div>
+              <button
+                data-admin-focus-fallback=""
+                aria-haspopup="dialog"
+                className="am-button am-create"
+                disabled={!result.categories.length}
+                onClick={(event) => {
+                  opener.current = event.currentTarget;
+                  setModal({ type: 'create' });
+                }}
               >
-                <option value="">전체 상태</option>
-                {STATUSES.map((state) => (
-                  <option key={state} value={state}>
-                    {STATUS_LABELS[state]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="am-field">
-              <span>정렬</span>
-              <select
-                value={filters.sort}
-                onChange={(event) => filter('sort', event.target.value)}
-              >
-                <option value="default">기본 순서</option>
-                <option value="priceAsc">낮은 가격순</option>
-                <option value="priceDesc">높은 가격순</option>
-              </select>
-            </label>
-          </div>
-          <div className="am-filter-bottom">
-            <p>비공개 메뉴와 비활성 옵션도 관리자에게 표시합니다.</p>
-            <button
-              type="button"
-              className="am-text-button"
-              onClick={() =>
-                setFilters({
-                  query: '',
-                  categoryId: '',
-                  status: '',
-                  sort: 'default',
-                })
-              }
-            >
-              조회 조건 초기화
-            </button>
-          </div>
-        </section>
-        <section
-          id="am-menu-list"
-          aria-labelledby="am-list-heading"
-          aria-busy={phase === 'loading'}
-          tabIndex="-1"
-        >
-          <div className="am-list-heading">
-            <h2 id="am-list-heading">
-              전체 메뉴 <span>{result.menus.length}</span>
-            </h2>
-            <div className="am-list-meta">
-              <span role="status">
-                {phase === 'loading' ? '불러오는 중…' : '현재 조회 조건 기준'}
-              </span>
+                <span aria-hidden="true">＋</span> 새 메뉴 등록
+              </button>
+            </div>
+            <div className="am-filter-grid">
+              <label className="am-field am-search">
+                <span>메뉴 검색</span>
+                <input
+                  type="search"
+                  placeholder="메뉴 이름으로 검색"
+                  value={filters.query}
+                  onChange={(event) => filter('query', event.target.value)}
+                />
+              </label>
+              <label className="am-field">
+                <span>카테고리</span>
+                <select
+                  value={filters.categoryId}
+                  onChange={(event) => filter('categoryId', event.target.value)}
+                >
+                  <option value="">전체 카테고리</option>
+                  {result.categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="am-field">
+                <span>정렬</span>
+                <select
+                  value={filters.sort}
+                  onChange={(event) => filter('sort', event.target.value)}
+                >
+                  <option value="default">기본 순서</option>
+                  <option value="priceAsc">낮은 가격순</option>
+                  <option value="priceDesc">높은 가격순</option>
+                </select>
+              </label>
+            </div>
+            <div className="am-filter-bottom">
+              <p>비공개 메뉴와 비활성 옵션도 관리자에게 표시합니다.</p>
               <button
                 type="button"
                 className="am-text-button"
-                disabled={phase === 'loading'}
-                onClick={() => setEpoch((value) => value + 1)}
-              >
-                새로고침
-              </button>
-            </div>
-          </div>
-          <div className="am-table-head" aria-hidden="true">
-            <span>메뉴 정보</span>
-            <span>기본 가격 / 조리시간</span>
-            <span>판매 상태</span>
-            <span>관리</span>
-          </div>
-          {phase === 'loading' && !result.menus.length && (
-            <div className="am-skeleton" aria-label="메뉴 목록을 불러오는 중">
-              <i />
-              <i />
-              <i />
-            </div>
-          )}
-          <ul className="am-menu-list">
-            {result.menus.map((menu) => (
-              <li key={menu.id} className="am-menu-row">
-                <div className="am-menu-cell">
-                  <span
-                    className={`am-menu-avatar am-category-${menu.categoryId}`}
-                    aria-hidden="true"
-                  >
-                    {[...menu.name][0]}
-                  </span>
-                  <div>
-                    <span className="am-category-label">
-                      {categoryName(menu.categoryId)} · #{menu.id}
-                    </span>
-                    <button
-                      className="am-menu-name"
-                      disabled={phase === 'loading'}
-                      onClick={(event) => open(menu.id, 'detail', event)}
-                    >
-                      {menu.name}
-                    </button>
-                  </div>
-                </div>
-                <div className="am-price-cell">
-                  <strong>{won(menu.basePrice)}</strong>
-                  <span>{menu.cookTimeSec}초</span>
-                </div>
-                <div className="am-status-cell">
-                  <StatusBadge status={menu.status} />
-                </div>
-                <div className="am-row-actions">
-                  <button
-                    disabled={phase === 'loading'}
-                    className="am-text-button"
-                    aria-label={`${menu.name} 수정`}
-                    onClick={(event) => open(menu.id, 'edit', event)}
-                  >
-                    수정
-                  </button>
-                  <button
-                    disabled={phase === 'loading'}
-                    className="am-row-state"
-                    aria-label={`${menu.name} 상태 변경`}
-                    onClick={(event) => open(menu.id, 'status', event)}
-                  >
-                    상태 변경
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-          {phase === 'ready' && result.menus.length === 0 && (
-            <div className="am-empty">
-              <span aria-hidden="true">⌕</span>
-              <h3>표시할 메뉴가 없습니다</h3>
-              <p>조회 조건을 바꾸거나 새 메뉴를 등록해 보세요.</p>
-              <button
-                className="am-button am-secondary"
                 onClick={() =>
                   setFilters({
                     query: '',
@@ -421,8 +316,121 @@ export default function AdminMenuPage({ adapter }) {
                 조회 조건 초기화
               </button>
             </div>
-          )}
-        </section>
+          </section>
+          <section
+            id="am-menu-list"
+            aria-labelledby="am-list-heading"
+            aria-busy={phase === 'loading'}
+            tabIndex="-1"
+          >
+            <div className="am-list-heading">
+              <h2 id="am-list-heading">
+                전체 메뉴 <span>{result.menus.length}</span>
+              </h2>
+              <div className="am-list-meta">
+                <span role="status">
+                  {phase === 'loading' ? '불러오는 중…' : '현재 조회 조건 기준'}
+                </span>
+                <button
+                  type="button"
+                  className="am-text-button"
+                  disabled={phase === 'loading'}
+                  onClick={() => setEpoch((value) => value + 1)}
+                >
+                  새로고침
+                </button>
+              </div>
+            </div>
+            <div className="am-table-head" aria-hidden="true">
+              <span>메뉴 정보</span>
+              <span>기본 가격 / 조리시간</span>
+              <span>판매 상태</span>
+              <span>관리</span>
+            </div>
+            {phase === 'loading' && !result.menus.length && (
+              <div className="am-skeleton" aria-label="메뉴 목록을 불러오는 중">
+                <i />
+                <i />
+                <i />
+              </div>
+            )}
+            <ul className="am-menu-list">
+              {result.menus.map((menu) => (
+                <li key={menu.id} className="am-menu-row">
+                  <div className="am-menu-cell">
+                    <span
+                      className={`am-menu-avatar am-category-${menu.categoryId}`}
+                      aria-hidden="true"
+                    >
+                      {[...menu.name][0]}
+                    </span>
+                    <div>
+                      <span className="am-category-label">
+                        {categoryName(menu.categoryId)} · #{menu.id}
+                      </span>
+                      <button
+                        className="am-menu-name"
+                        aria-haspopup="dialog"
+                        disabled={phase === 'loading'}
+                        onClick={(event) => open(menu.id, 'detail', event)}
+                      >
+                        {menu.name}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="am-price-cell">
+                    <strong>{won(menu.basePrice)}</strong>
+                    <span>{menu.cookTimeSec}초</span>
+                  </div>
+                  <div className="am-status-cell">
+                    <button
+                      type="button"
+                      disabled={phase === 'loading'}
+                      className="am-row-state"
+                      aria-haspopup="dialog"
+                      aria-label={`${menu.name} 상태 변경`}
+                      onClick={(event) => open(menu.id, 'status', event)}
+                    >
+                      <StatusBadge status={menu.status} />
+                      <span aria-hidden="true">⌄</span>
+                    </button>
+                  </div>
+                  <div className="am-row-actions">
+                    <button
+                      disabled={phase === 'loading'}
+                      className="am-button am-edit-button"
+                      aria-haspopup="dialog"
+                      aria-label={`${menu.name} 수정`}
+                      onClick={(event) => open(menu.id, 'edit', event)}
+                    >
+                      <span aria-hidden="true">✎</span> 수정
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {phase === 'ready' && result.menus.length === 0 && (
+              <div className="am-empty">
+                <span aria-hidden="true">⌕</span>
+                <h3>표시할 메뉴가 없습니다</h3>
+                <p>조회 조건을 바꾸거나 새 메뉴를 등록해 보세요.</p>
+                <button
+                  className="am-button am-secondary"
+                  onClick={() =>
+                    setFilters({
+                      query: '',
+                      categoryId: '',
+                      status: '',
+                      sort: 'default',
+                    })
+                  }
+                >
+                  조회 조건 초기화
+                </button>
+              </div>
+            )}
+          </section>
+        </div>
         <footer className="am-page-footer">
           <span>PEAK ORDER · 관리자 메뉴 관리</span>
           <span>ME-03~07 제안 계약 기반 · 재고 연동 없음</span>
@@ -460,7 +468,12 @@ export default function AdminMenuPage({ adapter }) {
         />
       )}
       {modal?.type === 'detail' && (
-        <AdminDialog title="메뉴 상세" onClose={close} returnFocusRef={opener}>
+        <AdminDialog
+          drawer
+          title="메뉴 상세"
+          onClose={close}
+          returnFocusRef={opener}
+        >
           <div className="am-dialog-body">
             <div className="am-detail-title">
               <div>

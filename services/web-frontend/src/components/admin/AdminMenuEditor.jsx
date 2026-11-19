@@ -84,6 +84,7 @@ export default function AdminMenuEditor({
   }
   return (
     <AdminDialog
+      drawer
       title={editing ? '메뉴 수정' : '새 메뉴 등록'}
       onClose={onClose}
       busy={saving}
@@ -103,6 +104,11 @@ export default function AdminMenuEditor({
           )}
           <fieldset disabled={saving}>
             <legend>기본 정보</legend>
+            <div className="am-image-placeholder" aria-hidden="true">
+              <span>▧</span>
+              <strong>메뉴 이미지</strong>
+              <small>이미지 주소 입력 · 파일 업로드 미지원</small>
+            </div>
             <div className="am-form-grid">
               {field('name', '메뉴 이름 *')}
               <label className="am-field">
