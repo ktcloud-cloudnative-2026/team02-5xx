@@ -9,7 +9,7 @@
 - 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
 - Order 도식 갱신: 2026-11-18. Order Flyway V1~V3(PR #28·#29·#46)에 맞춰 3-4 도식·설명을 고쳤습니다. Notion 원본의 같은 부분도 맞춰 수정해야 합니다.
 - 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
-- 구현 기준(현재, 2026-11-19): main `df38c7f`에는 Order Flyway V1~V4와 주문 생성·조회·결제·취소 API(OR-01~05, PR #28·#29·#46·#61), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62)·자동 조리 진행과 CookingCompleted 발행(PR #78), Inventory 초기 구성(PR #70)이 병합되어 있습니다. Payment(PR #71)·Inventory 내부 API(PR #115) 등 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
+- 구현 기준(현재, 2026-11-19): main `b4724aa`에는 Order Flyway V1~V5와 주문 생성·조회·결제·취소 API(OR-01~05, PR #28·#29·#46·#61), 관리자 영업·주문 접수 상태 API(OR-06·07, PR #133), 취소 후속 처리 재시도 상한·수동 확인 표시(V5, PR #135), 주문 상세의 Cooking 조리 상태(PR #142), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100)와 고객 메뉴 목록·상세 ME-01·ME-02(PR #105), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62)·자동 조리 진행과 CookingCompleted 발행(PR #78)·전표 등록 시각 DB 기록(PR #109)·표시용 문자열 길이 초과 처리(PR #113), Inventory 초기 구성(PR #70)과 내부 API(PR #115), Payment 내부 API(PR #71), Cooking CI-02 예상 시간 변경(PR #141)이 병합되어 있습니다. 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
 
 ---
 
@@ -212,6 +212,10 @@ erDiagram
         timestamptz cancel_requested_at "확정 주문의 취소를 Cooking에 요청한 시각 (응답을 모르면 스케줄러가 CI-03 재확인)"
         timestamptz stock_restored_at "취소 후 재고 복원(Inventory II-04) 완료 시각"
         timestamptz refunded_at "취소 후 환불(Payment PI-03) 완료 시각"
+        int cancel_follow_up_attempts "취소 후속 처리 실패 횟수 (기본 0, 상한 12회에 닿으면 수동 확인 필요)"
+        timestamptz cancel_follow_up_next_attempt_at "다음 자동 재시도 시각 (실패마다 간격을 늘림)"
+        timestamptz cancel_follow_up_manual_at "수동 확인 필요로 표시한 시각 (있으면 스케줄러 대상 제외)"
+        varchar cancel_follow_up_manual_reason "수동 확인 필요 이유 (RETRY_LIMIT_EXCEEDED, RESTORE_NOT_APPLICABLE, REFUND_NOT_REFUNDABLE 등)"
         varchar cancel_reason "취소 사유"
         varchar fail_reason "실패 사유 (결제 실패, 재고 부족 등 / 실제 주문 목록에서는 제외)"
         timestamptz ordered_at "주문 시각"
@@ -489,10 +493,11 @@ erDiagram
 | Order 확보 정보 | orderId로 확보하고 holdId로 확정·해제 | [PR #29](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/29)의 V2(2026-11-18 main 병합)에 orders.hold_id, hold_expires_at 추가. **도식에 반영함(2026-11-18).** Inventory의 확정·해제 요청·응답은 2026-11-16 담당자(남규리)와 합의 |
 | Order 결제·주문번호 | 결제·재고 확정 후 orderNo 발급 | [PR #46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)의 V3(main 병합, 2026-11-18)에 orders.payment_id·payment_requested_at·pay_lock_until·pay_lock_token와 order_no_counters(order_date PK, last_seq > 0) 추가. **도식에 반영함(2026-11-18).** 취소 후속 처리용 컬럼(`cancel_requested_at`·`stock_restored_at`·`refunded_at`, V4)은 아래 "Order 취소 후속 처리" 행을 참고 |
 | Order 취소 후속 처리 | 취소 확정 후 재고 복원·환불, 중복 처리 방지 | [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)의 V4(main 병합, 2026-11-19)에 orders.cancel_requested_at·stock_restored_at·refunded_at와, 취소 후속 처리가 남은 주문·응답을 모른 취소 요청을 찾는 부분 인덱스 2개 추가. **도식에 반영함(2026-11-19).** 복원·환불이 끝나지 않은 주문은 두 시각 중 NULL인 단계가 재시도 대상 |
+| Order 취소 후속 처리 재시도 상한 | 영구 실패·장기 장애 시 무한 재시도 방지, 수동 확인 표시 | [PR #135](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/135)의 V5(main 병합, 2026-11-19)에 orders.cancel_follow_up_attempts(NOT NULL, 기본 0)·cancel_follow_up_next_attempt_at·cancel_follow_up_manual_at·cancel_follow_up_manual_reason와, 수동 확인 주문을 세고 찾는 부분 인덱스 추가. **도식에 반영함(2026-11-19).** NULL 허용·기본값 컬럼 추가라 기존 데이터에 영향이 없고(Inventory·DB 담당 남규리 확인), 수동 확인 주문 수는 지표 `order_cancel_follow_up_manual_required`로 노출됩니다 |
 | Order 상태 | CREATED, PAID, WAITING, COOKING, COMPLETED, CANCELED, FAILED | Order PR의 CHECK와 enum은 도식과 일치. 현재 이벤트 처리는 PAID→COMPLETED이며 WAITING·COOKING 반영 방식은 미확정 |
 | Cooking 상태·관계 | WAITING→COOKING→DONE, WAITING→CANCELED. order_id UNIQUE, 전표-항목 FK | [PR #62](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/62)의 V1에 상태 CHECK, quantity > 0, cook_time_sec·estimated_cook_sec >= 0, (status, queued_at, id) INDEX 존재. CI-03은 행 잠금으로 취소 경합 제어 |
 | Cooking 혼잡도 | congestion_thresholds로 기준값 관리 | V1에는 id, busy_wait_sec(>0), updated_at 존재. 도식의 선택 이력 표 congestion_snapshots는 PR에서 제외. 확정된 필수 표 누락으로 간주하지 않음 |
-| Inventory | inventories.menu_id NULL 허용·UNIQUE, 확보 상태 RESERVED/CONFIRMED/RELEASED/EXPIRED | **main 병합(PR #70, 초기 구성)·내부 API는 PR #115 미병합:** [PR #70](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/70)의 V1에서 아래 네 테이블·주요 제약을 확인. PR은 RESTORED를 추가하므로 기존 Notion 도식과 상태값 차이를 구분. 마이그레이션 존재가 API·멱등 처리 전체의 구현 완료를 의미하지 않음 |
+| Inventory | inventories.menu_id NULL 허용·UNIQUE, 확보 상태 RESERVED/CONFIRMED/RELEASED/EXPIRED | **main 병합(PR #70 초기 구성, PR #115 내부 API II-01~04·만료 스케줄러):** [PR #70](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/70)의 V1에서 아래 네 테이블·주요 제약을 확인. PR은 RESTORED를 추가하므로 기존 Notion 도식과 상태값 차이를 구분. 마이그레이션 존재가 Order와 함께 띄운 실제 연동 확인을 의미하지 않음(연동은 아직 확인하지 않음) |
 | 이벤트 이력 | 업무 변경·Outbox 저장, processed_events.event_id UUID PK로 중복 방지 | Order·Cooking PR에 event_id UNIQUE Outbox와 Processed Event 존재. 수신은 이력 삽입과 업무 반영을 같은 트랜잭션에서 처리. [이벤트 계약](../events/notion-draft.md) 참조 |
 
 #### Inventory V1 확인 — PR #70
@@ -532,6 +537,7 @@ erDiagram
 | 2026-11-12 | 이태훈 | 3-4, 3-6 설명 보완<br>(대기열 등록 및 조리 완료 상태 연동)<br> | 11/12 팀 회의록 반영<br>주문 확정 후 대기열 등록 및 조리 완료 후 주문상태 반영 절차 명확화 |
 | 2026-11-18 | 김민규 | 3-4 주문: `orders`에 `hold_id`·`hold_expires_at`·`payment_id` 추가, `order_no_counters` 표 추가, `store_operations` 단일 행(id=1)·초기값 설명, CHECK·인덱스 설명, OR-07/08을 OR-06/07로 정정<br>4항: 조리 시간 저장 문장 정리(Order는 저장하지 않음)와 위 항목의 설계 이유 추가 | Order 서비스 Flyway V1~V3 구현(PR #28·#29·#46)과 ERD를 맞추기 위해 |
 | 2026-11-19 | 김민규 | 3-4 주문: `orders`에 `cancel_requested_at`·`stock_restored_at`·`refunded_at`(V4) 추가, "최신 계약과 Flyway 비교" 표와 구현 기준(main `df38c7f`) 갱신 | Order 취소 API(PR #61)와 V4가 main에 병합되어 도식·설명을 맞춤 |
+| 2026-11-19 | 김민규 | 3-4 주문: `orders`에 취소 후속 처리 재시도 컬럼 4개(`cancel_follow_up_attempts`·`cancel_follow_up_next_attempt_at`·`cancel_follow_up_manual_at`·`cancel_follow_up_manual_reason`, V5) 추가, "최신 계약과 Flyway 비교" 표와 구현 기준(main `6167671`) 갱신 | 재시도 상한 구현(PR #135)이 main에 병합되어 도식·설명을 맞춤 |
 
 ## 이벤트 저장·중복 방지 흐름
 
