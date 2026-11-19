@@ -18,10 +18,9 @@ export default function LoginModal({ onClose }) {
         >
           ×
         </button>
+        <h2 id="login-title">로그인이 필요해요</h2>
       </div>
       <div className="login-content">
-        <span className="eyebrow">PEAK ORDER</span>
-        <h2 id="login-title">로그인이 필요해요</h2>
         <p id="login-description">
           장바구니와 주문은 로그인 후 이용할 수 있어요.
           <br />

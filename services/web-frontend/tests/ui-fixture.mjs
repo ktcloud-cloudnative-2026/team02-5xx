@@ -30,13 +30,13 @@ export async function startUiFixture() {
     const url = new URL(request.url, 'http://127.0.0.1');
     if (url.pathname === '/') {
       const html = `<!doctype html>
-      <html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Issue 110 UI test fixture</title>${styles}</head>
-      <body><aside style="position:fixed;bottom:0;right:0;z-index:99;background:white;border:1px solid #666;padding:8px;font:12px sans-serif">
+      <html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="icon" href="data:,"><title>Issue 110 UI test fixture</title>${styles}</head>
+      <body><div id="root"></div><aside style="position:relative;background:white;border:1px solid #666;padding:8px;font:12px sans-serif">
         UI 테스트 전용 · 실제 인증 아님
         <button id="test-sign-in">검증된 세션 모의 주입</button>
         <button id="test-sign-out">비회원으로 전환</button>
         <button id="test-pending">다음 로그인 안내에서 세션 모의 주입</button>
-      </aside><div id="root"></div><script type="module" src="/${entry.fileName}"></script></body></html>`;
+      </aside><script type="module" src="/${entry.fileName}"></script></body></html>`;
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       response.end(html);
     } else {

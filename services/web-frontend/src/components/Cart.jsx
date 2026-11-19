@@ -13,13 +13,13 @@ export default function Cart({
     <section className="cart-page" aria-labelledby="cart-title">
       <header className="page-heading">
         <div>
-          <span className="eyebrow">PEAK ORDER</span>
           <h1 id="cart-title" tabIndex="-1">
             내 장바구니
           </h1>
         </div>
-        <button className="text-button" onClick={onBack}>
-          ← 메뉴로 돌아가기
+        <button className="close-button" onClick={onBack}>
+          <span aria-hidden="true">×</span>
+          <span className="sr-only">메뉴로 돌아가기</span>
         </button>
       </header>
       {warning && (
@@ -38,9 +38,21 @@ export default function Cart({
                 <div className="cart-item-info">
                   <h2>{row.name}</h2>
                   <p>{row.optionNames.join(', ') || '추가 옵션 없음'}</p>
-                  <span className="cart-unit">
+                  <span className="cart-unit sr-only">
                     단가 {formatPrice(row.unitPrice)}
                   </span>
+                  <strong className="cart-line-total">
+                    {formatPrice(row.total)}
+                  </strong>
+                </div>
+                <div className="cart-item-actions">
+                  <button
+                    className="text-button"
+                    aria-label={`${row.name} ${row.optionNames.join(', ')} 삭제`}
+                    onClick={() => onRemove(row.key)}
+                  >
+                    삭제
+                  </button>
                   <div
                     className="quantity-control"
                     role="group"
@@ -65,21 +77,17 @@ export default function Cart({
                     </button>
                   </div>
                 </div>
-                <div className="cart-item-actions">
-                  <button
-                    className="text-button"
-                    aria-label={`${row.name} ${row.optionNames.join(', ')} 삭제`}
-                    onClick={() => onRemove(row.key)}
-                  >
-                    삭제
-                  </button>
-                  <strong>{formatPrice(row.total)}</strong>
-                </div>
               </li>
             ))}
           </ul>
           <aside className="cart-summary" aria-label="장바구니 금액">
             <h2>주문 예정 금액</h2>
+            <div className="cart-count-row">
+              <span>총 수량</span>
+              <span>
+                {rows.reduce((count, row) => count + row.quantity, 0)}개
+              </span>
+            </div>
             <div className="total-row">
               <span>합계</span>
               <output aria-label="장바구니 전체 합계" aria-live="polite">
