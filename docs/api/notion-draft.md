@@ -275,7 +275,7 @@ Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·
 | 502 | `UPSTREAM_INVALID_RESPONSE` | 연동 서비스 응답 오류. 결과를 알 수 없는 상태를 성공·실패로 단정하지 않음 |
 | 503 | `MENU_SERVICE_UNAVAILABLE`, `INVENTORY_SERVICE_UNAVAILABLE`, `PAYMENT_SERVICE_UNAVAILABLE` | 연동 서비스 장애·시간 초과. 결제·재고 확정 결과를 모를 때는 주문을 `CREATED`로 두고, 같은 주문으로 다시 호출하면 이어서 처리 |
 | 503 | `COOKING_UNAVAILABLE` | Cooking 장애로 신규 주문·결제 차단 |
-| 503 | `COOKING_SERVICE_UNAVAILABLE` | 주문 취소 중 Cooking 응답을 받지 못함(결과 불명). 주문을 그대로 두고 재호출 |
+| 503 | `COOKING_SERVICE_UNAVAILABLE` | 주문 취소 중 Cooking 응답을 받지 못함(결과 불명). 주문을 그대로 두고, 요청은 접수되어 재호출하거나 스케줄러가 확인해 자동 처리 |
 | 500 | `INTERNAL_ERROR` | 서버 내부 오류 |
 
 **주문 취소(OR-05) 처리** (PR #61 구현 기준)
@@ -288,7 +288,7 @@ Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·
 | `PAID` 이후, Cooking이 취소 수락(CI-03 200) | `CANCELED`(`cancel_reason`=`CUSTOMER_CANCEL`, `canceled_at`, 상태 이력) 후 재고 복원(II-04)·환불(PI-03) |
 | Cooking `409 COOKING_ALREADY_STARTED`·`COOKING_ALREADY_DONE` | 취소하지 않고 같은 코드로 응답 |
 | Cooking `404 COOKING_TICKET_NOT_FOUND` | 접수 처리 중일 수 있어 취소로 보지 않고 `409 COOKING_ORDER_PENDING` |
-| Cooking 응답을 모름(5xx·타임아웃) | 주문을 그대로 두고 `503 COOKING_SERVICE_UNAVAILABLE`. Cooking 취소는 멱등이라 재호출하면 이어서 처리 |
+| Cooking 응답을 모름(5xx·타임아웃) | 주문을 그대로 두고 `503 COOKING_SERVICE_UNAVAILABLE`. Cooking을 호출하기 직전에 `cancel_requested_at`을 기록해 두므로, 고객이 다시 호출하지 않아도 스케줄러가 CI-03을 다시 호출해 확정한다(Cooking 취소는 멱등). 조리 시작·완료·접수 전으로 거절되면 기록을 지우고 더 확인하지 않음 |
 | 재고 복원 또는 환불 실패 | 주문은 `CANCELED` 유지, 응답은 `200`. 끝난 단계를 `stock_restored_at`·`refunded_at`에 기록하고 안 끝난 단계는 같은 주문 재호출 또는 스케줄러(30초)가 이어서 처리. 두 단계는 서로 독립 |
 | 재고 복원 `409 RESTORE_NOT_APPLICABLE` | 성공으로 기록하지 않고 에러 로그, 수동 확인 |
 | `COMPLETED`·`FAILED` | `409 ORDER_NOT_CANCELABLE` |
