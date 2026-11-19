@@ -9,7 +9,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.peakorder.cooking.config.ClockConfig;
 import com.peakorder.cooking.entity.CookingTicket;
 import com.peakorder.cooking.entity.CookingTicketItem;
 import com.peakorder.cooking.entity.TicketStatus;
@@ -18,8 +17,6 @@ import com.peakorder.cooking.messaging.OrderConfirmedEvent.Item;
 import com.peakorder.cooking.messaging.OrderConfirmedEvent.Option;
 import com.peakorder.cooking.repository.CookingTicketRepository;
 import com.peakorder.cooking.repository.ProcessedEventRepository;
-import java.time.Clock;
-import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -30,8 +27,6 @@ import org.mockito.ArgumentCaptor;
 
 class OrderConfirmedServiceTest {
 
-  private static final Instant NOW = Instant.parse("2026-11-16T01:00:00Z");
-
   private ProcessedEventRepository processedEventRepository;
   private CookingTicketRepository ticketRepository;
   private OrderConfirmedService service;
@@ -40,9 +35,7 @@ class OrderConfirmedServiceTest {
   void setUp() {
     processedEventRepository = mock(ProcessedEventRepository.class);
     ticketRepository = mock(CookingTicketRepository.class);
-    service =
-        new OrderConfirmedService(
-            processedEventRepository, ticketRepository, Clock.fixed(NOW, ClockConfig.ZONE));
+    service = new OrderConfirmedService(processedEventRepository, ticketRepository);
   }
 
   /** 합의 문서 예시: 아메리카노 2개(120초 + 옵션 30초), 라떼 1개(90초) */
@@ -72,7 +65,7 @@ class OrderConfirmedServiceTest {
     assertThat(ticket.getStatus()).isEqualTo(TicketStatus.WAITING);
     assertThat(ticket.getOrderId()).isEqualTo(1L);
     assertThat(ticket.getOrderNo()).isEqualTo("261116-0001");
-    assertThat(ticket.getQueuedAt()).isEqualTo(NOW); // confirmedAt이 아니라 Cooking 등록 시각
+    assertThat(ticket.getQueuedAt()).isNull(); // 앱이 정하지 않음 — 저장 시 DB가 기록(confirmedAt도 쓰지 않음)
     assertThat(ticket.getEstimatedCookSec()).isEqualTo((150 * 2) + (90 * 1)); // 390
     assertThat(ticket.getItems())
         .extracting(

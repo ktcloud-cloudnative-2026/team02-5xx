@@ -14,6 +14,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.hibernate.annotations.Generated;
+import org.hibernate.generator.EventType;
 
 /** 조리 전표. OrderConfirmed 이벤트 1건당 1개 생성된다. */
 @Entity
@@ -37,7 +39,18 @@ public class CookingTicket {
   @Column(name = "estimated_cook_sec", nullable = false)
   private int estimatedCookSec;
 
-  @Column(name = "queued_at", nullable = false)
+  /**
+   * Cooking DB 등록 시각 (FIFO 기준). 애플리케이션은 값을 넣지 않고, INSERT 시 컬럼 기본값 clock_timestamp()(문장 실행 시각, V3)가
+   * 기록한 값을 Hibernate가 다시 읽어 온다.
+   *
+   * <ul>
+   *   <li>앱 시각을 쓰지 않음 → 인스턴스가 여러 대여도 같은 DB 시계 (PR #47 리뷰)
+   *   <li>트랜잭션 시작 시각(now/localtimestamp)을 쓰지 않음 → 먼저 시작했지만 늦게 INSERT한 전표가 더 이른 시각을 받는 역전 방지 (PR
+   *       #109 리뷰)
+   * </ul>
+   */
+  @Generated(event = EventType.INSERT)
+  @Column(name = "queued_at", nullable = false, insertable = false, updatable = false)
   private Instant queuedAt;
 
   @Column(name = "started_at")
@@ -55,12 +68,10 @@ public class CookingTicket {
   protected CookingTicket() {}
 
   /**
-   * 대기열에 등록할 전표를 만든다. 상태는 WAITING, 예상 조리 시간은 항목별 (1개 조리 시간 × 수량)의 합이다.
-   *
-   * @param queuedAt Cooking DB 등록 시각 (FIFO 기준)
+   * 대기열에 등록할 전표를 만든다. 상태는 WAITING, 예상 조리 시간은 항목별 (1개 조리 시간 × 수량)의 합이다. 등록 시각(queuedAt)은 저장할 때 DB가
+   * 정한다.
    */
-  public static CookingTicket create(
-      Long orderId, String orderNo, List<CookingTicketItem> items, Instant queuedAt) {
+  public static CookingTicket create(Long orderId, String orderNo, List<CookingTicketItem> items) {
     if (items == null || items.isEmpty()) {
       throw new IllegalArgumentException("조리 항목이 비어 있습니다.");
     }
@@ -68,7 +79,6 @@ public class CookingTicket {
     ticket.orderId = orderId;
     ticket.orderNo = orderNo;
     ticket.status = TicketStatus.WAITING;
-    ticket.queuedAt = queuedAt;
     items.forEach(ticket::addItem);
     ticket.estimatedCookSec =
         items.stream().mapToInt(item -> item.getCookTimeSec() * item.getQuantity()).sum();

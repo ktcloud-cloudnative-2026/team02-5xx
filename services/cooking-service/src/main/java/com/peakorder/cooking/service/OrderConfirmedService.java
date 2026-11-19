@@ -5,7 +5,6 @@ import com.peakorder.cooking.entity.CookingTicketItem;
 import com.peakorder.cooking.messaging.OrderConfirmedEvent;
 import com.peakorder.cooking.repository.CookingTicketRepository;
 import com.peakorder.cooking.repository.ProcessedEventRepository;
-import java.time.Clock;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -26,7 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>cook_time_sec = cookTimeSec + 옵션 extraCookTimeSec 합 (1개 기준)
  *   <li>option_summary = optionName을 ", "로 이어붙임 (옵션 없으면 NULL)
  *   <li>estimated_cook_sec = Σ(cook_time_sec × quantity) — CookingTicket.create에서 계산
- *   <li>queued_at = Cooking 등록 시각 (FIFO 기준)
+ *   <li>queued_at = Cooking DB 등록 시각 (FIFO 기준) — 저장 시 DB가 기록(CookingTicket)
  * </ul>
  */
 @Service
@@ -36,15 +35,11 @@ public class OrderConfirmedService {
 
   private final ProcessedEventRepository processedEventRepository;
   private final CookingTicketRepository ticketRepository;
-  private final Clock clock;
 
   public OrderConfirmedService(
-      ProcessedEventRepository processedEventRepository,
-      CookingTicketRepository ticketRepository,
-      Clock clock) {
+      ProcessedEventRepository processedEventRepository, CookingTicketRepository ticketRepository) {
     this.processedEventRepository = processedEventRepository;
     this.ticketRepository = ticketRepository;
-    this.clock = clock;
   }
 
   @Transactional
@@ -60,14 +55,14 @@ public class OrderConfirmedService {
 
     List<CookingTicketItem> items =
         event.items().stream().map(OrderConfirmedService::toItem).toList();
-    CookingTicket ticket =
-        CookingTicket.create(event.orderId(), event.orderNo(), items, clock.instant());
+    CookingTicket ticket = CookingTicket.create(event.orderId(), event.orderNo(), items);
     ticketRepository.save(ticket);
     log.info(
-        "조리 대기열에 등록했습니다 orderId={} orderNo={} estimatedCookSec={}",
+        "조리 대기열에 등록했습니다 orderId={} orderNo={} estimatedCookSec={} queuedAt={}",
         ticket.getOrderId(),
         ticket.getOrderNo(),
-        ticket.getEstimatedCookSec());
+        ticket.getEstimatedCookSec(),
+        ticket.getQueuedAt());
   }
 
   static CookingTicketItem toItem(OrderConfirmedEvent.Item item) {

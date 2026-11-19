@@ -57,8 +57,7 @@ class CookingProgressServiceTest {
     return CookingTicket.create(
         orderId,
         "261117-%04d".formatted(orderId),
-        List.of(CookingTicketItem.of(1L, "아메리카노", null, 1, cookTimeSec)),
-        NOW.minusSeconds(600));
+        List.of(CookingTicketItem.of(1L, "아메리카노", null, 1, cookTimeSec)));
   }
 
   private void givenFirst(TicketStatus status, CookingTicket ticket) {
