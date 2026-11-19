@@ -12,7 +12,7 @@ import {
   saveCart,
 } from './cart.js';
 import { anonymousSession, planCartIntent } from './session.js';
-import Cart from './components/Cart.jsx';
+import CartOverlay from './components/CartOverlay.jsx';
 import LoginModal from './components/LoginModal.jsx';
 
 export default function App({
@@ -45,12 +45,19 @@ export default function App({
   const [selectedId, setSelectedId] = useState(null);
   const [error, setError] = useState('');
   const openerRef = useRef(null);
+  const cartOpenerRef = useRef(null);
   const menus = getMenus({ categoryId, query, sort });
   const selectedMenu = selectedId === null ? null : getMenu(selectedId);
 
   useEffect(() => {
-    const onHistory = () =>
-      setPage(window.location.hash === '#cart' ? 'cart' : 'menu');
+    const onHistory = () => {
+      const next = window.location.hash === '#cart' ? 'cart' : 'menu';
+      if (next === 'cart' && previousPage.current !== 'cart')
+        menuScroll.current = window.scrollY;
+      setPage(next);
+      if (next === 'cart') setSelectedId(null);
+      else setLoginIntent(null);
+    };
     window.addEventListener('popstate', onHistory);
     window.addEventListener('hashchange', onHistory);
     return () => {
@@ -81,11 +88,11 @@ export default function App({
     previousSignedIn.current = signedIn;
     if (!pageChanged && !cartBecameAvailable) return;
     if (page === 'cart' && signedIn) {
-      document.getElementById('cart-title')?.focus();
-      window.scrollTo(0, 0);
+      document.getElementById('cart-title')?.focus({ preventScroll: true });
     } else {
       window.scrollTo(0, menuScroll.current);
       const target =
+        (cartOpenerRef.current?.isConnected ? cartOpenerRef.current : null) ??
         document.querySelector(`[data-menu-id="${lastMenuId.current}"]`) ??
         document.getElementById('menu-list');
       target?.focus({ preventScroll: true });
@@ -93,14 +100,32 @@ export default function App({
   }, [page, signedIn]);
 
   function navigate(nextPage) {
-    if (nextPage === 'cart') menuScroll.current = window.scrollY;
-    window.history.pushState(
-      { peakOrderPage: nextPage },
-      '',
-      nextPage === 'cart' ? '#cart' : '#menu-list',
-    );
+    if (nextPage === 'cart' && page !== 'cart') {
+      menuScroll.current = window.scrollY;
+      window.history.pushState(
+        { peakOrderPage: nextPage, cartOverlay: true },
+        '',
+        '#cart',
+      );
+    }
     setPage(nextPage);
     setSelectedId(null);
+  }
+
+  function closeCart() {
+    // Update React first: a pending popstate must not reopen anonymous login.
+    setPage('menu');
+    if (window.history.state?.cartOverlay === true) {
+      window.history.back();
+    } else {
+      // Direct #cart entries must close locally rather than leave the app.
+      window.history.replaceState({ peakOrderPage: 'menu' }, '', '#menu-list');
+    }
+  }
+
+  function requestCart(event) {
+    cartOpenerRef.current = event.currentTarget;
+    requestIntent({ type: 'view' });
   }
 
   function persist(items) {
@@ -146,8 +171,7 @@ export default function App({
   function closeLogin() {
     setLoginIntent(null);
     if (page === 'cart' && !signedIn) {
-      window.history.replaceState({ peakOrderPage: 'menu' }, '', '#menu-list');
-      setPage('menu');
+      closeCart();
     }
   }
 
@@ -222,7 +246,7 @@ export default function App({
           <button
             className={`nav-item cart-nav ${page === 'cart' && signedIn ? 'active' : ''}`}
             aria-current={page === 'cart' && signedIn ? 'page' : undefined}
-            onClick={() => requestIntent({ type: 'view' })}
+            onClick={requestCart}
           >
             <svg
               viewBox="0 0 24 24"
@@ -239,25 +263,17 @@ export default function App({
         </nav>
       </aside>
       <main className="menu-page">
-        <p className="action-notice" role="status" aria-live="polite">
-          {notice}
-        </p>
-        {page === 'cart' && signedIn ? (
-          <Cart
-            rows={view.rows}
-            total={view.total}
-            warning={cart.warning}
-            onQuantity={updateCart}
-            onRemove={deleteCartItem}
-            onBack={() => navigate('menu')}
-            onOrder={() => requestIntent({ type: 'order' })}
-          />
-        ) : (
-          <>
-            <header className="page-heading">
-              <h1>
-                <strong>메뉴</strong> 카테고리
-              </h1>
+        {(page !== 'cart' || !signedIn) && (
+          <p className="action-notice" role="status" aria-live="polite">
+            {notice}
+          </p>
+        )}
+        <>
+          <header className="page-heading">
+            <h1>
+              <strong>메뉴</strong> 카테고리
+            </h1>
+            <div className="header-actions">
               <label className="search-field">
                 <svg
                   viewBox="0 0 24 24"
@@ -277,91 +293,111 @@ export default function App({
                   onChange={(event) => setQuery(event.target.value)}
                 />
               </label>
-            </header>
-            <div className="categories" role="group" aria-label="메뉴 카테고리">
-              {[{ id: 'all', name: '전체' }, ...getCategories()].map(
-                (category) => (
-                  <button
-                    key={category.id}
-                    className={`category ${categoryId === category.id ? 'selected' : ''}`}
-                    aria-pressed={categoryId === category.id}
-                    onClick={() => setCategoryId(category.id)}
-                  >
-                    <span className="category-image" aria-hidden="true" />
-                    {category.name}
-                  </button>
-                ),
-              )}
+              <button
+                className="pill-button header-cart"
+                onClick={requestCart}
+                aria-haspopup="dialog"
+              >
+                장바구니
+                {signedIn && cart.items.length > 0
+                  ? ` (${cart.items.length})`
+                  : ''}
+              </button>
             </div>
-            <section id="menu-list" aria-labelledby="list-title" tabIndex="-1">
-              <div className="list-heading">
-                <h2 id="list-title">
-                  <strong>메뉴</strong> 고르기
-                </h2>
-                <label className="sort-field">
-                  정렬
-                  <select
-                    aria-label="메뉴 정렬"
-                    value={sort}
-                    onChange={(event) => setSort(event.target.value)}
-                  >
-                    <option value="default">기본순</option>
-                    <option value="priceAsc">낮은 가격순</option>
-                    <option value="priceDesc">높은 가격순</option>
-                  </select>
-                </label>
-              </div>
-              <p className="sr-only" role="status">
-                메뉴 {menus.length}개
-              </p>
-              {error && <p role="alert">{error}</p>}
-              {menus.length ? (
-                <div className="menu-grid">
-                  {menus.map((menu) => (
-                    <button
-                      key={menu.id}
-                      data-menu-id={menu.id}
-                      className="menu-card"
-                      disabled={menu.status !== 'ON_SALE'}
-                      onClick={(event) => openMenu(menu.id, event)}
-                      aria-label={`${menu.name}, ${formatPrice(menu.basePrice)}${menu.status === 'PAUSED' ? ', 판매 중지' : ', 상세 보기'}`}
-                    >
-                      <span className="menu-photo" aria-hidden="true">
-                        메뉴 사진
-                      </span>
-                      <span className="menu-name">{menu.name}</span>
-                      <span className="menu-price">
-                        {formatPrice(menu.basePrice)}
-                      </span>
-                      {menu.status === 'PAUSED' && (
-                        <span className="status-badge">판매 중지</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="empty-state" role="status">
-                  <h3>
-                    {query.trim()
-                      ? '검색 결과가 없어요'
-                      : '등록된 메뉴가 없어요'}
-                  </h3>
-                  <p>다른 카테고리나 검색어로 메뉴를 찾아보세요.</p>
+          </header>
+          <div className="categories" role="group" aria-label="메뉴 카테고리">
+            {[{ id: 'all', name: '전체' }, ...getCategories()].map(
+              (category) => (
+                <button
+                  key={category.id}
+                  className={`category ${categoryId === category.id ? 'selected' : ''}`}
+                  aria-pressed={categoryId === category.id}
+                  onClick={() => setCategoryId(category.id)}
+                >
+                  <span className="category-image" aria-hidden="true" />
+                  {category.name}
+                </button>
+              ),
+            )}
+          </div>
+          <section id="menu-list" aria-labelledby="list-title" tabIndex="-1">
+            <div className="list-heading">
+              <h2 id="list-title">
+                <strong>메뉴</strong> 고르기
+              </h2>
+              <label className="sort-field">
+                정렬
+                <select
+                  aria-label="메뉴 정렬"
+                  value={sort}
+                  onChange={(event) => setSort(event.target.value)}
+                >
+                  <option value="default">기본순</option>
+                  <option value="priceAsc">낮은 가격순</option>
+                  <option value="priceDesc">높은 가격순</option>
+                </select>
+              </label>
+            </div>
+            <p className="sr-only" role="status">
+              메뉴 {menus.length}개
+            </p>
+            {error && <p role="alert">{error}</p>}
+            {menus.length ? (
+              <div className="menu-grid">
+                {menus.map((menu) => (
                   <button
-                    className="pill-button"
-                    onClick={() => {
-                      setCategoryId('all');
-                      setQuery('');
-                    }}
+                    key={menu.id}
+                    data-menu-id={menu.id}
+                    className="menu-card"
+                    disabled={menu.status !== 'ON_SALE'}
+                    onClick={(event) => openMenu(menu.id, event)}
+                    aria-label={`${menu.name}, ${formatPrice(menu.basePrice)}${menu.status === 'PAUSED' ? ', 판매 중지' : ', 상세 보기'}`}
                   >
-                    전체 메뉴 보기
+                    <span className="menu-photo" aria-hidden="true">
+                      메뉴 사진
+                    </span>
+                    <span className="menu-name">{menu.name}</span>
+                    <span className="menu-price">
+                      {formatPrice(menu.basePrice)}
+                    </span>
+                    {menu.status === 'PAUSED' && (
+                      <span className="status-badge">판매 중지</span>
+                    )}
                   </button>
-                </div>
-              )}
-            </section>
-          </>
-        )}
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state" role="status">
+                <h3>
+                  {query.trim() ? '검색 결과가 없어요' : '등록된 메뉴가 없어요'}
+                </h3>
+                <p>다른 카테고리나 검색어로 메뉴를 찾아보세요.</p>
+                <button
+                  className="pill-button"
+                  onClick={() => {
+                    setCategoryId('all');
+                    setQuery('');
+                  }}
+                >
+                  전체 메뉴 보기
+                </button>
+              </div>
+            )}
+          </section>
+        </>
       </main>
+      {page === 'cart' && signedIn && (
+        <CartOverlay
+          rows={view.rows}
+          total={view.total}
+          warning={cart.warning}
+          notice={notice}
+          onQuantity={updateCart}
+          onRemove={deleteCartItem}
+          onClose={closeCart}
+          onOrder={() => requestIntent({ type: 'order' })}
+        />
+      )}
       {selectedId !== null && (
         <MenuDetail
           key={selectedId}
@@ -372,7 +408,7 @@ export default function App({
             .join(' ')}
           onAdd={(selection) => requestIntent({ type: 'add', selection })}
           onOrder={(selection) => requestIntent({ type: 'order', selection })}
-          onViewCart={() => requestIntent({ type: 'view' })}
+          onViewCart={requestCart}
         />
       )}
       {loginIntent && !signedIn && <LoginModal onClose={closeLogin} />}

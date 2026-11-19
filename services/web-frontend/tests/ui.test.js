@@ -51,6 +51,32 @@ test('anonymous session cannot be enabled by persisted data', () => {
   assert.ok(html.includes('메뉴 카테고리'));
 });
 
+test('cart deep link keeps the menu underneath and renders an overlay only for an injected signed-in session', () => {
+  const previous = globalThis.window;
+  globalThis.window = { location: { hash: '#cart' } };
+  const snapshot = Object.freeze({ authenticated: true });
+  const storageProvider = () => ({ getItem: () => null });
+  try {
+    const signed = render(App, {
+      storageProvider,
+      sessionSource: {
+        subscribe: () => () => {},
+        getSnapshot: () => snapshot,
+        getServerSnapshot: () => snapshot,
+      },
+    });
+    assert.ok(signed.includes('class="cart-modal"'));
+    assert.ok(signed.includes('id="menu-list"'));
+    assert.ok(signed.includes('aria-labelledby="cart-title"'));
+    const anonymous = render(App, { storageProvider });
+    assert.ok(!anonymous.includes('class="cart-modal"'));
+    assert.ok(anonymous.includes('id="menu-list"'));
+  } finally {
+    if (previous === undefined) delete globalThis.window;
+    else globalThis.window = previous;
+  }
+});
+
 test('signed-in UI is an injected test snapshot, not an implementation of authentication', () => {
   const snapshot = Object.freeze({ authenticated: true });
   const sessionSource = {

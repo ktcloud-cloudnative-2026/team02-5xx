@@ -4,6 +4,7 @@ export default function Cart({
   rows,
   total,
   warning,
+  notice,
   onQuantity,
   onRemove,
   onBack,
@@ -22,6 +23,11 @@ export default function Cart({
           <span className="sr-only">메뉴로 돌아가기</span>
         </button>
       </header>
+      {notice && (
+        <p className="action-notice" role="status" aria-live="polite">
+          {notice}
+        </p>
+      )}
       {warning && (
         <p className="cart-warning" role="status">
           {warning}
