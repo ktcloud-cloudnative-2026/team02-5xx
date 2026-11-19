@@ -2,6 +2,8 @@ package com.peakorder.order.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -9,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.peakorder.order.dto.StoreOperationResponse;
+import com.peakorder.order.dto.UpdateStoreOperationRequest;
 import com.peakorder.order.exception.BusinessException;
 import com.peakorder.order.exception.ErrorCode;
 import com.peakorder.order.exception.GlobalExceptionHandler;
@@ -84,6 +87,32 @@ class AdminStoreOperationControllerTest {
                 .content("{\"isOpen\":\"maybe\"}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.success").value(false));
+  }
+
+  @Test
+  void patch_does_not_coerce_strings_or_numbers_into_booleans() throws Exception {
+    for (String field : new String[] {"isOpen", "acceptingOrders"}) {
+      for (String value : new String[] {"\"true\"", "\"false\"", "1", "0", "[]", "{}"}) {
+        mvc.perform(
+                patch("/api/v1/admin/store/operations")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"" + field + "\":" + value + "}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errorCode").value("INVALID_REQUEST"));
+      }
+    }
+    verify(service, never()).update(any());
+  }
+
+  @Test
+  void patch_accepts_json_booleans() throws Exception {
+    when(service.update(any())).thenReturn(state(true, false));
+    mvc.perform(
+            patch("/api/v1/admin/store/operations")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"isOpen\":true,\"acceptingOrders\":false}"))
+        .andExpect(status().isOk());
+    verify(service).update(new UpdateStoreOperationRequest(true, false));
   }
 
   @Test
