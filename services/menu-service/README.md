@@ -49,6 +49,11 @@ java -jar build/libs/menu-service-0.0.1-SNAPSHOT.jar
 
 ## API 문서
 
+ME-01 `GET /api/v1/menus`, ME-02 `GET /api/v1/menus/{menuId}`는 비회원 고객의
+메뉴 목록·상세 조회를 제공합니다. 필터·정렬·상태·옵션 및 오류 계약은
+[ME-01·ME-02 상세 명세](../../docs/api/menu-me01-me02.md)를 확인합니다.
+ON_SALE·PAUSED를 조회할 수 있고 HIDDEN은 노출하지 않습니다.
+
 - Swagger UI: http://localhost:8080/swagger-ui.html (`/swagger-ui/index.html`로 이동)
 - OpenAPI JSON: http://localhost:8080/v3/api-docs
 - Swagger UI 설정: http://localhost:8080/v3/api-docs/swagger-config
@@ -128,11 +133,20 @@ $env:MENU_DB_TEST_PASSWORD = $dbCredential.GetNetworkCredential().Password
 애플리케이션 진입점은 `com.peakorder.menu.MenuServiceApplication`입니다.
 업무 구현 시 기본 패키지 아래에 `controller`, `service`, `repository`, `dto`, `entity` 계층을 추가합니다.
 기존 `entity`, `repository`의 메뉴 DB 모델과 저장소를 재사용하며,
-`controller`, `service`, `dto`, `exception`에 MI-01 구매 검증과 MI-02 존재 확인 API를 구현했습니다.
+`controller`, `service`, `dto`, `exception`에 MI-01 구매 검증·MI-02 존재 확인과 ME-01·ME-02 고객 조회 API를 구현했습니다.
 현재 사용하지 않는 패키지에는 예시 클래스나 설명용 파일을 만들지 않습니다.
 Redis, RabbitMQ, Docker, Kubernetes는 이번 구현 범위에 포함하지 않습니다.
 서비스 전용 `.editorconfig`와 `.gitattributes`를 사용합니다.
 DB 구조 및 마이그레이션 변경은 팀 규칙상 작성자 외 팀원 1명의 필수 리뷰 대상입니다.
+
+## ME-01·ME-02 검증
+
+Java 21에서 `spotlessCheck test build`를 검증했습니다.
+고객 조회 Service 21건·실제 HTTP 35건 및 기존 MI-01·MI-02 회귀 78건을 합해 134건 통과했습니다.
+실제 PostgreSQL 테스트 10건은 별도 테스트 DB 미설정으로 건너뛰었습니다.
+공유 DB·Gateway·React·실제 Inventory 연동은 검증하지 않았습니다.
+카테고리 동시 조회와 옵션 정렬의 DB 테스트는 별도 폐기 가능한 PostgreSQL에서 실행해야 합니다.
+상세 계약과 검증 범위는 [ME-01·ME-02 명세](../../docs/api/menu-me01-me02.md)를 확인합니다.
 
 ## MI-02 검증
 

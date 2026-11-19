@@ -26,3 +26,7 @@ management:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+payment:
+  mock:
+    result: ${PAYMENT_MOCK_RESULT:APPROVE} # APPROVE 또는 FAIL (결제 실패 시연용)
