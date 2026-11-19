@@ -8,7 +8,6 @@ import com.peakorder.cooking.exception.BusinessException;
 import com.peakorder.cooking.exception.ErrorCode;
 import com.peakorder.cooking.repository.CookingTicketRepository;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,13 +67,11 @@ public class CookingQueryService {
 
   /** 현재 조리 중인 전표들의 남은 시간 합(초) */
   private long cookingRemainingSec(Instant now) {
-    return ticketRepository.findByStatusOrderByQueuedAtAscIdAsc(TicketStatus.COOKING).stream()
-        .mapToLong(t -> remainingSec(t, now))
-        .sum();
+    return CookingTimes.remainingSec(
+        ticketRepository.findByStatusOrderByQueuedAtAscIdAsc(TicketStatus.COOKING), now);
   }
 
   private static long remainingSec(CookingTicket ticket, Instant now) {
-    long elapsed = Duration.between(ticket.getStartedAt(), now).toSeconds();
-    return Math.max(0, ticket.getEstimatedCookSec() - elapsed);
+    return CookingTimes.remainingSec(ticket, now);
   }
 }
