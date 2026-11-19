@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.peakorder.order.client.CookingClient;
 import com.peakorder.order.client.InventoryClient;
 import com.peakorder.order.client.InventoryClient.HoldLine;
 import com.peakorder.order.client.InventoryClient.StockHold;
@@ -54,6 +56,8 @@ class OrderServiceTest {
   private MenuClient menuClient;
   private InventoryClient inventoryClient;
   private PaymentClient paymentClient;
+  private CookingAvailability cookingAvailability;
+  private CookingClient cookingClient;
   private OrderService service;
 
   @BeforeEach
@@ -64,6 +68,8 @@ class OrderServiceTest {
     menuClient = mock(MenuClient.class);
     inventoryClient = mock(InventoryClient.class);
     paymentClient = mock(PaymentClient.class);
+    cookingAvailability = mock(CookingAvailability.class);
+    cookingClient = mock(CookingClient.class);
     service =
         new OrderService(
             orderRepository,
@@ -72,6 +78,8 @@ class OrderServiceTest {
             menuClient,
             inventoryClient,
             paymentClient,
+            cookingAvailability,
+            cookingClient,
             Clock.fixed(now.toInstant(), ZoneId.of("Asia/Seoul")));
     when(storeRepository.findById(StoreOperation.SINGLE_STORE_ID))
         .thenReturn(Optional.of(new StoreOperation(true, true, now)));
@@ -277,7 +285,7 @@ class OrderServiceTest {
 
   @Test
   void detail_of_another_users_order_is_not_found() {
-    when(orderRepository.findByIdAndUserId(5L, 7L)).thenReturn(Optional.empty());
+    when(txService.findDetail(7L, 5L)).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> service.getOrder(7L, 5L))
         .isInstanceOfSatisfying(
@@ -1034,5 +1042,184 @@ class OrderServiceTest {
             e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE));
     verify(paymentClient, never()).pay(any(), org.mockito.ArgumentMatchers.anyInt(), any());
     verify(txService, never()).markFailed(any(), any(), any());
+  }
+
+  // ---- US-13 Cooking 장애 시 차단 ----
+
+  private void cookingDown() {
+    org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.COOKING_UNAVAILABLE))
+        .when(cookingAvailability)
+        .ensureAvailable();
+  }
+
+  @Test
+  void create_is_blocked_while_cooking_is_down_without_calling_other_services() {
+    cookingDown();
+
+    assertThatThrownBy(() -> service.createOrder(7L, request()))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.COOKING_UNAVAILABLE));
+    verify(menuClient, never()).validatePurchase(any());
+    verify(txService, never()).createTemporaryOrder(any(), any());
+    verify(inventoryClient, never()).hold(any(), any());
+  }
+
+  @Test
+  void store_closed_is_reported_before_cooking_outage() {
+    when(storeRepository.findById(StoreOperation.SINGLE_STORE_ID))
+        .thenReturn(Optional.of(new StoreOperation(true, false, now)));
+    cookingDown();
+
+    assertThatThrownBy(() -> service.createOrder(7L, request()))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.STORE_NOT_ACCEPTING_ORDERS));
+  }
+
+  @Test
+  void pay_is_blocked_while_cooking_is_down_and_leaves_the_order_untouched() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
+    cookingDown();
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.COOKING_UNAVAILABLE));
+    verify(menuClient, never()).validatePurchase(payLines());
+    verify(paymentClient, never()).pay(any(), org.mockito.ArgumentMatchers.anyInt(), any());
+    verify(txService, never()).markFailed(any(), any());
+    verify(inventoryClient, never()).release(any());
+  }
+
+  @Test
+  void
+      order_with_a_payment_request_is_not_blocked_by_a_cooking_outage_so_its_result_can_be_resolved() {
+    // 결제가 됐을 수 있는 주문은 같은 키로 기존 결과를 확인하는 것이라 새 결제가 아니다. 막으면 돈은 나갔는데 사용자는 "결제 불가"만 본다.
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(retryAfterExpiry());
+    cookingDown();
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
+    OrderDetailResponse confirmed = mock(OrderDetailResponse.class);
+    when(txService.confirmOrder(eq(100L), eq(LOCK), eq(9L), any())).thenReturn(confirmed);
+
+    assertThat(service.payOrder(7L, 100L)).isSameAs(confirmed);
+
+    verify(cookingAvailability, never()).ensureAvailable();
+  }
+
+  @Test
+  void
+      order_with_a_payment_request_is_refunded_when_stock_confirm_is_rejected_during_a_cooking_outage() {
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(retryAfterExpiry());
+    cookingDown();
+    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
+    org.mockito.Mockito.doThrow(new BusinessException(ErrorCode.STOCK_CONFIRM_FAILED))
+        .when(inventoryClient)
+        .confirm(55L);
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L)).isInstanceOf(BusinessException.class);
+
+    verify(paymentClient).refund(9L);
+    verify(txService).markFailed(100L, LOCK, "STOCK_CONFIRM_FAILED");
+  }
+
+  @Test
+  void already_confirmed_order_can_still_be_read_through_pay_while_cooking_is_down() {
+    PaymentTarget paid = target(OrderStatus.PAID, 55L, now.plusMinutes(3));
+    when(txService.findPaymentTarget(7L, 100L)).thenReturn(paid);
+    cookingDown();
+
+    assertThat(service.payOrder(7L, 100L)).isSameAs(paid.detail());
+    verify(cookingAvailability, never()).ensureAvailable();
+  }
+
+  @Test
+  void expired_hold_is_still_closed_even_while_cooking_is_down() {
+    when(txService.findPaymentTarget(7L, 100L))
+        .thenReturn(target(OrderStatus.CREATED, 55L, now.minusSeconds(1)));
+    cookingDown();
+
+    assertThatThrownBy(() -> service.payOrder(7L, 100L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.HOLD_EXPIRED));
+    verify(txService).markFailed(100L, LOCK, "HOLD_EXPIRED");
+  }
+
+  @Test
+  void read_apis_are_not_affected_by_cooking_outage() {
+    cookingDown();
+    when(txService.findDetail(7L, 5L)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.getOrder(7L, 5L))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.ORDER_NOT_FOUND));
+    verify(cookingAvailability, never()).ensureAvailable();
+  }
+
+  // ---- OR-04 조리 상태 ----
+
+  private OrderDetailResponse detailWithStatus(OrderStatus status) {
+    Order order = Order.createTemporary(7L, now);
+    order.addItem(1L, "아메리카노", 3000, 1, List.of());
+    if (status != OrderStatus.CREATED) {
+      order.changeStatus(status, null, now);
+    }
+    return OrderDetailResponse.from(order);
+  }
+
+  @Test
+  void paid_order_detail_includes_cooking_status() {
+    when(txService.findDetail(7L, 5L)).thenReturn(Optional.of(detailWithStatus(OrderStatus.PAID)));
+    when(cookingClient.getStatus(any()))
+        .thenReturn(
+            Optional.of(
+                new CookingClient.CookingStatus(
+                    "COOKING", 0, 120, 0, 45, OffsetDateTime.parse("2026-11-19T01:00:00Z"))));
+
+    OrderDetailResponse r = service.getOrder(7L, 5L);
+
+    assertThat(r.cooking().lookup()).isEqualTo(OrderDetailResponse.Lookup.OK);
+    assertThat(r.cooking().status()).isEqualTo("COOKING");
+    assertThat(r.cooking().expectedWaitSec()).isZero();
+    assertThat(r.cooking().expectedReadySec()).isEqualTo(45);
+    // 시각은 KST(+09:00)로 내린다.
+    assertThat(r.cooking().startedAt().getOffset().getTotalSeconds()).isEqualTo(9 * 3600);
+    assertThat(r.cooking().startedAt().toInstant())
+        .isEqualTo(OffsetDateTime.parse("2026-11-19T10:00:00+09:00").toInstant());
+  }
+
+  @Test
+  void missing_ticket_is_pending_and_failures_are_unavailable_without_failing_the_detail() {
+    when(txService.findDetail(7L, 5L)).thenReturn(Optional.of(detailWithStatus(OrderStatus.PAID)));
+    when(cookingClient.getStatus(any())).thenReturn(Optional.empty());
+    assertThat(service.getOrder(7L, 5L).cooking().lookup())
+        .isEqualTo(OrderDetailResponse.Lookup.PENDING);
+
+    doThrow(new BusinessException(ErrorCode.COOKING_SERVICE_UNAVAILABLE))
+        .when(cookingClient)
+        .getStatus(any());
+    OrderDetailResponse r = service.getOrder(7L, 5L);
+    assertThat(r.cooking().lookup()).isEqualTo(OrderDetailResponse.Lookup.UNAVAILABLE);
+    assertThat(r.cooking().status()).isNull();
+    assertThat(r.status()).isEqualTo(OrderStatus.PAID);
+
+    doThrow(new BusinessException(ErrorCode.UPSTREAM_INVALID_RESPONSE))
+        .when(cookingClient)
+        .getStatus(any());
+    assertThat(service.getOrder(7L, 5L).cooking().lookup())
+        .isEqualTo(OrderDetailResponse.Lookup.UNAVAILABLE);
+  }
+
+  @Test
+  void unpaid_failed_and_canceled_orders_do_not_call_cooking() {
+    for (OrderStatus status :
+        List.of(OrderStatus.CREATED, OrderStatus.FAILED, OrderStatus.CANCELED)) {
+      when(txService.findDetail(7L, 5L)).thenReturn(Optional.of(detailWithStatus(status)));
+
+      assertThat(service.getOrder(7L, 5L).cooking()).isNull();
+    }
+    verify(cookingClient, never()).getStatus(any());
   }
 }

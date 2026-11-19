@@ -158,4 +158,71 @@ class HttpInventoryClientTest {
             BusinessException.class,
             e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE));
   }
+
+  // ---- 주문 취소: 확보 해제(II-03)와 재고 복원(II-04) ----
+
+  private static final String HOLD_55 = "http://inventory/internal/v1/inventory/holds/55";
+  private static final String RESTORATIONS = "http://inventory/internal/v1/inventory/restorations";
+
+  @Test
+  void release_hold_treats_200_and_404_as_released_and_409_as_already_confirmed() {
+    server
+        .expect(requestTo(HOLD_55))
+        .andExpect(method(HttpMethod.DELETE))
+        .andRespond(withSuccess());
+    assertThat(client.releaseHold(55L)).isEqualTo(InventoryClient.HoldRelease.RELEASED);
+
+    server.reset();
+    server.expect(requestTo(HOLD_55)).andRespond(withStatus(HttpStatus.NOT_FOUND));
+    assertThat(client.releaseHold(55L)).isEqualTo(InventoryClient.HoldRelease.RELEASED);
+
+    server.reset();
+    server.expect(requestTo(HOLD_55)).andRespond(withStatus(HttpStatus.CONFLICT));
+    assertThat(client.releaseHold(55L)).isEqualTo(InventoryClient.HoldRelease.ALREADY_CONFIRMED);
+  }
+
+  @Test
+  void release_hold_other_client_errors_are_contract_violations_and_5xx_is_unknown() {
+    server.expect(requestTo(HOLD_55)).andRespond(withStatus(HttpStatus.BAD_REQUEST));
+    assertThat(codeOf(() -> client.releaseHold(55L)))
+        .isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+
+    server.reset();
+    server.expect(requestTo(HOLD_55)).andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+    assertThat(codeOf(() -> client.releaseHold(55L)))
+        .isEqualTo(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE);
+
+    server.reset();
+    server.expect(requestTo(HOLD_55)).andRespond(withException(new IOException("timeout")));
+    assertThat(codeOf(() -> client.releaseHold(55L)))
+        .isEqualTo(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE);
+  }
+
+  @Test
+  void restore_sends_only_the_order_id_and_treats_200_as_restored() {
+    server
+        .expect(requestTo(RESTORATIONS))
+        .andExpect(method(HttpMethod.POST))
+        .andExpect(
+            org.springframework.test.web.client.match.MockRestRequestMatchers.content()
+                .json("{\"orderId\":100}", true))
+        .andRespond(withSuccess());
+
+    assertThat(client.restore(100L)).isEqualTo(InventoryClient.RestoreResult.RESTORED);
+  }
+
+  @Test
+  void restore_409_is_not_applicable_other_4xx_is_invalid_and_5xx_is_unknown() {
+    server.expect(requestTo(RESTORATIONS)).andRespond(withStatus(HttpStatus.CONFLICT));
+    assertThat(client.restore(100L)).isEqualTo(InventoryClient.RestoreResult.NOT_APPLICABLE);
+
+    server.reset();
+    server.expect(requestTo(RESTORATIONS)).andRespond(withStatus(HttpStatus.NOT_FOUND));
+    assertThat(codeOf(() -> client.restore(100L))).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+
+    server.reset();
+    server.expect(requestTo(RESTORATIONS)).andRespond(withStatus(HttpStatus.BAD_GATEWAY));
+    assertThat(codeOf(() -> client.restore(100L)))
+        .isEqualTo(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE);
+  }
 }

@@ -44,6 +44,8 @@ clients:
     base-url: ${INVENTORY_SERVICE_URL:http://localhost:8082}
   payment:
     base-url: ${PAYMENT_SERVICE_URL:http://localhost:8083}
+  cooking:
+    base-url: ${COOKING_SERVICE_URL:http://localhost:8084}
 
 # RabbitMQ 이벤트 (이름·라우팅 키는 초안, Cooking 담당자와 합의 후 확정)
 events:
@@ -57,3 +59,13 @@ events:
   outbox:
     poll-interval-ms: 1000
     batch-size: 50
+
+# Cooking 장애 감지(US-13): GET /actuator/health 를 확인해 연속 실패 시 신규 주문·결제 차단
+cooking-health:
+  interval-ms: 5000
+  failure-threshold: 3
+
+# 관리자 API(OR-06·07) 노출: 인증(STORE_ADMIN) 방식이 정해지기 전(#112)까지 기본 꺼짐. 로컬·dev에서만 ORDER_ADMIN_ENABLED=true
+order:
+  admin:
+    enabled: ${ORDER_ADMIN_ENABLED:false}

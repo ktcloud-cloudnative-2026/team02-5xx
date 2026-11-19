@@ -1,5 +1,6 @@
 package com.peakorder.order.service;
 
+import com.peakorder.order.client.CookingClient;
 import com.peakorder.order.client.InventoryClient;
 import com.peakorder.order.client.InventoryClient.HoldLine;
 import com.peakorder.order.client.InventoryClient.StockHold;
@@ -12,6 +13,7 @@ import com.peakorder.order.client.PaymentClient.PaymentResult;
 import com.peakorder.order.dto.CreateOrderRequest;
 import com.peakorder.order.dto.CreateOrderRequest.OrderLine;
 import com.peakorder.order.dto.OrderDetailResponse;
+import com.peakorder.order.dto.OrderDetailResponse.CookingInfo;
 import com.peakorder.order.dto.OrderListResponse;
 import com.peakorder.order.dto.OrderSummaryResponse;
 import com.peakorder.order.entity.Order;
@@ -50,6 +52,10 @@ public class OrderService {
   private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
   /** 고객 주문 목록에서 제외하는 상태 (확정되지 않은 주문). */
+  /** 결제가 확정된 주문. 이 상태일 때만 Cooking 조리 상태를 조회한다. */
+  private static final Set<OrderStatus> COOKING_LOOKUP_STATUSES =
+      Set.of(OrderStatus.PAID, OrderStatus.WAITING, OrderStatus.COOKING, OrderStatus.COMPLETED);
+
   private static final List<OrderStatus> HIDDEN_FROM_LIST =
       List.of(OrderStatus.CREATED, OrderStatus.FAILED);
 
@@ -61,6 +67,8 @@ public class OrderService {
   private final MenuClient menuClient;
   private final InventoryClient inventoryClient;
   private final PaymentClient paymentClient;
+  private final CookingAvailability cookingAvailability;
+  private final CookingClient cookingClient;
   private final Clock clock;
 
   public OrderService(
@@ -70,6 +78,8 @@ public class OrderService {
       MenuClient menuClient,
       InventoryClient inventoryClient,
       PaymentClient paymentClient,
+      CookingAvailability cookingAvailability,
+      CookingClient cookingClient,
       Clock clock) {
     this.orderRepository = orderRepository;
     this.storeOperationRepository = storeOperationRepository;
@@ -77,12 +87,16 @@ public class OrderService {
     this.menuClient = menuClient;
     this.inventoryClient = inventoryClient;
     this.paymentClient = paymentClient;
+    this.cookingAvailability = cookingAvailability;
+    this.cookingClient = cookingClient;
     this.clock = clock;
   }
 
   /** OR-01 임시 주문 생성: 접수 확인 → Menu 검증 → 임시 주문 저장 → Inventory 재고 확보. */
   public OrderDetailResponse createOrder(Long userId, CreateOrderRequest request) {
     ensureAcceptingOrders();
+    // Cooking 장애 시 신규 주문 생성을 막는다(US-13). 매장 접수 설정과는 별개다.
+    cookingAvailability.ensureAvailable();
 
     List<OrderLine> lines = request.items();
     List<ValidatedMenu> validated =
@@ -215,6 +229,12 @@ public class OrderService {
       failOrder(orderId, lock, "HOLD_EXPIRED");
       throw new BusinessException(ErrorCode.HOLD_EXPIRED);
     }
+    // Cooking 장애 시 새 결제를 막는다(US-13). 주문은 CREATED로 그대로 두고 이미 확정된 주문은 건드리지 않는다.
+    // 결제를 이미 요청한 적이 있는 주문은 같은 키로 기존 결과를 확인하는 것이라 새로 결제되지 않는다. 결제가 됐을 수 있는데
+    // 사용자가 "결제할 수 없음"만 보지 않도록 막지 않고 결과 확인·복구(환불·확정)를 이어서 한다(PR #56 Payment 리뷰).
+    if (!paymentMayExist) {
+      cookingAvailability.ensureAvailable();
+    }
 
     // 결제 전에 Menu에서 조리 시간을 받아 둔다. 결제한 적이 없다면 여기서 실패해도 돈이 나가지 않는다.
     List<ValidatedMenu> menus = fetchCookTimes(orderId, lock, target, paymentMayExist);
@@ -286,13 +306,39 @@ public class OrderService {
         result.getTotalElements());
   }
 
-  /** OR-04 본인 주문 상세. 다른 사용자의 주문은 존재 여부를 숨기기 위해 404로 응답한다. */
-  @Transactional(readOnly = true)
+  /**
+   * OR-04 본인 주문 상세. 다른 사용자의 주문은 존재 여부를 숨기기 위해 404로 응답한다. 결제된 주문에는 Cooking 조리 상태(CI-02)를 덧붙인다. 주문은
+   * 트랜잭션 안에서 읽고 닫은 뒤 Cooking을 호출하며, Cooking을 알 수 없어도 상세 조회는 성공한다(주문 상태는 바꾸지 않는다).
+   */
   public OrderDetailResponse getOrder(Long userId, Long orderId) {
-    return orderRepository
-        .findByIdAndUserId(orderId, userId)
-        .map(OrderDetailResponse::from)
-        .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+    OrderDetailResponse detail =
+        txService
+            .findDetail(userId, orderId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+    if (!COOKING_LOOKUP_STATUSES.contains(detail.status())) {
+      return detail;
+    }
+    return detail.withCooking(lookupCooking(orderId));
+  }
+
+  private CookingInfo lookupCooking(Long orderId) {
+    try {
+      return cookingClient
+          .getStatus(orderId)
+          .map(
+              s ->
+                  CookingInfo.ok(
+                      s.status(),
+                      s.waitingAhead(),
+                      s.estimatedCookSec(),
+                      s.expectedWaitSec(),
+                      s.expectedReadySec(),
+                      s.startedAt()))
+          .orElseGet(CookingInfo::pending);
+    } catch (BusinessException e) {
+      log.warn("주문 상세의 조리 상태를 알 수 없음 orderId={} reason={}", orderId, e.errorCode());
+      return CookingInfo.unavailable();
+    }
   }
 
   /**

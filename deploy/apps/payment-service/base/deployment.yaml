@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  labels:
+    app: payment-service
+    team: team02
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+        team: team02
+    spec:
+      containers:
+        - name: payment-service
+          image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/payment:sha-c2aa8905bfa703356d2abddc672d58e46a6feb99
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: payment-service-db
+                  key: DB_URL
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: payment-service-db
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: payment-service-db
+                  key: DB_PASSWORD
+            - name: RABBITMQ_HOST
+              value: rabbitmq
+            - name: RABBITMQ_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: username
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: password
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 20
