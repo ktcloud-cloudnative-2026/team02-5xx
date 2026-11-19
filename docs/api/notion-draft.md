@@ -245,6 +245,10 @@
 | CO-03 | GET | /api/v1/admin/cooking/overview | 대기, 조리 중, 완료 건수 등 현황 조회 | STORE\_ADMIN |
 | CO-04 | GET | /api/v1/admin/cooking/queue | FIFO 대기열, 주문 번호, 접수 시각, orderId 조회 | STORE\_ADMIN |
 
+#### 참고
+
+- CO-02: 요청/응답·계산식·실패 코드(Menu 4xx → 409 `MENU_NOT_AVAILABLE`)는 [CO-02 구현 명세](cooking-co02.md)를 확인합니다. 이 링크는 로컬 보완이며 Notion 원문은 변경하지 않았습니다.
+
 # 내부 API 초안
 
 ## Menu Service
