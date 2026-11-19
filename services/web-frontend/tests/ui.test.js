@@ -176,7 +176,7 @@ test('storage corruption and access failures do not abort the real App SSR rende
   for (const storageProvider of providers) {
     const html = render(App, { storageProvider });
     assert.ok(html.includes('메뉴 카테고리'));
-    assert.ok(html.includes('클래식 버거'));
+    assert.ok(html.includes('메뉴를 불러오는 중이에요.'));
     assert.ok(!html.includes('storage denied'));
   }
 });

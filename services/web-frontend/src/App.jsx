@@ -1,13 +1,20 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { getCategories, getMenu, getMenus } from './data/menuRepository.js';
-import MenuDetail from './components/MenuDetail.jsx';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import { menuApi as defaultMenuApi } from './data/menuApi.js';
+import RemoteMenuDetail from './components/RemoteMenuDetail.jsx';
+import { readPendingCart, validateCartCatalog } from './cartCatalog.js';
+import { useMenuRequest } from './useMenuRequests.js';
 import { formatPrice } from './menu.js';
 import {
   addItem,
   browserStorage,
   cartView,
   changeQuantity,
-  loadCart,
   removeItem,
   saveCart,
 } from './cart.js';
@@ -18,6 +25,7 @@ import LoginModal from './components/LoginModal.jsx';
 export default function App({
   sessionSource = anonymousSession,
   storageProvider = browserStorage,
+  menuApi = defaultMenuApi,
 }) {
   const session = useSyncExternalStore(
     sessionSource.subscribe,
@@ -30,7 +38,7 @@ export default function App({
       ? 'cart'
       : 'menu',
   );
-  const [cart, setCart] = useState(() => loadCart(storageProvider, getMenu));
+  const [cart, setCart] = useState(() => readPendingCart(storageProvider));
   const [loginIntent, setLoginIntent] = useState(null);
   const [notice, setNotice] = useState('');
   const intentNumber = useRef(0);
@@ -43,11 +51,48 @@ export default function App({
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('default');
   const [selectedId, setSelectedId] = useState(null);
-  const [error, setError] = useState('');
   const openerRef = useRef(null);
   const cartOpenerRef = useRef(null);
-  const menus = getMenus({ categoryId, query, sort });
-  const selectedMenu = selectedId === null ? null : getMenu(selectedId);
+  const listKey = JSON.stringify([categoryId, query, sort]);
+  const listing = useMenuRequest(
+    listKey,
+    (signal) => menuApi.list({ categoryId, query, sort }, { signal }),
+    [menuApi, categoryId, query, sort],
+  );
+  const menus = listing.data?.menus ?? [];
+  const categories = useRef([]);
+  if (listing.data) categories.current = listing.data.categories;
+  const details = useRef(new Map());
+  const [, detailChanged] = useState(0);
+  const onDetailLoaded = useCallback((menu) => {
+    details.current.set(menu.id, { menu, checkedAt: performance.now() });
+    detailChanged((value) => value + 1);
+  }, []);
+  const catalog = useMenuRequest(
+    cart.items,
+    (signal) => validateCartCatalog(cart.items, menuApi, { signal }),
+    [cart.items, menuApi],
+  );
+  const getMenu = (id) => {
+    const detail = details.current.get(id);
+    if (
+      catalog.data?.menus.has(id) &&
+      (!detail || catalog.data.checkedAt >= detail.checkedAt)
+    )
+      return catalog.data.getMenu(id);
+    return detail?.menu ?? null;
+  };
+  const validatedItems = catalog.data?.items ?? [];
+  let view = null;
+  let cartFailure = catalog.error?.message ?? '';
+  if (catalog.data) {
+    try {
+      view = cartView(validatedItems, getMenu);
+    } catch {
+      cartFailure = '메뉴 정보가 변경됐어요. 장바구니를 다시 확인해 주세요.';
+    }
+  }
+  const cartReady = Boolean(view) && !catalog.loading && !cartFailure;
 
   useEffect(() => {
     const onHistory = () => {
@@ -136,7 +181,12 @@ export default function App({
   function executeIntent(intent) {
     if (!signedIn) return;
     if (intent.type === 'view') {
+      catalog.retry();
       navigate('cart');
+      return;
+    }
+    if (!cartReady) {
+      setNotice('장바구니 메뉴 정보를 먼저 확인해 주세요.');
       return;
     }
     if (intent.type === 'order') {
@@ -146,7 +196,7 @@ export default function App({
       return;
     }
     try {
-      const result = addItem(cart.items, intent.selection, getMenu);
+      const result = addItem(validatedItems, intent.selection, getMenu);
       persist(result.items);
       setNotice(
         result.limited
@@ -177,8 +227,9 @@ export default function App({
 
   function updateCart(key, quantity) {
     if (!signedIn) return requestIntent({ type: 'view' });
+    if (!cartReady) return;
     try {
-      persist(changeQuantity(cart.items, key, quantity, getMenu));
+      persist(changeQuantity(validatedItems, key, quantity, getMenu));
       setNotice('수량을 변경했어요.');
     } catch (failure) {
       setNotice(failure.message);
@@ -187,27 +238,15 @@ export default function App({
 
   function deleteCartItem(key) {
     if (!signedIn) return requestIntent({ type: 'view' });
-    persist(removeItem(cart.items, key, getMenu));
+    if (!cartReady) return;
+    persist(removeItem(validatedItems, key, getMenu));
     setNotice('장바구니에서 삭제했어요.');
     requestAnimationFrame(() => document.getElementById('cart-title')?.focus());
   }
 
-  let view;
-  try {
-    view = cartView(cart.items, getMenu);
-  } catch {
-    view = { rows: [], total: 0 };
-  }
-
   function openMenu(id, event) {
-    const menu = getMenu(id);
-    if (!menu || menu.status !== 'ON_SALE') {
-      setError('선택할 수 없는 메뉴입니다. 다른 메뉴를 선택해 주세요.');
-      return;
-    }
     openerRef.current = event.currentTarget;
     lastMenuId.current = id;
-    setError('');
     setNotice('');
     setSelectedId(id);
   }
@@ -306,7 +345,7 @@ export default function App({
             </div>
           </header>
           <div className="categories" role="group" aria-label="메뉴 카테고리">
-            {[{ id: 'all', name: '전체' }, ...getCategories()].map(
+            {[{ id: 'all', name: '전체' }, ...categories.current].map(
               (category) => (
                 <button
                   key={category.id}
@@ -341,20 +380,33 @@ export default function App({
             <p className="sr-only" role="status">
               메뉴 {menus.length}개
             </p>
-            {error && <p role="alert">{error}</p>}
-            {menus.length ? (
+            {listing.loading ? (
+              <p className="empty-state" role="status">
+                메뉴를 불러오는 중이에요.
+              </p>
+            ) : listing.error ? (
+              <div className="empty-state" role="alert">
+                <p>{listing.error.message}</p>
+                <button className="pill-button" onClick={listing.retry}>
+                  다시 시도
+                </button>
+              </div>
+            ) : menus.length ? (
               <div className="menu-grid">
                 {menus.map((menu) => (
                   <button
                     key={menu.id}
                     data-menu-id={menu.id}
                     className="menu-card"
-                    disabled={menu.status !== 'ON_SALE'}
                     onClick={(event) => openMenu(menu.id, event)}
                     aria-label={`${menu.name}, ${formatPrice(menu.basePrice)}${menu.status === 'PAUSED' ? ', 판매 중지' : ', 상세 보기'}`}
                   >
                     <span className="menu-photo" aria-hidden="true">
-                      메뉴 사진
+                      {menu.imageUrl ? (
+                        <img src={menu.imageUrl} alt="" />
+                      ) : (
+                        '메뉴 사진'
+                      )}
                     </span>
                     <span className="menu-name">{menu.name}</span>
                     <span className="menu-price">
@@ -388,9 +440,17 @@ export default function App({
       </main>
       {page === 'cart' && signedIn && (
         <CartOverlay
-          rows={view.rows}
-          total={view.total}
-          warning={cart.warning}
+          rows={view?.rows ?? []}
+          total={view?.total}
+          pending={catalog.loading}
+          failure={cartFailure}
+          onRetry={() => {
+            details.current.clear();
+            catalog.retry();
+          }}
+          warning={[cart.warning, catalog.data?.warning]
+            .filter(Boolean)
+            .join(' ')}
           notice={notice}
           onQuantity={updateCart}
           onRemove={deleteCartItem}
@@ -399,9 +459,11 @@ export default function App({
         />
       )}
       {selectedId !== null && (
-        <MenuDetail
+        <RemoteMenuDetail
           key={selectedId}
-          menu={selectedMenu}
+          api={menuApi}
+          menuId={selectedId}
+          onLoaded={onDetailLoaded}
           onClose={closeMenu}
           feedback={[notice, signedIn ? cart.warning : '']
             .filter(Boolean)
