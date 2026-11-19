@@ -15,6 +15,12 @@ import jakarta.persistence.Table;
 @Table(name = "cooking_ticket_items")
 public class CookingTicketItem {
 
+  /** menu_name 컬럼 길이 (문자 수, V1) */
+  public static final int MENU_NAME_MAX_LENGTH = 100;
+
+  /** option_summary 컬럼 길이 (문자 수, V1) */
+  public static final int OPTION_SUMMARY_MAX_LENGTH = 255;
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
@@ -26,10 +32,10 @@ public class CookingTicketItem {
   @Column(name = "menu_id", nullable = false)
   private Long menuId;
 
-  @Column(name = "menu_name", nullable = false, length = 100)
+  @Column(name = "menu_name", nullable = false, length = MENU_NAME_MAX_LENGTH)
   private String menuName;
 
-  @Column(name = "option_summary", length = 255)
+  @Column(name = "option_summary", length = OPTION_SUMMARY_MAX_LENGTH)
   private String optionSummary;
 
   @Column(name = "quantity", nullable = false)

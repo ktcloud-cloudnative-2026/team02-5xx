@@ -49,6 +49,11 @@ java -jar build/libs/menu-service-0.0.1-SNAPSHOT.jar
 
 ## API 문서
 
+ME-01 `GET /api/v1/menus`, ME-02 `GET /api/v1/menus/{menuId}`는 비회원 고객의
+메뉴 목록·상세 조회를 제공합니다. 필터·정렬·상태·옵션 및 오류 계약은
+[ME-01·ME-02 상세 명세](../../docs/api/menu-me01-me02.md)를 확인합니다.
+ON_SALE·PAUSED를 조회할 수 있고 HIDDEN은 노출하지 않습니다.
+
 - Swagger UI: http://localhost:8080/swagger-ui.html (`/swagger-ui/index.html`로 이동)
 - OpenAPI JSON: http://localhost:8080/v3/api-docs
 - Swagger UI 설정: http://localhost:8080/v3/api-docs/swagger-config
@@ -128,11 +133,20 @@ $env:MENU_DB_TEST_PASSWORD = $dbCredential.GetNetworkCredential().Password
 애플리케이션 진입점은 `com.peakorder.menu.MenuServiceApplication`입니다.
 업무 구현 시 기본 패키지 아래에 `controller`, `service`, `repository`, `dto`, `entity` 계층을 추가합니다.
 기존 `entity`, `repository`의 메뉴 DB 모델과 저장소를 재사용하며,
-`controller`, `service`, `dto`, `exception`에 MI-01 구매 검증과 MI-02 존재 확인 API를 구현했습니다.
+`controller`, `service`, `dto`, `exception`에 MI-01 구매 검증·MI-02 존재 확인과 ME-01·ME-02 고객 조회 API를 구현했습니다.
 현재 사용하지 않는 패키지에는 예시 클래스나 설명용 파일을 만들지 않습니다.
 Redis, RabbitMQ, Docker, Kubernetes는 이번 구현 범위에 포함하지 않습니다.
 서비스 전용 `.editorconfig`와 `.gitattributes`를 사용합니다.
 DB 구조 및 마이그레이션 변경은 팀 규칙상 작성자 외 팀원 1명의 필수 리뷰 대상입니다.
+
+## ME-01·ME-02 검증
+
+Java 21에서 `spotlessCheck test build`를 검증했습니다.
+고객 조회 Service 21건·실제 HTTP 35건 및 기존 MI-01·MI-02 회귀 78건을 합해 134건 통과했습니다.
+실제 PostgreSQL 테스트 10건은 별도 테스트 DB 미설정으로 건너뛰었습니다.
+공유 DB·Gateway·React·실제 Inventory 연동은 검증하지 않았습니다.
+카테고리 동시 조회와 옵션 정렬의 DB 테스트는 별도 폐기 가능한 PostgreSQL에서 실행해야 합니다.
+상세 계약과 검증 범위는 [ME-01·ME-02 명세](../../docs/api/menu-me01-me02.md)를 확인합니다.
 
 ## MI-02 검증
 
@@ -185,7 +199,11 @@ MI-01 세부 오류 코드/HTTP 상태 구분은 아직 서비스 간 합의가 
 `PATCH /api/v1/admin/menus/{menuId}/status`의 세 상태 변경과 HTTP·OpenAPI·테스트를 구현했습니다.
 제안 계약은 모든 전이·HIDDEN 복귀 허용, 동일 상태는 수정 시각도 유지하는 200 성공입니다.
 조건부 단일 UPDATE로 status와 updatedAt만 변경하며 기존 메뉴 정보·옵션·ID·생성 시각을 보존합니다.
-Entity·스키마·Flyway·의존성·Inventory 변경은 없습니다. 실제 HTTP는 #112 확정 전 기본 403으로 차단합니다.
-Java 21 Spotless·test·build와 격리 PostgreSQL 16 검사에서 총 190건(실제 DB 53건) 통과, 실패·오류·생략 0건입니다.
+Entity·스키마·Flyway·의존성·Inventory 변경은 없습니다. 실제 HTTP는 기본 403으로 차단합니다.
+#112 Auth 계약 정리와 별개로 Gateway 신뢰 경계는 미확정이므로 실제 관리자 인증은 연결하지 않았습니다.
+최초 독립 검증은 190건(실제 DB 53건)이었으며 최신 main `b4724aa` 통합 후에는
+Java 21 Spotless·컴파일·test·build와 격리 PostgreSQL 16 검사에서 **247건(실제 DB 54건) 통과**,
+실패·오류·생략 0건입니다. 고객·상태 HTTP 테스트의 필요한 Repository Mock만 보완했습니다.
 [ME-07 제안 계약·검증 기록](../../docs/api/menu-me07-draft.md)에 전이·동시성·롤백과 선행 PR 통합 한계를 명시했습니다.
-실제 인증·고객/관리자 선행 PR 통합 회귀는 미완료입니다.
+main의 고객 ME-01·02 및 내부 MI-01·02 회귀는 통과했습니다.
+#117·#119·#123 미병합 코드는 포함하지 않았으며 실제 인증과 ME-06 실제 코드의 동시성 통합 검증은 후속 작업입니다.

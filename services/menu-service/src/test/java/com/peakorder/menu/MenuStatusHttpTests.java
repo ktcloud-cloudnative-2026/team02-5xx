@@ -25,6 +25,7 @@ class MenuStatusHttpTests {
   @LocalServerPort int port;
   @MockitoBean MenuRepository menus;
   @MockitoBean MenuOptionRepository options;
+  @MockitoBean CategoryRepository categories;
   @MockitoBean MenuStatusRepository writes;
   @MockitoBean MenuStatusAuthorization authorization;
   private final ObjectMapper mapper = new ObjectMapper();

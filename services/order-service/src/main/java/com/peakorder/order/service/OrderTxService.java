@@ -66,6 +66,12 @@ public class OrderTxService {
     this.clock = clock;
   }
 
+  /** OR-04 읽기. 항목·옵션을 이 트랜잭션 안에서 모두 읽어 응답으로 만든 뒤 닫는다(Cooking 호출 중에는 DB 연결을 잡지 않는다). */
+  @Transactional(readOnly = true)
+  public Optional<OrderDetailResponse> findDetail(Long userId, Long orderId) {
+    return orderRepository.findByIdAndUserId(orderId, userId).map(OrderDetailResponse::from);
+  }
+
   public record PricedLine(
       Long menuId, String menuName, int unitPrice, int quantity, List<OrderItemOption> options) {}
 
@@ -223,6 +229,35 @@ public class OrderTxService {
 
   private static boolean isCancelableConfirmed(OrderStatus status) {
     return CANCELABLE_CONFIRMED_STATUSES.contains(status);
+  }
+
+  /**
+   * 취소 후속 처리 실패를 기록한다(실패 횟수 증가, 다음 시도 시각 지연, 상한에 닿으면 수동 확인 필요 표시). 내 독점일 때만 반영하며, 이번 실패로 수동 확인 필요가
+   * 되었으면 true.
+   */
+  @Transactional
+  public boolean recordCancelFollowUpFailure(
+      Long orderId, UUID lockToken, CancelFollowUpPolicy policy) {
+    return orderRepository
+        .findWithLockById(orderId)
+        .filter(order -> order.getStatus() == OrderStatus.CANCELED && holds(order, lockToken))
+        .map(
+            order ->
+                order.recordCancelFollowUpFailure(
+                    now(),
+                    policy.maxAttempts(),
+                    policy.delayAfter(order.getCancelFollowUpAttempts())))
+        .orElse(false);
+  }
+
+  /** 다시 호출해도 결과가 같은 실패라 바로 수동 확인 필요로 표시한다. 내 독점일 때만 반영하며, 새로 표시했으면 true. */
+  @Transactional
+  public boolean markCancelFollowUpManual(Long orderId, UUID lockToken, String reason) {
+    return orderRepository
+        .findWithLockById(orderId)
+        .filter(order -> order.getStatus() == OrderStatus.CANCELED && holds(order, lockToken))
+        .map(order -> order.markCancelFollowUpManual(reason, now()))
+        .orElse(false);
   }
 
   /** 재고 복원을 끝냈음을 기록한다. 내 독점일 때만 반영하며 반영했으면 true. */

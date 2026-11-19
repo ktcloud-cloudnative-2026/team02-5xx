@@ -23,6 +23,7 @@ class MenuStatusAuthorizationTests {
   @MockitoBean MenuStatusService service;
   @MockitoBean MenuRepository menus;
   @MockitoBean MenuOptionRepository options;
+  @MockitoBean CategoryRepository categories;
 
   @ParameterizedTest
   @ValueSource(strings = {"{}", "{", "", "{\"status\":\"ON_SALE\"}"})

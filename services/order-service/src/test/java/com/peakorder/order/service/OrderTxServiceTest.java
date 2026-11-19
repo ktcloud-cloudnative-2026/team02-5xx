@@ -266,6 +266,26 @@ class OrderTxServiceTest {
   }
 
   @Test
+  void follow_up_failures_and_manual_marks_are_recorded_only_for_the_lock_owner() {
+    CancelFollowUpPolicy policy =
+        new CancelFollowUpPolicy(
+            2, java.time.Duration.ofSeconds(30), java.time.Duration.ofHours(1));
+    Order order = lockedBy(TOKEN);
+    order.markConfirmed("261113-0001", 9L, now);
+    order.markCanceled("CUSTOMER_CANCEL", now);
+    when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(order));
+
+    assertThat(service.recordCancelFollowUpFailure(100L, OTHER, policy)).isFalse();
+    assertThat(order.getCancelFollowUpAttempts()).isZero();
+    assertThat(service.markCancelFollowUpManual(100L, OTHER, "X")).isFalse();
+
+    assertThat(service.recordCancelFollowUpFailure(100L, TOKEN, policy)).isFalse();
+    assertThat(order.getCancelFollowUpNextAttemptAt()).isEqualTo(now.plusSeconds(30));
+    assertThat(service.recordCancelFollowUpFailure(100L, TOKEN, policy)).isTrue();
+    assertThat(order.getCancelFollowUpManualReason()).isEqualTo("RETRY_LIMIT_EXCEEDED");
+  }
+
+  @Test
   void cancel_target_tells_which_follow_up_steps_remain() {
     Order order = lockedBy(TOKEN);
     order.markConfirmed("261113-0004", 9L, now);
