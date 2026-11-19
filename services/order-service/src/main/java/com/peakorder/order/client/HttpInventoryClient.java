@@ -91,5 +91,58 @@ public class HttpInventoryClient implements InventoryClient {
     }
   }
 
+  @Override
+  public HoldRelease releaseHold(Long holdId) {
+    try {
+      restClient
+          .delete()
+          .uri("/internal/v1/inventory/holds/{holdId}", holdId)
+          .retrieve()
+          .toBodilessEntity();
+      return HoldRelease.RELEASED;
+    } catch (RestClientResponseException e) {
+      int status = e.getStatusCode().value();
+      // 409: 이미 확정된 확보. 404: Inventory에 없는 확보라 반환할 재고도 없다(해제된 것과 같다).
+      if (status == 409) {
+        return HoldRelease.ALREADY_CONFIRMED;
+      }
+      if (status == 404) {
+        return HoldRelease.RELEASED;
+      }
+      if (e.getStatusCode().is4xxClientError()) {
+        throw new BusinessException(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+      }
+      throw new BusinessException(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE);
+    } catch (RestClientException e) {
+      throw new BusinessException(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE);
+    }
+  }
+
+  @Override
+  public RestoreResult restore(Long orderId) {
+    try {
+      restClient
+          .post()
+          .uri("/internal/v1/inventory/restorations")
+          .body(new RestoreRequest(orderId))
+          .retrieve()
+          .toBodilessEntity();
+      return RestoreResult.RESTORED;
+    } catch (RestClientResponseException e) {
+      // 409 RESTORE_NOT_APPLICABLE만 합의된 "복원 불가". 그 밖의 4xx는 계약 위반, 5xx는 결과 불명이다.
+      if (e.getStatusCode().value() == 409) {
+        return RestoreResult.NOT_APPLICABLE;
+      }
+      if (e.getStatusCode().is4xxClientError()) {
+        throw new BusinessException(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+      }
+      throw new BusinessException(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE);
+    } catch (RestClientException e) {
+      throw new BusinessException(ErrorCode.INVENTORY_SERVICE_UNAVAILABLE);
+    }
+  }
+
+  record RestoreRequest(Long orderId) {}
+
   record HoldRequest(Long orderId, List<HoldLine> items) {}
 }

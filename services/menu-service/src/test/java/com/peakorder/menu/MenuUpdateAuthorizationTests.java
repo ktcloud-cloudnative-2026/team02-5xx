@@ -23,6 +23,7 @@ class MenuUpdateAuthorizationTests {
   @MockitoBean MenuUpdateService service;
   @MockitoBean MenuRepository menus;
   @MockitoBean MenuOptionRepository options;
+  @MockitoBean CategoryRepository categories;
 
   @ParameterizedTest
   @ValueSource(strings = {"{}", "{", "", "{\"name\":\"new\"}"})

@@ -178,3 +178,66 @@ main 대상 diff는 #120 관련 18개 파일이며 Cooking 변경·생성 파일
 로그·해시 기준·DB 확인·XML 사본은 TEMP의 `peak120-submit-597374b5962440c28f16cb1d3be41f68`에 남겼습니다.
 이번 제출은 미완료 인증·선행 통합을 명시한 Draft PR까지이며 새 리뷰 요청·Ready 전환·승인·병합은 하지 않습니다.
 원격 CI 성공 여부는 이 로컬 결과와 별도로 확인해야 합니다.
+
+### PR #123 최신 main 통합 검증 (2026-11-19)
+
+기존 HEAD `895c1ed60cca9a20b88f6da3c5135e5dbe190035`에
+`origin/main` `b4724aac6a57df3bb5c891eb0d8e97b73028c0d3`를
+`git merge --no-commit --no-ff origin/main`으로 반영했습니다.
+#105 고객 조회는 main을 통해 반영했고 #117·#119·#127 미병합 코드는 포함하지 않았습니다.
+main의 Cooking 변경과 Menu Kustomize 배포 구성도 되돌리지 않았습니다.
+
+텍스트 충돌은 MenuRepository 한 파일입니다. main의 Category EntityGraph 기반
+`findByStatusIn`과 기존 ME-06의 `findForInformationUpdate`를 함께 유지했습니다.
+후자는 기존 `PESSIMISTIC_WRITE`·동일 메뉴 ID JPQL을 그대로 사용하며 행 잠금 정책을 바꾸지 않았습니다.
+Entity·DTO·Service·Controller·기본 인증 차단·Flyway·스키마·의존성은 기존 구현과 같습니다.
+
+자동 병합된 MenuServiceApplicationTests의 중복 CategoryRepository Mock은 한 번만 남겼습니다.
+MenuUpdateAuthorizationTests에는 main의 CustomerMenuService가 로드될 때 필요한
+CategoryRepository Mock 하나를 추가했습니다. main 대비 고유 변경은 **17개 파일**이며,
+기존 18개 중 공통 테스트의 CategoryRepository Mock 추가가 이미 main에 있어 한 파일이 줄었습니다.
+테스트나 기능을 삭제해서 감소한 것이 아닙니다.
+
+Java 21.0.7 / 기존 Gradle·Spotless와 기존 PostgreSQL 16.16 바이너리를 사용했습니다.
+TEMP 아래 새 데이터 디렉터리·역할 `menu123_owner`·DB `menu_123_main_integration`을 만들고
+`127.0.0.1:52618`에만 바인딩했습니다. 공유 DB와 기존 데이터 디렉터리·역할·DB는 변경하지 않았습니다.
+
+```powershell
+# menu-service에서 격리 DB 전용 MENU_DB_TEST_* 지정
+.\gradlew.bat --no-daemon spotlessCheck test build --rerun-tasks --console=plain
+git diff --check
+```
+
+최종 XML 합산 결과입니다.
+
+| 검사 | 실제 실행·통과 | 실패·오류·생략 |
+| --- | --- | --- |
+| MenuUpdateRequestTests | 36 | 0 |
+| MenuUpdateServiceTests | 10 | 0 |
+| MenuUpdateHttpTests | 21 | 0 |
+| MenuUpdateAuthorizationTests | 5 | 0 |
+| MenuUpdateDatabaseTests | 12 | 0 |
+| MenuDatabaseTests | 36 | 0 |
+| MenuServiceApplicationTests | 46 | 0 |
+| CustomerMenuHttpTests / CustomerMenuServiceTests | 35 / 21 | 0 |
+| MenuExistenceServiceTests / PurchaseValidationServiceTests | 9 / 23 | 0 |
+| 전체 | **254** | **0** |
+
+**실제 PostgreSQL DB 테스트는 48건**입니다. 부분 수정·생략/null·기존 옵션 수정/추가/비활성화,
+ID·생성 시각·판매 상태 보존, 잘못된 옵션 참조와 입력·오류, flush 후 제약 실패 시 전체 롤백을 확인했습니다.
+동시 PATCH 테스트는 첫 트랜잭션이 메뉴 행 잠금을 유지할 때 두 번째 PATCH의
+PostgreSQL Lock 대기를 관찰하고, 해제 후 이름·가격 변경이 모두 보존됨을 검사했습니다.
+이는 ME-06 구현 자체의 동시성 검증이며 미병합 ME-07 실제 코드와의 동시성 검증은 아닙니다.
+
+Flyway V1 성공과 전체 실행 후 categories·menus·menu_options 각 0행을 확인하고 임시 서버를 종료했습니다.
+초기화용 임시 비밀번호 파일·프로세스 환경 변수는 제거했습니다.
+Spotless·컴파일·test·build는 성공했고 PATCH 제안 계약을 확정 계약으로 바꾸지 않았습니다.
+
+실제 기본 403과 위조 역할/사용자 헤더·검증되지 않은 Bearer 토큰 거부를 확인했습니다.
+#112의 Auth API·토큰 계약 정리와 별개로 Gateway 검증·신뢰 경계가 미확정이므로
+실제 STORE_ADMIN 200·비회원 401·CUSTOMER 403 연결은 미완료입니다. 임시 인증 우회는 추가하지 않았습니다.
+후속 관리자 API 통합 시 공통 Mock·인증 경계·Controller 범위 예외 처리를 중복 없이 결합해야 합니다.
+
+로그·DB 확인·XML 사본은 TEMP의
+`peak123-main-validation-a99a46bc89d042f285a81bca77583929`에 보존했습니다.
+이번 단계는 로컬 통합·검증까지이며 Commit·Push·PR 상태 변경은 수행하지 않습니다.

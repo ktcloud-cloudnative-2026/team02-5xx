@@ -45,6 +45,17 @@ public interface CookingTicketRepository extends JpaRepository<CookingTicket, Lo
   /** 상태별 건수 (CO-01 대기 주문 수, CO-03 현황) */
   long countByStatus(TicketStatus status);
 
+  /** 상태별 예상 조리 시간 합(초) (CO-01·CO-03 신규 주문 예상 대기) */
+  @Query(
+      "select coalesce(sum(t.estimatedCookSec), 0) from CookingTicket t where t.status = :status")
+  long sumEstimatedCookSecByStatus(@Param("status") TicketStatus status);
+
+  /** 기준 시각 이후 완료된 건수 (CO-03 오늘 완료) */
+  long countByStatusAndCompletedAtGreaterThanEqual(TicketStatus status, Instant from);
+
+  /** 기준 시각 이후 취소된 건수 (CO-03 오늘 취소) */
+  long countByStatusAndCanceledAtGreaterThanEqual(TicketStatus status, Instant from);
+
   /** FIFO 기준으로 기준 전표(queuedAt, id)보다 앞에 있는 해당 상태 전표 수 */
   @Query(
       "select count(t) from CookingTicket t where t.status = :status "

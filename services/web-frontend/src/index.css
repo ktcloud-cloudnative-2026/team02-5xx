@@ -103,6 +103,7 @@ p {
   padding: 0 17px;
 }
 .nav-item {
+  color: inherit;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -125,7 +126,6 @@ p {
 .menu-page {
   width: 100%;
   min-width: 0;
-  max-width: 1600px;
   margin-inline: auto;
   padding: 40px clamp(20px, 2.5vw, 48px);
 }
@@ -231,7 +231,7 @@ h2 {
 }
 .menu-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: 20px;
 }
 .menu-card {
@@ -308,13 +308,14 @@ h2 {
   color: #fff;
 }
 .detail-modal {
-  width: min(1280px, calc(100% - 32px));
+  width: 100%;
   max-width: none;
-  max-height: calc(100dvh - 32px);
-  margin: auto;
+  max-height: 100dvh;
+  height: 100dvh;
+  margin: 0;
   padding: 0;
   border: 0;
-  border-radius: 28px;
+  border-radius: 0;
   overflow: hidden;
   color: #2e2e2e;
   background: #fff;
@@ -340,18 +341,19 @@ h2 {
 }
 .detail-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-  align-items: start;
-  gap: 32px;
-  padding: 8px 32px 32px;
-  max-height: calc(100dvh - 96px);
+  grid-template-columns: minmax(0, 1.24fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: clamp(24px, 3.75vw, 72px);
+  padding: clamp(32px, 3.75vw, 72px);
+  height: 100dvh;
+  max-height: 100dvh;
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   overflow-wrap: anywhere;
 }
 .detail-photo {
-  aspect-ratio: 1;
+  aspect-ratio: auto;
   border-radius: 36px;
   background: #f2f3f5;
   display: grid;
@@ -365,6 +367,7 @@ h2 {
   font-size: 16px;
 }
 .detail-content {
+  padding-top: 40px;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -373,6 +376,8 @@ h2 {
 .detail-information {
   min-height: 0;
   scrollbar-width: thin;
+  overflow-y: auto;
+  flex: 1;
 }
 .detail-information h2 {
   font-size: clamp(28px, 2.5vw, 48px);
@@ -388,7 +393,7 @@ h2 {
 }
 .nutrition {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin: 32px 0 28px;
 }
@@ -634,7 +639,7 @@ h2 {
   }
   .detail-layout {
     display: block;
-    padding: 8px 20px 24px;
+    padding: 72px 20px 24px;
   }
   .detail-photo {
     aspect-ratio: auto;
@@ -646,6 +651,7 @@ h2 {
     font-size: 13px;
   }
   .detail-content {
+    padding-top: 0;
     margin-top: 24px;
   }
   .detail-information {
@@ -701,5 +707,496 @@ h2 {
   }
   .sort-field {
     padding: 10px 8px;
+  }
+}
+
+.cart-nav {
+  width: 100%;
+  margin-top: 12px;
+  background: transparent;
+}
+.eyebrow {
+  display: block;
+  margin-bottom: 12px;
+  color: #707070;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+.text-button {
+  min-height: 44px;
+  padding: 12px;
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.action-notice {
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+.action-notice:empty {
+  display: none;
+}
+.selection-feedback {
+  min-height: 28px;
+  margin: 16px 0 8px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.detail-actions .pill-button {
+  flex: 1 1 180px;
+}
+.pill-button:disabled {
+  opacity: 0.45;
+}
+.cart-page .page-heading {
+  margin-bottom: 32px;
+}
+.cart-page h1 {
+  font-weight: 700;
+}
+.cart-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 24px;
+}
+.cart-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+.cart-item {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 14px;
+  background: #fff;
+  border: 1px dashed #d3d3d3;
+  border-radius: 24px;
+  overflow-wrap: anywhere;
+}
+.cart-photo {
+  display: grid;
+  place-items: center;
+  width: 80px;
+  height: 80px;
+  background: #f2f3f5;
+  border-radius: 50%;
+  color: #707070;
+  font-size: 11px;
+}
+.cart-item h2 {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.cart-item-info {
+  min-width: 0;
+}
+.cart-item-info p {
+  margin: 6px 0;
+  font-size: 14px;
+  color: #666;
+}
+.cart-unit {
+  font-size: 13px;
+  color: #707070;
+}
+.cart-item .quantity-control {
+  width: fit-content;
+  margin-top: 0;
+  gap: 4px;
+}
+.cart-item .quantity-control button {
+  width: 32px;
+  height: 32px;
+}
+.cart-item .quantity-control output {
+  font-size: 16px;
+  min-width: 28px;
+}
+.cart-item-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  white-space: nowrap;
+}
+.cart-item-actions strong {
+  font-size: 20px;
+}
+.cart-summary {
+  margin-top: auto;
+  padding: 20px 0 0;
+  background: #fff;
+  border-top: 1px dashed #d3d3d3;
+}
+.cart-summary h2 {
+  margin-bottom: 28px;
+  font-size: 20px;
+  font-weight: 700;
+}
+.cart-summary .total-row {
+  flex-wrap: wrap;
+}
+.cart-summary p {
+  margin: 24px 0;
+  font-size: 13px;
+  color: #707070;
+  line-height: 1.8;
+}
+.cart-summary .pill-button {
+  width: 100%;
+}
+.cart-warning {
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  background: #fff;
+  border: 1px solid #999;
+  border-radius: 16px;
+  line-height: 1.6;
+}
+.login-modal {
+  width: min(540px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 0;
+  border-radius: 40px;
+  color: #2e2e2e;
+  background: #fff;
+  overflow-y: auto;
+}
+.login-modal::backdrop {
+  background: #0008;
+}
+.login-content {
+  padding: 0 40px 40px;
+}
+.login-content h2 {
+  margin-bottom: 20px;
+  font-size: 28px;
+  font-weight: 700;
+}
+.login-content p {
+  font-size: 14px;
+  line-height: 1.8;
+  color: #666;
+}
+.login-placeholder {
+  padding: 20px;
+  margin: 24px 0;
+  border-radius: 20px;
+  background: #f2f3f5;
+}
+.login-content > button {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+}
+/* Wireframe geometry; navigation/session and shared dialog behavior stay intact. */
+.detail-modal > .detail-toolbar {
+  position: absolute;
+  top: 32px;
+  right: 32px;
+  z-index: 1;
+  height: 48px;
+  padding: 0;
+}
+.detail-actions > .pill-button {
+  order: 2;
+  min-height: 64px;
+  font-weight: 700;
+}
+.detail-actions > button:nth-child(2) {
+  order: 1;
+  flex: 1 1 180px;
+  min-height: 64px;
+  border-radius: 40px;
+  background: #f2f3f5;
+  text-decoration: none;
+  font-weight: 700;
+}
+.detail-actions > button:last-child {
+  order: 3;
+  width: 100%;
+}
+.selection-feedback:empty {
+  min-height: 0;
+  margin: 8px 0;
+}
+.header-actions {
+  display: flex;
+  flex: 0 1 560px;
+  gap: 12px;
+  min-width: 0;
+}
+.header-actions .search-field {
+  flex: 1;
+}
+.header-cart {
+  white-space: nowrap;
+}
+.cart-modal {
+  width: min(480px, 100%);
+  max-width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  inset: 0 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 36px 0 0 36px;
+  overflow: hidden;
+  color: #2e2e2e;
+  background: white;
+}
+.cart-modal::backdrop {
+  background: #0009;
+}
+.cart-modal .cart-page {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 40px 36px;
+}
+.cart-modal .page-heading,
+.cart-modal .cart-warning,
+.cart-modal .action-notice,
+.cart-modal .cart-summary {
+  flex-shrink: 0;
+}
+.cart-modal .action-notice {
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.cart-modal .cart-layout {
+  min-height: 0;
+}
+.cart-modal .cart-items {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  flex: 1;
+  align-content: start;
+}
+.cart-modal .empty-state {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 48px 16px;
+}
+.cart-page {
+  display: flex;
+  flex-direction: column;
+  width: min(480px, 100%);
+  min-height: 100dvh;
+  margin-left: auto;
+  padding: 40px 36px;
+  border-radius: 36px 0 0 36px;
+  background: white;
+}
+.cart-page .page-heading {
+  flex-wrap: nowrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.cart-page h1 {
+  font-size: 24px;
+}
+.cart-item-actions {
+  gap: 8px;
+}
+.cart-item-actions .text-button {
+  padding: 0 4px;
+  min-height: 32px;
+  font-size: 12px;
+}
+.cart-item .quantity-control {
+  padding: 0;
+  background: transparent;
+}
+.cart-item .quantity-control output {
+  min-width: 18px;
+}
+.cart-item .quantity-control button:first-child {
+  background: #f2f3f5;
+}
+.cart-unit {
+  display: block;
+  font-size: 11px;
+}
+.cart-line-total {
+  display: block;
+  margin-top: 6px;
+}
+.cart-count-row {
+  display: flex;
+  justify-content: space-between;
+  color: #707070;
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+.cart-summary h2 {
+  font-size: 16px;
+  margin-bottom: 18px;
+}
+.cart-summary .total-row {
+  border: 0;
+  padding-top: 0;
+}
+.cart-summary .total-row output {
+  font-size: 30px;
+}
+.cart-summary p {
+  margin: 12px 0 18px;
+  font-size: 12px;
+}
+.cart-summary .pill-button {
+  min-height: 64px;
+  border-radius: 24px;
+  font-weight: 700;
+}
+.login-modal .detail-toolbar {
+  padding: 40px 40px 24px;
+  height: auto;
+  justify-content: space-between;
+  gap: 16px;
+}
+.login-modal .detail-toolbar h2 {
+  order: -1;
+  font-size: 32px;
+  font-weight: 700;
+  word-break: keep-all;
+}
+.login-placeholder {
+  padding: 28px 24px;
+  margin: 28px 0;
+}
+.login-content > button {
+  min-height: 60px;
+  font-weight: 700;
+}
+.login-content > .text-button {
+  border: 1px solid #c5c5c5;
+  border-radius: 32px;
+  margin-top: 16px;
+  text-decoration: none;
+}
+@media (max-width: 1100px) {
+  .cart-layout {
+    grid-template-columns: 1fr;
+  }
+  .cart-summary {
+    position: static;
+  }
+}
+@media (max-width: 760px) {
+  .header-actions {
+    flex: auto;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .header-actions .search-field {
+    flex-basis: 100%;
+  }
+  .header-cart {
+    margin-left: auto;
+  }
+  .cart-modal .cart-page {
+    padding: 24px 20px;
+  }
+  .cart-modal {
+    border-radius: 28px 0 0 28px;
+  }
+  .sidebar nav {
+    display: flex;
+    gap: 8px;
+  }
+  .cart-nav {
+    margin-top: 0;
+    width: auto;
+  }
+  .sidebar .nav-item {
+    padding: 0 12px;
+  }
+  .cart-page .page-heading {
+    align-items: flex-start;
+    flex-direction: row;
+    gap: 8px;
+  }
+  .cart-item {
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 16px;
+    padding: 20px;
+  }
+  .cart-photo {
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+  }
+  .cart-item-actions {
+    grid-column: 2;
+    align-items: flex-end;
+  }
+  .cart-summary {
+    padding: 20px 0 0;
+  }
+  .login-content {
+    padding: 0 24px 24px;
+  }
+  .detail-actions .pill-button {
+    flex-basis: 100%;
+  }
+  .cart-page {
+    padding: 100px 20px 24px;
+    width: 100%;
+    border-radius: 0;
+  }
+  .cart-item {
+    padding: 14px;
+    gap: 12px;
+    border-radius: 22px;
+  }
+  .cart-photo {
+    border-radius: 50%;
+  }
+  .cart-item-actions {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+  .detail-modal > .detail-toolbar {
+    top: 12px;
+    right: 12px;
+  }
+  .detail-content {
+    height: auto;
+  }
+  .detail-information {
+    overflow: visible;
+  }
+  .detail-actions > button:nth-child(2) {
+    min-height: 52px;
+  }
+  .detail-actions > .pill-button {
+    min-height: 52px;
+  }
+  .login-modal {
+    border-radius: 28px;
+  }
+  .login-modal .detail-toolbar {
+    padding: 24px 24px 20px;
+  }
+  .login-modal .detail-toolbar h2 {
+    font-size: 25px;
   }
 }
