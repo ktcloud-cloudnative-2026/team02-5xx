@@ -18,6 +18,19 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER}
     password: ${RABBITMQ_PASSWORD}
+    listener:
+      simple:
+        default-requeue-rejected: false # 실패 메시지는 재큐잉하지 않고 DLQ로 (재시도 정책은 RabbitConfig 참고)
+
+# RabbitMQ 이벤트 계약 (Order #51과 합의, 2026-11-16)
+events:
+  exchange: peakorder.events
+  dead-letter-exchange: peakorder.dlx
+  order-confirmed:
+    queue: cooking.order-confirmed
+    routing-key: order.confirmed
+  cooking-completed:
+    routing-key: cooking.completed
 
 # 관리자 API 노출: 인증(STORE_ADMIN) 연동 전까지 기본 꺼짐. 로컬·dev에서만 COOKING_ADMIN_ENABLED=true (PR #53 리뷰)
 cooking:
