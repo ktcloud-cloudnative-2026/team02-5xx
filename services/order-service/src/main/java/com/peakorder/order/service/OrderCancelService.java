@@ -299,14 +299,14 @@ public class OrderCancelService {
       if (restored == RestoreResult.RESTORED) {
         return txService.markStockRestored(orderId, lock) ? StepResult.done() : StepResult.lost();
       }
-      log.error("재고를 복원할 수 없다는 응답입니다. 수동 확인 필요 orderId={}", orderId);
+      log.error("재고를 복원할 수 없다는 응답입니다. 영구 실패 orderId={}", orderId);
       return StepResult.permanent("RESTORE_NOT_APPLICABLE");
     } catch (BusinessException e) {
       if (e.errorCode() == ErrorCode.ORDER_PAY_IN_PROGRESS) {
         return StepResult.lost();
       }
       if (e.errorCode() == ErrorCode.UPSTREAM_INVALID_RESPONSE) {
-        log.error("재고 복원 응답이 계약과 다릅니다. 수동 확인 필요 orderId={} code={}", orderId, e.errorCode());
+        log.error("재고 복원 응답이 계약과 다릅니다. 영구 실패 orderId={} code={}", orderId, e.errorCode());
         return StepResult.permanent("RESTORE_INVALID_RESPONSE");
       }
       log.warn("취소 후 재고 복원 실패, 재시도 대상으로 남깁니다 orderId={} code={}", orderId, e.errorCode());
@@ -330,7 +330,7 @@ public class OrderCancelService {
           || e.errorCode() == ErrorCode.UPSTREAM_INVALID_RESPONSE) {
         // 다시 호출해도 결과가 같은 이상 상태다. 성공으로 기록하지 않고 수동 확인에 맡긴다.
         log.error(
-            "환불할 수 없다는 응답입니다. 수동 확인 필요 orderId={} paymentId={} code={}",
+            "환불할 수 없다는 응답입니다. 영구 실패 orderId={} paymentId={} code={}",
             orderId,
             paymentId,
             e.errorCode());
