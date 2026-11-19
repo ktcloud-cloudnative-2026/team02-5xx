@@ -201,17 +201,17 @@ export default function AdminMenuPage({ adapter }) {
         </div>
       </aside>
       <main className="am-main">
-        <div className="am-preview-banner">
-          <strong>MOCK PREVIEW</strong>
-          <span>
-            모의 데이터만 사용합니다. 실제 관리자 인증과 API는 연결되지
-            않았습니다. 새로고침하면 샘플로 돌아갑니다.
-          </span>
-        </div>
         <header className="am-page-heading">
           <div>
             <h1>메뉴 관리</h1>
             <p>메뉴 정보와 옵션, 판매 상태를 한곳에서 관리하세요.</p>
+          </div>
+          <div className="am-preview-banner">
+            <strong>MOCK PREVIEW</strong>
+            <span>
+              모의 데이터만 사용합니다. 실제 관리자 인증과 API는 연결되지
+              않았습니다. 새로고침하면 샘플로 돌아갑니다.
+            </span>
           </div>
         </header>
         {notice && (
@@ -250,6 +250,42 @@ export default function AdminMenuPage({ adapter }) {
                   </button>
                 ))}
               </div>
+              <div className="am-filter-grid">
+                <label className="am-field am-search">
+                  <span>메뉴 검색</span>
+                  <input
+                    type="search"
+                    placeholder="메뉴 이름으로 검색"
+                    value={filters.query}
+                    onChange={(event) => filter('query', event.target.value)}
+                  />
+                </label>
+                <label className="am-field">
+                  <span>카테고리</span>
+                  <select
+                    value={filters.categoryId}
+                    onChange={(event) => filter('categoryId', event.target.value)}
+                  >
+                    <option value="">전체 카테고리</option>
+                    {result.categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="am-field">
+                  <span>정렬</span>
+                  <select
+                    value={filters.sort}
+                    onChange={(event) => filter('sort', event.target.value)}
+                  >
+                    <option value="default">기본 순서</option>
+                    <option value="priceAsc">낮은 가격순</option>
+                    <option value="priceDesc">높은 가격순</option>
+                  </select>
+                </label>
+              </div>
               <button
                 data-admin-focus-fallback=""
                 aria-haspopup="dialog"
@@ -261,59 +297,6 @@ export default function AdminMenuPage({ adapter }) {
                 }}
               >
                 <span aria-hidden="true">＋</span> 새 메뉴 등록
-              </button>
-            </div>
-            <div className="am-filter-grid">
-              <label className="am-field am-search">
-                <span>메뉴 검색</span>
-                <input
-                  type="search"
-                  placeholder="메뉴 이름으로 검색"
-                  value={filters.query}
-                  onChange={(event) => filter('query', event.target.value)}
-                />
-              </label>
-              <label className="am-field">
-                <span>카테고리</span>
-                <select
-                  value={filters.categoryId}
-                  onChange={(event) => filter('categoryId', event.target.value)}
-                >
-                  <option value="">전체 카테고리</option>
-                  {result.categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="am-field">
-                <span>정렬</span>
-                <select
-                  value={filters.sort}
-                  onChange={(event) => filter('sort', event.target.value)}
-                >
-                  <option value="default">기본 순서</option>
-                  <option value="priceAsc">낮은 가격순</option>
-                  <option value="priceDesc">높은 가격순</option>
-                </select>
-              </label>
-            </div>
-            <div className="am-filter-bottom">
-              <p>비공개 메뉴와 비활성 옵션도 관리자에게 표시합니다.</p>
-              <button
-                type="button"
-                className="am-text-button"
-                onClick={() =>
-                  setFilters({
-                    query: '',
-                    categoryId: '',
-                    status: '',
-                    sort: 'default',
-                  })
-                }
-              >
-                조회 조건 초기화
               </button>
             </div>
           </section>
@@ -331,6 +314,20 @@ export default function AdminMenuPage({ adapter }) {
                 <span role="status">
                   {phase === 'loading' ? '불러오는 중…' : '현재 조회 조건 기준'}
                 </span>
+                <button
+                  type="button"
+                  className="am-text-button am-reset"
+                  onClick={() =>
+                    setFilters({
+                      query: '',
+                      categoryId: '',
+                      status: '',
+                      sort: 'default',
+                    })
+                  }
+                >
+                  조회 조건 초기화
+                </button>
                 <button
                   type="button"
                   className="am-text-button"
