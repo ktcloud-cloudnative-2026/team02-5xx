@@ -58,36 +58,27 @@ public class HttpCookingClient implements CookingClient {
     }
   }
 
-  /**
-   * 응답을 "expectedWaitSec = 조리 시작까지, expectedReadySec = 조리 완료까지"로 정규화한다.
-   *
-   * <p>TODO(Cooking CI-02 변경 병합 후 삭제): Cooking 변경 전에는 {@code expectedWaitSec}가 조리 완료까지 남은 시간이고
-   * {@code expectedReadySec}가 없다. 이 경우 완료까지 시간은 받은 값 그대로, 시작까지 시간은 대기 중일 때만 "완료까지 − 내 조리 시간"으로
-   * 계산한다.
-   */
+  /** 응답이 계약대로인지 확인한다. expectedWaitSec는 조리 시작까지, expectedReadySec는 조리 완료까지(초)다. */
   private static CookingStatus toStatus(StatusBody b) {
     if (b.status() == null
         || !STATUSES.contains(b.status())
         || b.waitingAhead() == null
         || b.estimatedCookSec() == null
         || b.expectedWaitSec() == null
+        || b.expectedReadySec() == null
         || b.waitingAhead() < 0
         || b.estimatedCookSec() < 0
         || b.expectedWaitSec() < 0
-        || (b.expectedReadySec() != null && b.expectedReadySec() < 0)) {
+        || b.expectedReadySec() < 0) {
       throw new BusinessException(ErrorCode.UPSTREAM_INVALID_RESPONSE);
     }
-    long wait;
-    long ready;
-    if (b.expectedReadySec() != null) {
-      wait = b.expectedWaitSec();
-      ready = b.expectedReadySec();
-    } else {
-      ready = b.expectedWaitSec();
-      wait = "WAITING".equals(b.status()) ? Math.max(0, ready - b.estimatedCookSec()) : 0;
-    }
     return new CookingStatus(
-        b.status(), b.waitingAhead(), b.estimatedCookSec(), wait, ready, b.startedAt());
+        b.status(),
+        b.waitingAhead(),
+        b.estimatedCookSec(),
+        b.expectedWaitSec(),
+        b.expectedReadySec(),
+        b.startedAt());
   }
 
   @Override
