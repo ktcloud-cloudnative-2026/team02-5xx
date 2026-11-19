@@ -19,3 +19,5 @@ spec:
       kind: Deployment
     - group: ""
       kind: Service
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
