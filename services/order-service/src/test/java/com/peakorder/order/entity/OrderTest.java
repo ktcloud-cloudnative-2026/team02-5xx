@@ -56,4 +56,51 @@ class OrderTest {
     assertThat(order.getHistories().get(1).getFromStatus()).isEqualTo(OrderStatus.CREATED);
     assertThat(order.getHistories().get(1).getToStatus()).isEqualTo(OrderStatus.FAILED);
   }
+
+  @Test
+  void mark_confirmed_issues_order_no_and_moves_to_paid() {
+    Order order = Order.createTemporary(7L, now);
+    OffsetDateTime later = now.plusSeconds(30);
+
+    order.markConfirmed("261113-0001", 9L, later);
+
+    assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
+    assertThat(order.getOrderNo()).isEqualTo("261113-0001");
+    assertThat(order.getPaymentId()).isEqualTo(9L);
+    assertThat(order.getPaidAt()).isEqualTo(later);
+    assertThat(order.getHistories().get(1).getFromStatus()).isEqualTo(OrderStatus.CREATED);
+    assertThat(order.getHistories().get(1).getToStatus()).isEqualTo(OrderStatus.PAID);
+  }
+
+  @Test
+  void payment_requested_time_keeps_the_first_value() {
+    Order order = Order.createTemporary(7L, now);
+
+    order.markPaymentRequested(now.plusSeconds(10));
+    order.markPaymentRequested(now.plusSeconds(99));
+
+    assertThat(order.getPaymentRequestedAt()).isEqualTo(now.plusSeconds(10));
+    assertThat(order.getStatus()).isEqualTo(OrderStatus.CREATED);
+  }
+
+  @Test
+  void payment_id_is_recorded_once_and_does_not_change_the_status() {
+    Order order = Order.createTemporary(7L, now);
+
+    order.recordPaymentId(9L, now.plusSeconds(10));
+    order.recordPaymentId(10L, now.plusSeconds(20));
+
+    assertThat(order.getPaymentId()).isEqualTo(9L);
+    assertThat(order.getStatus()).isEqualTo(OrderStatus.CREATED);
+    assertThat(order.getHistories()).hasSize(1);
+  }
+
+  @Test
+  void confirmed_states_are_paid_and_after() {
+    assertThat(OrderStatus.CREATED.isConfirmed()).isFalse();
+    assertThat(OrderStatus.FAILED.isConfirmed()).isFalse();
+    assertThat(OrderStatus.CANCELED.isConfirmed()).isFalse();
+    assertThat(OrderStatus.PAID.isConfirmed()).isTrue();
+    assertThat(OrderStatus.COMPLETED.isConfirmed()).isTrue();
+  }
 }

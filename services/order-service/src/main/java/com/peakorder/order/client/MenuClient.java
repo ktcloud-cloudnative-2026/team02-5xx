@@ -13,8 +13,29 @@ public interface MenuClient {
 
   record PurchaseLine(Long menuId, int quantity, List<Long> optionIds) {}
 
+  /**
+   * cookTimeSec: 메뉴 1개 조리 시간(초). 주문 생성(OR-01)에서는 쓰지 않고, 결제(OR-02)에서 OrderConfirmed에 담을 때 필요하다.
+   * Menu가 이 필드를 내려주도록 합의가 필요하다.
+   */
   record ValidatedMenu(
-      Long menuId, String menuName, int unitPrice, List<ValidatedOption> options) {}
+      Long menuId,
+      String menuName,
+      int unitPrice,
+      Integer cookTimeSec,
+      List<ValidatedOption> options) {
 
-  record ValidatedOption(Long optionId, String optionName, int extraPrice) {}
+    public ValidatedMenu(
+        Long menuId, String menuName, int unitPrice, List<ValidatedOption> options) {
+      this(menuId, menuName, unitPrice, null, options);
+    }
+  }
+
+  /** extraCookTimeSec: 옵션 선택 시 추가되는 조리 시간(초). */
+  record ValidatedOption(
+      Long optionId, String optionName, int extraPrice, Integer extraCookTimeSec) {
+
+    public ValidatedOption(Long optionId, String optionName, int extraPrice) {
+      this(optionId, optionName, extraPrice, null);
+    }
+  }
 }

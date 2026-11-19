@@ -1,4 +1,4 @@
-package com.example.cooking_service;
+package com.peakorder.cooking;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

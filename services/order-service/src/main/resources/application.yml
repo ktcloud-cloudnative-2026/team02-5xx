@@ -19,6 +19,13 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER}
     password: ${RABBITMQ_PASSWORD}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        default-requeue-rejected: false # 재시도 정책은 RabbitConfig.listenerRetryCustomizer 참고
 
 management:
   endpoints:
@@ -35,3 +42,25 @@ clients:
     base-url: ${MENU_SERVICE_URL:http://localhost:8081}
   inventory:
     base-url: ${INVENTORY_SERVICE_URL:http://localhost:8082}
+  payment:
+    base-url: ${PAYMENT_SERVICE_URL:http://localhost:8083}
+  cooking:
+    base-url: ${COOKING_SERVICE_URL:http://localhost:8084}
+
+# RabbitMQ 이벤트 (이름·라우팅 키는 초안, Cooking 담당자와 합의 후 확정)
+events:
+  exchange: peakorder.events
+  dead-letter-exchange: peakorder.dlx
+  order-confirmed:
+    routing-key: order.confirmed
+  cooking-completed:
+    queue: order.cooking-completed
+    routing-key: cooking.completed
+  outbox:
+    poll-interval-ms: 1000
+    batch-size: 50
+
+# Cooking 장애 감지(US-13): GET /actuator/health 를 확인해 연속 실패 시 신규 주문·결제 차단
+cooking-health:
+  interval-ms: 5000
+  failure-threshold: 3
