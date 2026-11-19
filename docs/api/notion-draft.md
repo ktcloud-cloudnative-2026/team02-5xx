@@ -7,7 +7,9 @@
 - 가져온 날짜: 2026-11-13 (Asia/Seoul)
 - 공통 확정 규칙: [CLAUDE.md](../../CLAUDE.md)
 - 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
-- 구현 기준: main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없습니다. 열린 PR의 구현을 main 반영 완료로 표시하지 않습니다.
+- Order API 상세 갱신: 2026-11-18. Order PR(#28·#29·#46·#52·#56)의 구현과 Menu PR #90·Payment PR #71의 호출 계약을 확인해 Order Service 절과 Menu·Payment 내부 API 절에 보완 내용을 추가했습니다. Notion 원본의 같은 부분도 맞춰 수정해야 합니다.
+- 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
+- 구현 기준(현재, 2026-11-19): main `df38c7f`에는 Order Flyway V1~V4와 주문 생성·조회·결제·취소 API(OR-01~05, PR #28·#29·#46·#61), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62)·자동 조리 진행과 CookingCompleted 발행(PR #78), Inventory 초기 구성(PR #70)이 병합되어 있습니다. Payment(PR #71)·Inventory 내부 API(PR #115) 등 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
 
 - 원문의 Menu Service 수정 전·후 표와 논의 사항을 함께 보존했습니다. 이 문서는 원문 보관본이며 두 표를 동시에 유효한 계약으로 간주하지 않습니다.
 
@@ -231,10 +233,81 @@
 
 ### Order 구현 상태·추가 합의 (2026-11-17)
 
-- **확정·구현 중:** Cooking 장애 시 신규 주문·결제 차단. [PR #56](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/56)은 합의된 `GET /actuator/health`(인증 없음)를 5초 주기·2초 타임아웃으로 확인하고, 3회 연속 실패 시 OR-01·OR-02에 `503 COOKING_UNAVAILABLE`을 반환합니다. 1회 성공 시 해제하며, 기동 직후 정상으로 시작합니다. 조회·확정 주문의 결제 재호출·이벤트 처리는 차단하지 않습니다. 이 수치는 해당 PR의 현재 실행 정책이며 운영 조정은 별도 합의 대상입니다.
-- **확정·구현 중 / 구현 불일치:** 조리 시작 전 취소와 Cooking의 최종 판단은 확정됐지만, [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)은 취소 작업의 1단계입니다. 현재 커밋 `cfe5a88`의 OrderController에는 OR-05가 없으며, 재고 복원·환불 후속 처리 기록도 미구현입니다. 취소 API가 이미 호출 가능한 것으로 간주하지 않습니다.
+- **확정·구현 완료(main 병합):** Cooking 장애 시 신규 주문·결제 차단. [PR #56](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/56)은 합의된 `GET /actuator/health`(인증 없음)를 5초 주기·2초 타임아웃으로 확인하고, 3회 연속 실패 시 OR-01·OR-02에 `503 COOKING_UNAVAILABLE`을 반환합니다. 1회 성공 시 해제하며, 기동 직후 정상으로 시작합니다. 조회·확정 주문의 결제 재호출·이벤트 처리는 차단하지 않습니다. 결제를 이미 요청한 적이 있는 주문도 차단하지 않고(같은 키로 기존 결과를 확인하는 것이라 새 결제가 아님) 결과 확인·복구를 이어서 합니다. 이 수치는 해당 PR의 현재 실행 정책이며 운영 조정은 별도 합의 대상입니다.
+- **확정·구현 완료(main 병합):** 조리 시작 전 취소와 Cooking의 최종 판단(CI-03)이 확정됐고, 주문 취소 API(OR-05)와 재고 복원·환불 후속 처리는 [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)에서 main에 병합됐습니다. 다만 호출 대상인 Payment(PI-03, PR #71)와 Inventory(II-03·II-04, PR #115) 구현은 병합 전이라 서비스끼리의 실제 연동은 아직 확인되지 않았습니다. 처리 방식은 아래 "주문 취소(OR-05) 처리" 표를 따릅니다.
 - **미확정:** 사용자 식별·권한 검증 위치. 현재 Order PR의 `X-User-Id`는 임시 헤더이며 JWT 검증이나 CUSTOMER 권한 보장이 아닙니다.
-- 확정된 내부 취소·재고 응답 계약은 아래 Inventory·Cooking 절을 따릅니다. Payment 환불 상세 응답은 담당자 답변 대기이며 기존 초안 상태를 유지합니다.
+- 확정된 내부 취소·재고 응답 계약은 아래 Inventory·Cooking 절을 따릅니다. Payment 환불(PI-03) 응답은 [Payment PR #71](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/71)의 구현을 확인했으며, 아래 Payment 절의 "Payment 내부 계약 확인"을 따릅니다. 담당자 최종 확인 전입니다.
+
+### Order 외부 API 상세 (2026-11-18)
+
+Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·[#29](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/29)·[#46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)·[#52](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/52)·[#56](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/56))의 구현 기준입니다. **병합 상태(2026-11-19 기준):** #28(Flyway V1)·#29(OR-01·03·04, V2)·#46(OR-02, V3)·#52(이벤트)·#56(Cooking 장애 차단)·[#61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)(OR-05 주문 취소, V4)은 main에 병합됐습니다. OR-06~09는 아직 구현되지 않았습니다.
+
+| API | 요청 | 성공 응답 | 비고 |
+| --- | --- | --- | --- |
+| OR-01 | 본문 `{"items":[{"menuId":1,"quantity":2,"optionIds":[10]}]}`. 항목 1~20개, 수량 1~99, 옵션 최대 20개(없으면 생략·빈 배열) | `201`, 주문 상세(OR-04와 같은 형식). 상태 `CREATED`, `orderNo` 없음, `holdExpiresAt` 포함 | 접수 확인 → Cooking 장애 확인 → Menu 검증(MI-01) → 임시 주문 저장 → 재고 확보(II-01). 각 항목의 옵션 이름을 `, `로 이어붙인 길이가 255자를 넘으면 `400 INVALID_REQUEST`(Cooking이 255자 컬럼에 저장하므로 결제 뒤 조리 전표 실패를 막기 위해 주문 생성에서 거절). 금액은 Menu 응답으로 서버가 계산하며 같은 메뉴가 여러 줄이면 재고 확보는 메뉴별로 수량을 합산 |
+| OR-02 | 본문 없음 | `200`, 주문 상세(`PAID`, `orderNo`, `paidAt`) | 결제(PI-01) → 재고 확정(II-02) → 주문 확정. 같은 주문에 반복 호출해도 현재 상태를 돌려주며 결제는 `idempotencyKey`(`order-{orderId}`)로 중복 방지 |
+| OR-03 | 쿼리 `page`(기본 0, 음수는 0), `size`(기본 20, 1~100으로 보정) | `200`, `data`에 `items[]`(`orderId`, `orderNo`, `status`, `totalAmount`, `orderedAt`, `itemCount`, `representativeMenuName`)와 `page`, `size`, `totalElements` | 본인 주문만, 최신순. `CREATED`·`FAILED`는 제외 |
+| OR-04 | 경로 `orderId` | `200`, `data`에 `orderId`, `orderNo`, `status`, `totalAmount`, `expectedWaitSec`, `orderedAt`, `paidAt`, `canceledAt`, `completedAt`, `holdExpiresAt`, `items[]`(`menuId`, `menuName`, `unitPrice`, `quantity`, `lineAmount`, `options[]`(`optionId`, `optionName`, `extraPrice`)) | 값이 없는 필드는 응답에서 생략. `holdExpiresAt`은 결제 전(`CREATED`) 주문에만 포함. 다른 사용자의 주문은 `404 ORDER_NOT_FOUND` |
+| OR-05 | 경로 `orderId`, 본문 없음. 본인 주문만(다른 사용자는 `404`). 부분 취소 없음 | `200`, 주문 상세(`CANCELED`, `canceledAt`). 복원·환불이 아직 안 끝났어도 `200`이고 주문은 `CANCELED` | 아래 "주문 취소(OR-05) 처리" 참고. 같은 주문의 반복 호출은 현재 상태를 돌려주고 남은 후속 처리를 이어서 함 |
+
+- 사용자 식별은 임시 `X-User-Id` 헤더입니다. 클라이언트가 임의로 보낼 수 있으므로 인증 교체 전에는 외부에 노출하지 않습니다(위 **미확정** 항목).
+- 주문번호(`orderNo`)는 `yyMMdd-0001` 형식(날짜별 일련번호)이며 결제·재고 확정 시 발급합니다. 형식은 Order 구현 기준이며 팀 최종 확정은 아닙니다.
+- 조리 시간은 Order DB에 저장하지 않습니다. 결제를 시작할 때 Menu(MI-01)에서 다시 받아 `OrderConfirmed` 이벤트(`cookTimeSec`, 옵션 `extraCookTimeSec`)에 담아 Cooking에 전달합니다.
+
+**Order 오류 코드 (구현 기준)**
+
+| HTTP | errorCode | 의미 |
+| --- | --- | --- |
+| 400 | `INVALID_REQUEST` | 요청 값 오류 |
+| 404 | `ORDER_NOT_FOUND` | 없는 주문 또는 다른 사용자의 주문 |
+| 409 | `STORE_NOT_ACCEPTING_ORDERS` | 매장 영업 종료·주문 미접수 |
+| 409 | `MENU_NOT_AVAILABLE` | 판매할 수 없는 메뉴·옵션 포함 |
+| 409 | `OUT_OF_STOCK` | 재고 부족 |
+| 409 | `ORDER_NOT_PAYABLE` | 결제할 수 없는 상태의 주문 |
+| 409 | `ORDER_PAY_IN_PROGRESS` | 같은 주문의 결제를 다른 요청이 처리 중. 잠시 후 주문 상태 확인 |
+| 409 | `HOLD_EXPIRED` | 재고 확보 시간이 지나 주문 종료 |
+| 409 | `ORDER_NOT_CANCELABLE` | 취소할 수 없는 주문(조리 완료·실패 주문, 결제 전 주문의 확보가 이미 확정된 이상 상태) |
+| 409 | `ORDER_PAYMENT_PENDING` | 결제를 요청한 적이 있어 결제가 됐을 수 있는 주문은 취소하지 않음. 결제를 다시 호출해 결과 확인 |
+| 409 | `COOKING_ALREADY_STARTED`, `COOKING_ALREADY_DONE` | Cooking이 조리 시작·완료로 취소를 거절 |
+| 409 | `COOKING_ORDER_PENDING` | Cooking이 아직 주문을 접수 처리하지 못함(CI-03 404). 잠시 후 다시 시도 |
+| 409 | `STOCK_CONFIRM_FAILED` | 결제 후 재고 확정이 거부되어 환불 후 주문 종료 |
+| 402 | `PAYMENT_FAILED` | 결제 실패 확정. 주문 종료, 새 주문으로 재시도 |
+| 502 | `UPSTREAM_INVALID_RESPONSE` | 연동 서비스 응답 오류. 결과를 알 수 없는 상태를 성공·실패로 단정하지 않음 |
+| 503 | `MENU_SERVICE_UNAVAILABLE`, `INVENTORY_SERVICE_UNAVAILABLE`, `PAYMENT_SERVICE_UNAVAILABLE` | 연동 서비스 장애·시간 초과. 결제·재고 확정 결과를 모를 때는 주문을 `CREATED`로 두고, 같은 주문으로 다시 호출하면 이어서 처리 |
+| 503 | `COOKING_UNAVAILABLE` | Cooking 장애로 신규 주문·결제 차단 |
+| 503 | `COOKING_SERVICE_UNAVAILABLE` | 주문 취소 중 Cooking 응답을 받지 못함(결과 불명). 주문을 그대로 두고, 요청은 접수되어 재호출하거나 스케줄러가 확인해 자동 처리 |
+| 500 | `INTERNAL_ERROR` | 서버 내부 오류 |
+
+**주문 취소(OR-05) 처리** (PR #61, main 병합)
+
+| 주문 상태·상황 | 처리 |
+| --- | --- |
+| `CREATED`(결제를 요청한 적 없음) | 재고 확보만 해제(II-03)하고 `CANCELED`. 환불·Cooking 호출 없음. 이미 만료·해제된 확보도 성공 |
+| `CREATED`인데 결제를 요청한 적이 있음 | 취소하지 않고 `409 ORDER_PAYMENT_PENDING` |
+| 결제 전 주문의 확보가 이미 확정됨(II-03 409) | 임의로 취소하지 않고 `409 ORDER_NOT_CANCELABLE`, 수동 확인 |
+| `PAID` 이후, Cooking이 취소 수락(CI-03 200) | `CANCELED`(`cancel_reason`=`CUSTOMER_CANCEL`, `canceled_at`, 상태 이력) 후 재고 복원(II-04)·환불(PI-03) |
+| Cooking `409 COOKING_ALREADY_STARTED`·`COOKING_ALREADY_DONE` | 취소하지 않고 같은 코드로 응답 |
+| Cooking `404 COOKING_TICKET_NOT_FOUND` | 접수 처리 중일 수 있어 취소로 보지 않고 `409 COOKING_ORDER_PENDING` |
+| Cooking 응답을 모름(5xx·타임아웃) | 주문을 그대로 두고 `503 COOKING_SERVICE_UNAVAILABLE`. Cooking을 호출하기 직전에 `cancel_requested_at`을 기록해 두므로, 고객이 다시 호출하지 않아도 스케줄러가 CI-03을 다시 호출해 확정한다(Cooking 취소는 멱등). 조리 시작·완료·접수 전으로 거절되면 기록을 지우고 더 확인하지 않음 |
+| 재고 복원 또는 환불 실패 | 주문은 `CANCELED` 유지, 응답은 `200`. 끝난 단계를 `stock_restored_at`·`refunded_at`에 기록하고 안 끝난 단계는 같은 주문 재호출 또는 스케줄러(30초)가 이어서 처리. 두 단계는 서로 독립 |
+| 재고 복원 `409 RESTORE_NOT_APPLICABLE` | 성공으로 기록하지 않고 에러 로그, 수동 확인 |
+| `COMPLETED`·`FAILED` | `409 ORDER_NOT_CANCELABLE` |
+| 이미 `CANCELED` | 현재 상태 반환(멱등), 남은 후속 처리가 있으면 이어서 처리 |
+| 결제 중이거나 다른 취소가 처리 중 | `409 ORDER_PAY_IN_PROGRESS`(결제와 같은 처리 독점 사용) |
+
+**결제 후 실패 처리**
+
+| 상황 | 처리 |
+| --- | --- |
+| 결제 실패 확정 | 주문 `FAILED`(`PAYMENT_FAILED`), 재고 해제. 재시도는 새 주문 |
+| 재고 확보 시간 만료(결제를 요청한 적 없음) | 결제하지 않고 주문 `FAILED`(`HOLD_EXPIRED`). 재시도는 새 주문 |
+| 결제를 요청한 적이 있는 주문이 재시도 중 확보 만료 | 종료하지 않고 같은 `idempotencyKey`로 결제 결과를 확인. 성공이면 재고 확정을 시도하고, 거절되면 환불 후 `FAILED`(`STOCK_CONFIRM_FAILED`), 결과를 계속 모르면 `CREATED` 유지 + `503` |
+| 결제를 요청한 적이 있는 주문이 재시도 중 메뉴 판매 중지 | 결제 결과를 확인해 성공이면 환불 후 `FAILED`(`MENU_NOT_AVAILABLE`). 환불 실패 시 `MENU_NOT_AVAILABLE_REFUND_NEEDED`로 기록해 수동 확인 |
+| 재시도 중 같은 키의 결제가 이미 환불됨(`REFUNDED`) | 돈이 이미 돌아간 상태라 다시 환불하지 않고 `FAILED`(`PAYMENT_REFUNDED`)로 종료, 재고 반환 |
+| 결제 성공 후 재고 확정 거부 | 결제 취소(환불) 후 `FAILED`(`STOCK_CONFIRM_FAILED`). 환불까지 실패하면 `STOCK_CONFIRM_FAILED_REFUND_NEEDED`로 기록해 수동 확인 |
+| 결제 직전 Menu에서 판매 중지 확인 | 결제하지 않고 주문 종료(`MENU_NOT_AVAILABLE`), 재고 반환 |
+| 재고 확보 후 확보 ID 저장 실패(OR-01) | 재고 해제를 시도하고 `FAILED`(`HOLD_SAVE_FAILED`). 해제 실패 시 Inventory 만료에 맡김 |
+| 결제·재고 확정 결과 불명(시간 초과, 5xx) | 성공·실패를 정하지 않고 `CREATED` 유지, `503`. 같은 주문으로 다시 호출하면 같은 결제 키로 이어서 처리 |
 
 ## Cooking Service
 
@@ -263,6 +336,17 @@
 - MI-01: 메뉴 상태가 `ON_SALE`인지 확인하고, 선택한 옵션과 최신 가격을 검증합니다. Order·Cooking 요청/응답·조리시간·현재 오류 매핑은 [MI-01 구현 명세](menu-mi01.md)를 확인합니다.
 
 - MI-02: Inventory가 재고를 메뉴에 연결할 때 메뉴가 실제 존재하는지 확인합니다. 최신 로컬 구현 계약·오류 매핑과 미존재 응답 제안은 [MI-02 구현 명세](menu-mi02.md)를 확인합니다. 이 링크는 로컬 보완이며 Notion 원문은 변경하지 않았습니다.
+
+### Menu 내부 계약 확인 (2026-11-18)
+
+MI-01의 요청·응답은 [Menu PR #90](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/90)(2026-11-18 main 병합)에서 Menu 담당자가 확인한 계약입니다. **확정·병합:** 상세 요청·응답·오류는 [MI-01 구현 명세](menu-mi01.md)를 따르며, 아래는 Order 호출 관점의 요약입니다. 메뉴·옵션별 세부 오류 코드와 400/404/409 구분은 아직 합의되지 않았습니다.
+
+| 구분 | 내용 |
+| --- | --- |
+| 요청 | `{"items":[{"menuId":10,"quantity":2,"optionIds":[1,2]}]}`. 옵션이 없으면 빈 배열 |
+| 성공 응답 | `200`, 요청 순서대로 `data.items[]`에 `menuId`, `menuName`, `unitPrice`, `cookTimeSec`, `options[]`(`optionId`, `optionName`, `extraPrice`, `extraCookTimeSec`)를 반환. 예: `{"success":true,"data":{"items":[{"menuId":1,"menuName":"버거","unitPrice":6500,"cookTimeSec":90,"options":[{"optionId":3,"optionName":"세트","extraPrice":2500,"extraCookTimeSec":30}]}]},"message":"OK"}`. `unitPrice`는 옵션·수량을 뺀 메뉴 1개 가격, `cookTimeSec`는 메뉴 1개 조리 시간(초), `extraCookTimeSec`는 선택 옵션 1개 추가 조리 시간(초) |
+| 오류 | 요청 오류·구매 불가(판매 중이 아닌 메뉴, 비활성 옵션)는 `400 INVALID_REQUEST`, 저장 데이터 오류·내부 장애는 `500 INTERNAL_ERROR`. 재고는 확인하지 않음 |
+| Order 호출측 | 주문 생성과 **결제 직전**에 각각 호출. 4xx는 `409 MENU_NOT_AVAILABLE`, 연결 실패·5xx는 `503 MENU_SERVICE_UNAVAILABLE`로 변환. 조리 시간은 Order DB에 저장하지 않고 `OrderConfirmed`에 담아 전달 |
 
 - 품절 판단: 재고 수량은 Menu가 아닌 Inventory Service에서 확인합니다.
 
@@ -293,14 +377,14 @@
 
 ### Inventory 내부 계약 보완 (2026-11-17)
 
-아래 오류 의미와 복원 요청은 [PR #61의 Inventory 담당자 합의](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)를 반영합니다. **확정·미구현(제공자 확인 범위):** 현재 main에 Inventory 서비스 구현이 없으므로 서버 동작 완료를 의미하지 않습니다.
+아래 오류 의미와 복원 요청은 [PR #61의 Inventory 담당자 합의](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)를 반영합니다. **확정·미구현(제공자 확인 범위):** main에는 Inventory 초기 구성(PR #70)만 병합돼 있고 내부 API 구현은 [PR #115](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/115)(미병합)에 있으므로 서버 동작 완료를 의미하지 않습니다. II-03·II-04 응답은 담당자(남규리)가 PR #115 구현과 대조해 확인했습니다.
 
 | API | 확정된 요청·응답 의미 | Order 호출측 현황 |
 | --- | --- | --- |
 | II-01 | `409 INSUFFICIENT_STOCK`, `409 STOCK_NOT_LINKED`는 확보 불가 | 두 업무 오류를 Order의 `409 OUT_OF_STOCK`으로 변환. 현재 코드는 errorCode 본문을 읽지 않고 HTTP 409 전체를 같은 오류로 변환하므로 추가 409 도입 시 확인 필요 |
 | II-02 | `409 HOLD_NOT_ACTIVE`는 만료·해제, `404 HOLD_NOT_FOUND`는 확보 없음 | 위 두 HTTP 상태만 `409 STOCK_CONFIRM_FAILED`로 해석. 결제 후라면 환불·주문 종료로 이어짐. 다른 4xx는 `502 UPSTREAM_INVALID_RESPONSE`, 5xx·연결 실패는 `503 INVENTORY_SERVICE_UNAVAILABLE`이며 결과 불명 상태를 임의로 실패 확정하지 않음 |
 | II-03 | 본문 없는 DELETE. 이미 만료·해제됐어도 200, 확정된 확보는 409, 없는 확보는 404 | 현재 release 호출은 모든 RestClientException을 `503 INVENTORY_SERVICE_UNAVAILABLE`로 변환. 취소 흐름에서의 세부 오류 해석은 후속 구현 필요 |
-| II-04 | `POST /internal/v1/inventory/restorations`, 본문 `{"orderId":1}`. 복원 불가 시 `409 RESTORE_NOT_APPLICABLE` | 복원 메서드·OR-05 호출 흐름은 아직 없음. 성공 응답 JSON과 추가 오류 코드는 미확정 |
+| II-04 | `POST /internal/v1/inventory/restorations`, 본문 `{"orderId":1}`. 복원 불가 시 `409 RESTORE_NOT_APPLICABLE` | Order 호출 구현은 PR #61(main 병합): 200만 성공(`RESTORED`), 409는 복원 불가로 성공 기록 안 함, 그 밖의 4xx는 `502`, 5xx·연결 실패는 재시도 대상. Inventory 담당(남규리)이 [Inventory PR #115](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/115) 구현과 대조해 확인: 성공 시 `200 {orderId, restored: true}`, 이미 복원된 주문도 같은 `200`, 복원 불가는 `409 RESTORE_NOT_APPLICABLE`, 추가 오류 코드는 요청 형식 오류 `400`뿐 |
 
 II-01의 다음 JSON은 **Order 호출측 PR의 현행 제안**입니다. Inventory 제공자와 요청·응답 전체가 확정됐다는 근거는 없으므로 구현 전에 상호 확인합니다.
 
@@ -338,6 +422,16 @@ Order는 `holdId`와 `expiresAt`을 필수로 읽고 II-02·II-03에 holdId를 �
 - 신규 API: 없음
 - 주요 보완: 중복 결제 방지, 결제 결과 재확인, 중복 환불 방지
 
+### Payment 내부 계약 확인 (2026-11-18)
+
+PI-01·PI-03은 [Payment PR #71](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/71)의 구현을 확인한 내용입니다. **구현 중:** main 미병합입니다. Payment 담당(정진혁)이 PI-01의 요청·응답 형식·4xx 의미·같은 키 재시도 방식(Order #46 리뷰)과 PI-03 환불 호출·재시도 방식(Order #61 리뷰)을 확인했습니다. 위 PI-03의 "구체적인 처리 방식은 정해지지 않았습니다"는 이 구현으로 대체될 수 있습니다.
+
+| API | 요청·응답 | Order 호출측 |
+| --- | --- | --- |
+| PI-01 | 요청 `{"orderId":1,"amount":4500,"idempotencyKey":"order-1"}`. 응답 `{"paymentId":1,"status":"SUCCESS"}`이며 `status`는 `SUCCESS`·`FAILED`, 그리고 이미 환불된 결제를 같은 키로 다시 호출했을 때의 `REFUNDED`. 같은 `idempotencyKey` 재요청은 처음 결과를 `200`으로 반환(환불 뒤에는 `REFUNDED`). `409 IDEMPOTENCY_KEY_CONFLICT`(같은 키에 다른 주문·금액), `409 PAYMENT_ALREADY_EXISTS`(이미 결제 기록이 있는 주문), `400 INVALID_REQUEST` | 키는 `order-{orderId}`. `FAILED`는 `402 PAYMENT_FAILED`로 주문 종료. `REFUNDED`는 돈이 이미 돌아간 상태라 다시 환불하지 않고 `FAILED`(`PAYMENT_REFUNDED`)로 종료. 4xx는 결과를 알 수 없으므로 `502 UPSTREAM_INVALID_RESPONSE`, 5xx·시간 초과는 `503 PAYMENT_SERVICE_UNAVAILABLE`로 두고 주문은 `CREATED` 유지 |
+| PI-02 | `GET`, 응답은 PI-01과 같은 형식. 없는 `paymentId`는 `404 PAYMENT_NOT_FOUND` | 현재 Order는 호출하지 않음 |
+| PI-03 | `POST /internal/v1/payments/{paymentId}/refund`, 응답 `{"paymentId":1,"status":"REFUNDED"}`. 이미 환불된 결제도 `200`. `404 PAYMENT_NOT_FOUND`, `409 PAYMENT_NOT_REFUNDABLE`(승인되지 않은 결제) | 결제 후 재고 확정 거부 시 호출 중이며, 주문 취소(OR-05)에서도 사용 예정. 오류별 세부 해석은 취소 구현 때 확정 |
+
 ## Cooking Service
 
 | ID | Method | URL 초안 | 호출자 | 기능 |
@@ -349,7 +443,7 @@ Order는 `holdId`와 `expiresAt`을 필수로 읽고 II-02·II-03에 holdId를 �
 
 조리 시작·완료는 별도 HTTP API가 아니라 Cooking 스케줄러가 자동 처리하는 설계입니다. CI-01 등록 API는 삭제 상태이며 EV-01로만 전표를 생성합니다.
 
-**CI-03 — 확정·구현 중:** [Order 합의 #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61), [Cooking 구현 #62](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/62). 요청 본문은 없으며 응답은 공통 응답 형식을 사용합니다.
+**CI-03 — 확정, Cooking 구현 병합(PR #62), Order 호출은 PR #61(main 병합):** [Order 합의 #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61), [Cooking 구현 #62](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/62). 요청 본문은 없으며 응답은 공통 응답 형식을 사용합니다.
 
 | 현재 전표 상태 | HTTP·결과 |
 | --- | --- |
@@ -363,7 +457,7 @@ Order는 `holdId`와 `expiresAt`을 필수로 읽고 II-02·II-03에 holdId를 �
 {"success":true,"data":{"orderId":1,"status":"CANCELED"},"message":"OK"}
 ```
 
-PR #62는 전표를 `PESSIMISTIC_WRITE` 행 잠금으로 읽고 상태를 재확인합니다. 자동 조리 시작도 같은 잠금 안에서 상태를 확인해야 하며, 자동 조리 진행은 해당 PR의 후속 작업입니다.
+PR #62(main 병합)는 전표를 `PESSIMISTIC_WRITE` 행 잠금으로 읽고 상태를 재확인합니다. 자동 조리 시작도 같은 잠금 안에서 상태를 확인해야 하며, 자동 조리 진행은 [PR #78](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/78)(main 병합)에서 구현됐습니다. 취소와 자동 조리 시작의 경합을 실제 DB로 검증하는 통합 테스트는 후속 이슈 #114입니다.
 
 **CI-02 — 응답 상세 미확정·PR 구현 존재:** [PR #53](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/53)은 `orderId`, `orderNo`, `status`, `waitingAhead`, `estimatedCookSec`, `expectedWaitSec`, `queuedAt`, `startedAt`, `completedAt`, `canceledAt`을 반환하는 안을 제시합니다. null 시각은 생략되며, 전표가 없으면 `404 COOKING_TICKET_NOT_FOUND`입니다. `expectedWaitSec`는 현 PR에서 **조리 완료까지**의 예상 시간(현재 조리 잔여 + 앞 대기 전표 + 자기 조리 시간)이며 DONE·CANCELED는 0입니다. 이 계산식·필드 전체의 팀 확정은 확인되지 않았습니다.
 
@@ -390,8 +484,16 @@ CO-04의 WAITING 대기열은 `queued_at, id` 오름차순입니다. 관리자 �
 
 orderId와 holdId의 상세 요청·응답 연결 — 위 Inventory 절의 호출측 제안과 확정 오류 의미를 구분하여 확인
 
+- **Order 제안·구현 중 (2026-11-18, [PR #46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)):** 임시 주문 생성 때 `orderId`로 확보를 요청하고 응답의 `holdId`·`expiresAt`을 `orders.hold_id`·`hold_expires_at`에 저장합니다. 결제 후 확정(II-02)과 실패·취소 시 해제(II-03)에는 `holdId`를 씁니다. II-01·II-02·II-03의 오류 의미는 위 Inventory 절의 합의(2026-11-16)를 따르고, 요청·응답 전체는 제공자 확인 전입니다.
+
 재고 확보 유효시간은 기본 5분·테스트 10초(STOCK\_HOLD\_TTL). 만료 처리의 상세 계약은 별도 보완
+
+- **Order 제안·구현 중:** 만료 시각은 Inventory가 정해 응답하고, Order는 결제 전에 만료 여부를 확인해 만료면 주문을 종료(`409 HOLD_EXPIRED`)합니다. 만료된 재고의 실제 반환은 Inventory 담당입니다. 만료 후 `CREATED`로 남은 주문의 정리 방식은 미정이며, 별도 작업으로 다룹니다.
 
 결제 요청 중복 방지 방법
 
+- **Order 제안·구현 중:** 결제는 `idempotencyKey`(`order-{orderId}`)로 중복을 막고, 주문 확정은 행 잠금과 상태 확인으로 한 번만 처리합니다. Payment PR #71은 같은 키의 재요청에 처음 결과를 돌려주고 다른 주문·금액이면 `409 IDEMPOTENCY_KEY_CONFLICT`, 주문당 결제 1건을 적용합니다(위 Payment 절). PI-02(결제 조회)는 응답 전에는 `paymentId`를 알 수 없어, 같은 키 재시도로 대체하므로 Order가 호출하지 않습니다.
+
 결제 성공 이후 후속 실패시 복구 방식
+
+- **Order 제안·구현 중:** 위 Order Service 절의 "결제 후 실패 처리" 표를 따릅니다. 재고 확정이 거부되면 결제를 취소(PI-03)하고 주문을 종료하며, 환불까지 실패하면 `STOCK_CONFIRM_FAILED_REFUND_NEEDED`로 기록해 수동 확인합니다. 결제·재고 확정 결과를 알 수 없을 때는 주문을 `CREATED`로 두고 같은 주문으로 다시 호출하면 이어서 처리합니다. 같은 주문의 `pay`가 동시에 들어오면 한 요청만 처리 독점(`orders.pay_lock_until`, 60초)을 잡아 Menu·Payment·Inventory를 호출하고, 나머지는 외부 호출 없이 현재 상태(확정 결과·`ORDER_NOT_PAYABLE`·`409 ORDER_PAY_IN_PROGRESS`)로 응답합니다. 독점을 잡은 뒤 주문 상태를 다시 읽으므로 이미 확정된 주문을 환불하지 않습니다. 독점은 요청마다 고유 토큰을 가지며, 결제·환불·재고 확정 직전에 연장하면서 아직 내 것인지 확인하고 상태 변경도 토큰이 일치할 때만 반영합니다. 독점이 만료돼 다른 요청이 이어받았다면 이전 요청은 아무것도 하지 않고 `409 ORDER_PAY_IN_PROGRESS`로 멈춥니다. 결제를 요청하기 직전에 `orders.payment_requested_at`을 기록하고 결제 성공 직후 `payment_id`를 저장하므로, 응답이 유실돼도 "결제가 됐을 수 있는 주문"을 구분합니다. **한계:** 결제 성공 후 주문 확정 저장이 실패해도 같은 방식으로 재호출해야 하며 자동 재시도·정산 배치는 없습니다. 결제 요청이 Payment에 닿지 않았던 경우 재호출이 새 결제가 될 수 있으나 확정 단계에서 거절되면 바로 환불합니다. 팀 확정 전입니다.
