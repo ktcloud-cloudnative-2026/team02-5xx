@@ -126,7 +126,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 | 시각 | `time` | `@timestamp` | — (로그 시각으로 쓰임) | **UTC**(`Z`). Grafana가 보는 사람 시간대(KST)로 바꿔 보여 준다 |
 | 레벨 | `level` | `log.level` | `log_level` | 대문자 `INFO`·`WARN`·`ERROR` |
 | 서비스 | `service` | `service.name` | `service_name` | `spring.application.name`이 자동으로 들어간다(1-0) |
-| 요청 ID | `request_id` | (MDC `request_id`) | `request_id` | 5절 구현 후 실제 위치 확인 — 미정 |
+| 요청 ID | `request_id` | (MDC `requestId`) | `requestId` | 다른 키와 같은 camelCase로 바꿈(5-2). 5절 구현 후 실제 위치 확인 — 미정 |
 | 내용 | `message` | `message` | `message` | |
 | 위치 | — | `log.logger`, `process.thread.name` | `log_logger`, `process_thread_name` | 어느 클래스·스레드에서 남겼는지 |
 
@@ -196,6 +196,28 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 - Grafana 알림 연락처(contact point)로 보낸다. 채널은 팀 결정(#138 결정 요청 6) 후 적는다.
 - 당분간 critical·warning 모두 같은 채널로 보내고, 심각도는 메시지 제목에 표시한다.
 
-## 5. 코드에 처음부터 넣을 것
-- [ ] `/metrics` 엔드포인트
-- [ ] 요청 ID 헤더를 받아서 다음 서비스로 전달
+## 5. 코드에 넣을 것 (서비스 담당 체크리스트)
+
+### 5-1. 지표·로그
+- [ ] `/actuator/prometheus` 노출 (1-2). **Gateway에는 열지 않는다** — HTTPRoute는 `/api/v1/**`만 연결한다.
+- [ ] 공통 라벨 `application`, HTTP histogram 설정 (1-2)
+- [ ] 배포 매니페스트에 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs` (3-1)
+- [ ] 업무 지표 (2절, 서비스별)
+
+### 5-2. 요청 ID — 1단계(HTTP) 제안
+
+| 항목 | 규칙 |
+|---|---|
+| 헤더 이름 | `X-Request-Id` (Gateway에서 생성 가능한지 확인 필요 — #138 결정 요청 3) |
+| 만드는 곳 | Gateway가 만들어 붙인다. 헤더 없이 들어온 요청(내부 호출·테스트)은 처음 받은 서비스가 UUID로 만든다 |
+| 받은 값 검사 | 영문·숫자·`-`만, 64자 이하. 아니면 버리고 새로 만든다(줄바꿈 등으로 가짜 로그 줄을 만드는 것 방지) |
+| 로그 | MDC 키 **`requestId`** → JSON 로그에 필드로 찍힌다. 다른 로그 키(`orderId`, `eventId`)와 같은 camelCase |
+| 전달 | 다른 서비스 HTTP 호출 시 같은 헤더를 붙인다(RestClient 인터셉터) |
+| 응답 | 응답 헤더 `X-Request-Id`로 돌려준다(사용자·프론트가 문의할 때 쓸 수 있음) |
+| 정리 | 요청이 끝나면 `finally`에서 MDC를 지운다. 지우지 않으면 같은 스레드를 쓰는 다음 요청에 이전 값이 남는다 |
+
+- Cooking에 먼저 적용하고, 그 PR을 다른 서비스의 예시로 쓴다(필터 1개 + 인터셉터 1개).
+
+### 5-3. 요청 ID가 없는 처리
+- RabbitMQ 리스너·스케줄러는 HTTP 요청이 아니다. 로그에 `orderId`·`eventId`를 남겨 이어 본다(3-5).
+- **이벤트에 요청 ID 싣기는 2단계(후속)** 로 미룬다. Outbox는 발행 스레드가 따로라 저장 시점에 요청 ID를 함께 저장해야 하고, 이는 DB(마이그레이션) 또는 이벤트 계약 변경이라 Order·Cooking 합의가 필요하다(#138 결정 요청 4).
