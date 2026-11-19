@@ -48,8 +48,17 @@ public class OutboxEvent {
    * @param payload JSON 문자열
    */
   public static OutboxEvent create(String eventType, String payload, Instant now) {
+    return create(UUID.randomUUID(), eventType, payload, now);
+  }
+
+  /**
+   * payload 안의 eventId와 같은 값을 쓰도록 eventId를 직접 받는다 (수신 측 중복 판단 기준).
+   *
+   * @param payload JSON 문자열
+   */
+  public static OutboxEvent create(UUID eventId, String eventType, String payload, Instant now) {
     OutboxEvent event = new OutboxEvent();
-    event.eventId = UUID.randomUUID();
+    event.eventId = eventId;
     event.eventType = eventType;
     event.payload = payload;
     event.status = OutboxStatus.PENDING;

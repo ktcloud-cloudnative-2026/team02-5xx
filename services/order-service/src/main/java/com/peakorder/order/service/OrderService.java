@@ -61,6 +61,7 @@ public class OrderService {
   private final MenuClient menuClient;
   private final InventoryClient inventoryClient;
   private final PaymentClient paymentClient;
+  private final CookingAvailability cookingAvailability;
   private final Clock clock;
 
   public OrderService(
@@ -70,6 +71,7 @@ public class OrderService {
       MenuClient menuClient,
       InventoryClient inventoryClient,
       PaymentClient paymentClient,
+      CookingAvailability cookingAvailability,
       Clock clock) {
     this.orderRepository = orderRepository;
     this.storeOperationRepository = storeOperationRepository;
@@ -77,12 +79,15 @@ public class OrderService {
     this.menuClient = menuClient;
     this.inventoryClient = inventoryClient;
     this.paymentClient = paymentClient;
+    this.cookingAvailability = cookingAvailability;
     this.clock = clock;
   }
 
   /** OR-01 임시 주문 생성: 접수 확인 → Menu 검증 → 임시 주문 저장 → Inventory 재고 확보. */
   public OrderDetailResponse createOrder(Long userId, CreateOrderRequest request) {
     ensureAcceptingOrders();
+    // Cooking 장애 시 신규 주문 생성을 막는다(US-13). 매장 접수 설정과는 별개다.
+    cookingAvailability.ensureAvailable();
 
     List<OrderLine> lines = request.items();
     List<ValidatedMenu> validated =
@@ -214,6 +219,12 @@ public class OrderService {
       // 결제한 적이 없으므로 돈이 나가지 않았다. 바로 종료한다.
       failOrder(orderId, lock, "HOLD_EXPIRED");
       throw new BusinessException(ErrorCode.HOLD_EXPIRED);
+    }
+    // Cooking 장애 시 새 결제를 막는다(US-13). 주문은 CREATED로 그대로 두고 이미 확정된 주문은 건드리지 않는다.
+    // 결제를 이미 요청한 적이 있는 주문은 같은 키로 기존 결과를 확인하는 것이라 새로 결제되지 않는다. 결제가 됐을 수 있는데
+    // 사용자가 "결제할 수 없음"만 보지 않도록 막지 않고 결과 확인·복구(환불·확정)를 이어서 한다(PR #56 Payment 리뷰).
+    if (!paymentMayExist) {
+      cookingAvailability.ensureAvailable();
     }
 
     // 결제 전에 Menu에서 조리 시간을 받아 둔다. 결제한 적이 없다면 여기서 실패해도 돈이 나가지 않는다.

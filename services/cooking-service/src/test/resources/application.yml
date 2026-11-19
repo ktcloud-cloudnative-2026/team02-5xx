@@ -1,4 +1,5 @@
 # 테스트 전용 설정: 외부 DB·RabbitMQ·환경 변수 없이 컨텍스트 로딩을 검증한다.
+# (테스트에서는 이 파일이 src/main/resources/application.yml 대신 쓰인다)
 # DB가 필요한 테스트(Entity·Repository·Flyway)가 생기면 Testcontainers 도입을 팀과 논의한다.
 spring:
   autoconfigure:
@@ -10,3 +11,21 @@ spring:
   rabbitmq:
     username: test
     password: test
+    listener:
+      simple:
+        auto-startup: false # 테스트에는 RabbitMQ가 없으므로 리스너를 시작하지 않는다
+
+events:
+  exchange: peakorder.events
+  dead-letter-exchange: peakorder.dlx
+  order-confirmed:
+    queue: cooking.order-confirmed
+    routing-key: order.confirmed
+  cooking-completed:
+    routing-key: cooking.completed
+  outbox:
+    enabled: false # 테스트에는 DB·RabbitMQ가 없으므로 outbox 발행 스케줄러를 끈다
+
+cooking:
+  progress:
+    enabled: false # 테스트에는 DB가 없으므로 자동 조리 진행 스케줄러를 끈다

@@ -2,17 +2,42 @@ package com.peakorder.cooking.repository;
 
 import com.peakorder.cooking.entity.CookingTicket;
 import com.peakorder.cooking.entity.TicketStatus;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface CookingTicketRepository extends JpaRepository<CookingTicket, Long> {
 
-  /** 주문 ID로 전표 조회 (CI-02 상태 조회, CI-03 취소, 등록 여부 확인) */
+  /** 주문 ID로 전표 조회 (CI-02 상태 조회, 등록 여부 확인) */
   Optional<CookingTicket> findByOrderId(Long orderId);
+
+  /**
+   * 주문 ID로 전표를 행 잠금(SELECT … FOR UPDATE)으로 조회한다. 상태를 바꾸는 처리(CI-03 취소, 자동 조리 진행)는 이 잠금 안에서 상태를 다시
+   * 확인해, 동시에 일어나도 한쪽만 성공하게 한다. 트랜잭션 안에서 호출해야 한다.
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select t from CookingTicket t where t.orderId = :orderId")
+  Optional<CookingTicket> findWithLockByOrderId(@Param("orderId") Long orderId);
+
+  /**
+   * 해당 상태의 FIFO 첫 전표를 행 잠금으로 조회한다 (자동 조리 진행). 다른 트랜잭션(CI-03 취소 등)이 잡고 있으면 끝날 때까지 기다린 뒤, 그 사이 상태가 바뀐
+   * 행은 결과에서 빠진다. 트랜잭션 안에서 호출해야 한다.
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  Optional<CookingTicket> findFirstWithLockByStatusOrderByQueuedAtAscIdAsc(TicketStatus status);
+
+  /**
+   * 트랜잭션 범위 advisory lock을 시도한다(PostgreSQL). 여러 인스턴스 중 하나만 자동 조리 진행을 실행하게 한다. 트랜잭션이 끝나면 자동으로 풀린다.
+   *
+   * @return 잠금을 얻으면 true, 다른 곳이 실행 중이면 false
+   */
+  @Query(value = "select pg_try_advisory_xact_lock(:key)", nativeQuery = true)
+  boolean tryAdvisoryXactLock(@Param("key") long key);
 
   /** 상태별 FIFO 목록: Cooking DB 등록 순서(queued_at, id) 기준 (CO-04 대기열) */
   List<CookingTicket> findByStatusOrderByQueuedAtAscIdAsc(TicketStatus status);
