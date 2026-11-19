@@ -193,3 +193,19 @@ Service 단위 테스트와 실제 HTTP/OpenAPI 테스트는 Repository 모의 �
 공유 `menu_dev`로 테스트를 실행하지 않습니다.
 MI-01 세부 오류 코드/HTTP 상태 구분은 아직 서비스 간 합의가 필요합니다.
 현재는 기존 `INVALID_REQUEST`/`INTERNAL_ERROR`를 재사용하며 전용 코드를 추가하지 않았습니다.
+
+## ME-05 관리자 메뉴 등록 (#118)
+
+`POST /api/v1/admin/menus` 등록 Controller·DTO·Service·OpenAPI 및 테스트를 추가했습니다.
+기존 Category/Menu/MenuOption 모델과 Repository로 카테고리·입력을 검증하고 메뉴·옵션을 단일 트랜잭션으로 저장합니다.
+성공 `201 + menuId`, 필수/선택 필드·기본값·오류 매핑은 [ME-05 제안 계약·검증 기록](../../docs/api/menu-me05-draft.md)에 명시했습니다.
+Entity·Flyway·의존성·Inventory는 변경하지 않았습니다.
+실제 HTTP는 기본 403 차단이며 성공 HTTP 테스트는 권한 경계를 모의합니다.
+#112의 Auth AU 계약 정리와 별개로 Gateway A/B 검증 방식·신뢰 경계가 미확정이므로
+실제 STORE_ADMIN 인증은 연결하지 않았습니다.
+#105가 포함된 main `6167671`을 통합했고 고객 ME-01·02 및 내부 MI-01·02 회귀를 확인했습니다.
+중복 CategoryRepository 테스트 Mock을 제거하고 등록 권한 테스트의 고객 Service 의존성을 Mock으로 보완했습니다.
+Java 21 Spotless·컴파일·test·build와 diff 검사에 통과했으며 **244건 통과, 실패·오류·생략 0건**입니다.
+격리 PostgreSQL 16 실제 DB 42건은 메뉴·옵션 저장과 실패 시 전체 롤백을 포함합니다.
+#117·#123·#127의 미병합 코드는 가져오지 않았고 관리자 조회·수정·상태 API와의 통합 회귀는 미완료입니다.
+선행 PR 통합 시 공통 인증 경계·예외 처리·테스트 mock을 정리하고 전체 회귀가 필요합니다.
