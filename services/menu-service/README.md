@@ -193,3 +193,19 @@ Service 단위 테스트와 실제 HTTP/OpenAPI 테스트는 Repository 모의 �
 공유 `menu_dev`로 테스트를 실행하지 않습니다.
 MI-01 세부 오류 코드/HTTP 상태 구분은 아직 서비스 간 합의가 필요합니다.
 현재는 기존 `INVALID_REQUEST`/`INTERNAL_ERROR`를 재사용하며 전용 코드를 추가하지 않았습니다.
+
+## ME-06 관리자 메뉴 정보·옵션 수정 (#120)
+
+`PATCH /api/v1/admin/menus/{menuId}`의 부분 수정·옵션 항목별 수정/추가/비활성화 로직을 구현했습니다.
+생략은 유지, description/imageUrl의 null은 제거이며 다른 null은 거부합니다. 메뉴·기존 옵션 ID·생성 시각·판매 상태는 유지합니다.
+메뉴 행 잠금과 단일 트랜잭션으로 같은 메뉴의 PATCH를 직렬화하고 실패 시 메뉴·옵션 전체를 롤백합니다.
+ME-07·Inventory·Flyway·스키마·의존성은 변경하지 않았습니다.
+실제 HTTP는 기본 403 차단이며 성공 HTTP 테스트는 권한 경계를 모의합니다.
+#112의 Auth API·토큰 계약 정리와 별개로 Gateway 신뢰 경계는 미확정이므로 실제 인증은 연결하지 않았습니다.
+최초 독립 검증은 197건(실제 DB 47건)이었으며 최신 main `b4724aa` 통합 후에는
+Java 21 Spotless·컴파일·test·build 및 격리 PostgreSQL 16 검증에서 **254건(실제 DB 48건) 통과**,
+실패·오류·생략 0건입니다. 고객 조회와 정보 수정의 Repository 메서드를 함께 보존하고
+공통 테스트의 중복 Mock 제거·권한 테스트의 CategoryRepository Mock을 보완했습니다.
+[ME-06 제안 계약·검증 기록](../../docs/api/menu-me06-draft.md)에 PATCH·동시성·오류와 #105/#117/#119 통합 시 조치를 기록했습니다.
+#105가 포함된 main의 고객 ME-01·02 및 내부 MI-01·02 회귀는 통과했습니다.
+#117·#119·#127 미병합 코드는 포함하지 않았으며 실제 인증과 이들 API 통합 회귀는 미완료입니다.
