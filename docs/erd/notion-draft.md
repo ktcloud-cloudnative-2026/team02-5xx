@@ -9,7 +9,7 @@
 - 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
 - Order 도식 갱신: 2026-11-18. Order Flyway V1~V3(PR #28·#29·#46)에 맞춰 3-4 도식·설명을 고쳤습니다. Notion 원본의 같은 부분도 맞춰 수정해야 합니다.
 - 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
-- 구현 기준(현재, 2026-11-19): main `fbe8118`에는 Order Flyway V1~V3와 주문 생성·조회·결제 API(OR-01~04, PR #28·#29·#46), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62), Inventory 초기 구성(PR #70)이 병합되어 있습니다. 주문 취소 OR-05(PR #61)·Payment(PR #71)·Cooking 자동 조리·CookingCompleted 발행(PR #78)·Inventory 내부 API(PR #115) 등 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
+- 구현 기준(현재, 2026-11-19): main `df38c7f`에는 Order Flyway V1~V4와 주문 생성·조회·결제·취소 API(OR-01~05, PR #28·#29·#46·#61), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62)·자동 조리 진행과 CookingCompleted 발행(PR #78), Inventory 초기 구성(PR #70)이 병합되어 있습니다. Payment(PR #71)·Inventory 내부 API(PR #115) 등 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
 
 ---
 
@@ -209,6 +209,9 @@ erDiagram
         timestamptz payment_requested_at "결제를 처음 요청한 시각 (있으면 결제가 됐을 수 있음)"
         timestamptz pay_lock_until "결제 처리 독점 만료 시각 (동시 결제 방지)"
         uuid pay_lock_token "독점을 잡은 요청의 토큰 (이어받은 독점을 이전 요청이 건드리지 못하게 함)"
+        timestamptz cancel_requested_at "확정 주문의 취소를 Cooking에 요청한 시각 (응답을 모르면 스케줄러가 CI-03 재확인)"
+        timestamptz stock_restored_at "취소 후 재고 복원(Inventory II-04) 완료 시각"
+        timestamptz refunded_at "취소 후 환불(Payment PI-03) 완료 시각"
         varchar cancel_reason "취소 사유"
         varchar fail_reason "실패 사유 (결제 실패, 재고 부족 등 / 실제 주문 목록에서는 제외)"
         timestamptz ordered_at "주문 시각"
@@ -485,7 +488,7 @@ erDiagram
 | --- | --- | --- |
 | Order 확보 정보 | orderId로 확보하고 holdId로 확정·해제 | [PR #29](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/29)의 V2(2026-11-18 main 병합)에 orders.hold_id, hold_expires_at 추가. **도식에 반영함(2026-11-18).** Inventory의 확정·해제 요청·응답은 2026-11-16 담당자(남규리)와 합의 |
 | Order 결제·주문번호 | 결제·재고 확정 후 orderNo 발급 | [PR #46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)의 V3(main 병합, 2026-11-18)에 orders.payment_id·payment_requested_at·pay_lock_until·pay_lock_token와 order_no_counters(order_date PK, last_seq > 0) 추가. **도식에 반영함(2026-11-18).** 취소 후속 처리용 컬럼(`stock_restored_at`·`refunded_at`, V4)은 아직 제안 단계라 도식에 넣지 않음 |
-| Order 취소 후속 처리 | 취소 확정 후 재고 복원·환불, 중복 처리 방지 | [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)의 V4(orders.cancel_requested_at·stock_restored_at·refunded_at, 취소 후속 처리가 남은 주문을 찾는 부분 인덱스)는 구현됐지만 main에 병합되기 전이라 도식에 추가하지 않음. 병합되면 도식과 4항에 반영 |
+| Order 취소 후속 처리 | 취소 확정 후 재고 복원·환불, 중복 처리 방지 | [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)의 V4(main 병합, 2026-11-19)에 orders.cancel_requested_at·stock_restored_at·refunded_at와, 취소 후속 처리가 남은 주문·응답을 모른 취소 요청을 찾는 부분 인덱스 2개 추가. **도식에 반영함(2026-11-19).** 복원·환불이 끝나지 않은 주문은 두 시각 중 NULL인 단계가 재시도 대상 |
 | Order 상태 | CREATED, PAID, WAITING, COOKING, COMPLETED, CANCELED, FAILED | Order PR의 CHECK와 enum은 도식과 일치. 현재 이벤트 처리는 PAID→COMPLETED이며 WAITING·COOKING 반영 방식은 미확정 |
 | Cooking 상태·관계 | WAITING→COOKING→DONE, WAITING→CANCELED. order_id UNIQUE, 전표-항목 FK | [PR #62](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/62)의 V1에 상태 CHECK, quantity > 0, cook_time_sec·estimated_cook_sec >= 0, (status, queued_at, id) INDEX 존재. CI-03은 행 잠금으로 취소 경합 제어 |
 | Cooking 혼잡도 | congestion_thresholds로 기준값 관리 | V1에는 id, busy_wait_sec(>0), updated_at 존재. 도식의 선택 이력 표 congestion_snapshots는 PR에서 제외. 확정된 필수 표 누락으로 간주하지 않음 |

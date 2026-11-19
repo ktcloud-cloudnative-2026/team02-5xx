@@ -9,7 +9,7 @@
 - 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
 - Order API 상세 갱신: 2026-11-18. Order PR(#28·#29·#46·#52·#56)의 구현과 Menu PR #90·Payment PR #71의 호출 계약을 확인해 Order Service 절과 Menu·Payment 내부 API 절에 보완 내용을 추가했습니다. Notion 원본의 같은 부분도 맞춰 수정해야 합니다.
 - 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
-- 구현 기준(현재, 2026-11-19): main `fbe8118`에는 Order Flyway V1~V3와 주문 생성·조회·결제 API(OR-01~04, PR #28·#29·#46), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62), Inventory 초기 구성(PR #70)이 병합되어 있습니다. 주문 취소 OR-05(PR #61)·Payment(PR #71)·Cooking 자동 조리·CookingCompleted 발행(PR #78)·Inventory 내부 API(PR #115) 등 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
+- 구현 기준(현재, 2026-11-19): main `df38c7f`에는 Order Flyway V1~V4와 주문 생성·조회·결제·취소 API(OR-01~05, PR #28·#29·#46·#61), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62)·자동 조리 진행과 CookingCompleted 발행(PR #78), Inventory 초기 구성(PR #70)이 병합되어 있습니다. Payment(PR #71)·Inventory 내부 API(PR #115) 등 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
 
 - 원문의 Menu Service 수정 전·후 표와 논의 사항을 함께 보존했습니다. 이 문서는 원문 보관본이며 두 표를 동시에 유효한 계약으로 간주하지 않습니다.
 
@@ -234,13 +234,13 @@
 ### Order 구현 상태·추가 합의 (2026-11-17)
 
 - **확정·구현 완료(main 병합):** Cooking 장애 시 신규 주문·결제 차단. [PR #56](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/56)은 합의된 `GET /actuator/health`(인증 없음)를 5초 주기·2초 타임아웃으로 확인하고, 3회 연속 실패 시 OR-01·OR-02에 `503 COOKING_UNAVAILABLE`을 반환합니다. 1회 성공 시 해제하며, 기동 직후 정상으로 시작합니다. 조회·확정 주문의 결제 재호출·이벤트 처리는 차단하지 않습니다. 결제를 이미 요청한 적이 있는 주문도 차단하지 않고(같은 키로 기존 결과를 확인하는 것이라 새 결제가 아님) 결과 확인·복구를 이어서 합니다. 이 수치는 해당 PR의 현재 실행 정책이며 운영 조정은 별도 합의 대상입니다.
-- **확정·구현 중(미병합):** 조리 시작 전 취소와 Cooking의 최종 판단(CI-03)은 확정됐고, 주문 취소 API(OR-05)와 재고 복원·환불 후속 처리는 [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)에서 구현 중입니다(main 미병합이라 호출 가능한 API로 간주하지 않습니다). 처리 방식은 아래 "주문 취소(OR-05) 처리" 표를 따릅니다.
+- **확정·구현 완료(main 병합):** 조리 시작 전 취소와 Cooking의 최종 판단(CI-03)이 확정됐고, 주문 취소 API(OR-05)와 재고 복원·환불 후속 처리는 [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)에서 main에 병합됐습니다. 다만 호출 대상인 Payment(PI-03, PR #71)와 Inventory(II-03·II-04, PR #115) 구현은 병합 전이라 서비스끼리의 실제 연동은 아직 확인되지 않았습니다. 처리 방식은 아래 "주문 취소(OR-05) 처리" 표를 따릅니다.
 - **미확정:** 사용자 식별·권한 검증 위치. 현재 Order PR의 `X-User-Id`는 임시 헤더이며 JWT 검증이나 CUSTOMER 권한 보장이 아닙니다.
 - 확정된 내부 취소·재고 응답 계약은 아래 Inventory·Cooking 절을 따릅니다. Payment 환불(PI-03) 응답은 [Payment PR #71](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/71)의 구현을 확인했으며, 아래 Payment 절의 "Payment 내부 계약 확인"을 따릅니다. 담당자 최종 확인 전입니다.
 
 ### Order 외부 API 상세 (2026-11-18)
 
-Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·[#29](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/29)·[#46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)·[#52](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/52)·[#56](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/56))의 구현 기준입니다. **병합 상태(2026-11-19 기준):** #28(Flyway V1)·#29(OR-01·03·04, V2)·#46(OR-02, V3)·#52(이벤트)·#56(Cooking 장애 차단)은 main에 병합됐습니다. OR-05(주문 취소, V4)는 [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)에서 구현됐지만 병합 전이라 main에서 호출 가능한 API로 간주하지 않습니다. OR-06~09는 아직 구현되지 않았습니다.
+Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·[#29](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/29)·[#46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)·[#52](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/52)·[#56](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/56))의 구현 기준입니다. **병합 상태(2026-11-19 기준):** #28(Flyway V1)·#29(OR-01·03·04, V2)·#46(OR-02, V3)·#52(이벤트)·#56(Cooking 장애 차단)·[#61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)(OR-05 주문 취소, V4)은 main에 병합됐습니다. OR-06~09는 아직 구현되지 않았습니다.
 
 | API | 요청 | 성공 응답 | 비고 |
 | --- | --- | --- | --- |
@@ -278,7 +278,7 @@ Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·
 | 503 | `COOKING_SERVICE_UNAVAILABLE` | 주문 취소 중 Cooking 응답을 받지 못함(결과 불명). 주문을 그대로 두고, 요청은 접수되어 재호출하거나 스케줄러가 확인해 자동 처리 |
 | 500 | `INTERNAL_ERROR` | 서버 내부 오류 |
 
-**주문 취소(OR-05) 처리** (PR #61 구현 기준)
+**주문 취소(OR-05) 처리** (PR #61, main 병합)
 
 | 주문 상태·상황 | 처리 |
 | --- | --- |
@@ -380,7 +380,7 @@ MI-01의 요청·응답은 [Menu PR #90](https://github.com/ktcloud-cloudnative-
 | II-01 | `409 INSUFFICIENT_STOCK`, `409 STOCK_NOT_LINKED`는 확보 불가 | 두 업무 오류를 Order의 `409 OUT_OF_STOCK`으로 변환. 현재 코드는 errorCode 본문을 읽지 않고 HTTP 409 전체를 같은 오류로 변환하므로 추가 409 도입 시 확인 필요 |
 | II-02 | `409 HOLD_NOT_ACTIVE`는 만료·해제, `404 HOLD_NOT_FOUND`는 확보 없음 | 위 두 HTTP 상태만 `409 STOCK_CONFIRM_FAILED`로 해석. 결제 후라면 환불·주문 종료로 이어짐. 다른 4xx는 `502 UPSTREAM_INVALID_RESPONSE`, 5xx·연결 실패는 `503 INVENTORY_SERVICE_UNAVAILABLE`이며 결과 불명 상태를 임의로 실패 확정하지 않음 |
 | II-03 | 본문 없는 DELETE. 이미 만료·해제됐어도 200, 확정된 확보는 409, 없는 확보는 404 | 현재 release 호출은 모든 RestClientException을 `503 INVENTORY_SERVICE_UNAVAILABLE`로 변환. 취소 흐름에서의 세부 오류 해석은 후속 구현 필요 |
-| II-04 | `POST /internal/v1/inventory/restorations`, 본문 `{"orderId":1}`. 복원 불가 시 `409 RESTORE_NOT_APPLICABLE` | Order 호출 구현은 PR #61(미병합): 200만 성공(`RESTORED`), 409는 복원 불가로 성공 기록 안 함, 그 밖의 4xx는 `502`, 5xx·연결 실패는 재시도 대상. Inventory 담당(남규리)이 [Inventory PR #115](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/115) 구현과 대조해 확인: 성공 시 `200 {orderId, restored: true}`, 이미 복원된 주문도 같은 `200`, 복원 불가는 `409 RESTORE_NOT_APPLICABLE`, 추가 오류 코드는 요청 형식 오류 `400`뿐 |
+| II-04 | `POST /internal/v1/inventory/restorations`, 본문 `{"orderId":1}`. 복원 불가 시 `409 RESTORE_NOT_APPLICABLE` | Order 호출 구현은 PR #61(main 병합): 200만 성공(`RESTORED`), 409는 복원 불가로 성공 기록 안 함, 그 밖의 4xx는 `502`, 5xx·연결 실패는 재시도 대상. Inventory 담당(남규리)이 [Inventory PR #115](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/115) 구현과 대조해 확인: 성공 시 `200 {orderId, restored: true}`, 이미 복원된 주문도 같은 `200`, 복원 불가는 `409 RESTORE_NOT_APPLICABLE`, 추가 오류 코드는 요청 형식 오류 `400`뿐 |
 
 II-01의 다음 JSON은 **Order 호출측 PR의 현행 제안**입니다. Inventory 제공자와 요청·응답 전체가 확정됐다는 근거는 없으므로 구현 전에 상호 확인합니다.
 
@@ -420,7 +420,7 @@ Order는 `holdId`와 `expiresAt`을 필수로 읽고 II-02·II-03에 holdId를 �
 
 ### Payment 내부 계약 확인 (2026-11-18)
 
-PI-01·PI-03은 [Payment PR #71](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/71)의 구현을 확인한 내용입니다. **구현 중:** main 미병합이며 Payment 담당자 최종 확인 전입니다. 위 PI-03의 "구체적인 처리 방식은 정해지지 않았습니다"는 이 구현으로 대체될 수 있습니다.
+PI-01·PI-03은 [Payment PR #71](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/71)의 구현을 확인한 내용입니다. **구현 중:** main 미병합입니다. Payment 담당(정진혁)이 PI-01의 요청·응답 형식·4xx 의미·같은 키 재시도 방식(Order #46 리뷰)과 PI-03 환불 호출·재시도 방식(Order #61 리뷰)을 확인했습니다. 위 PI-03의 "구체적인 처리 방식은 정해지지 않았습니다"는 이 구현으로 대체될 수 있습니다.
 
 | API | 요청·응답 | Order 호출측 |
 | --- | --- | --- |
@@ -439,7 +439,7 @@ PI-01·PI-03은 [Payment PR #71](https://github.com/ktcloud-cloudnative-2026/tea
 
 조리 시작·완료는 별도 HTTP API가 아니라 Cooking 스케줄러가 자동 처리하는 설계입니다. CI-01 등록 API는 삭제 상태이며 EV-01로만 전표를 생성합니다.
 
-**CI-03 — 확정, Cooking 구현 병합(PR #62), Order 호출은 PR #61(미병합):** [Order 합의 #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61), [Cooking 구현 #62](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/62). 요청 본문은 없으며 응답은 공통 응답 형식을 사용합니다.
+**CI-03 — 확정, Cooking 구현 병합(PR #62), Order 호출은 PR #61(main 병합):** [Order 합의 #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61), [Cooking 구현 #62](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/62). 요청 본문은 없으며 응답은 공통 응답 형식을 사용합니다.
 
 | 현재 전표 상태 | HTTP·결과 |
 | --- | --- |
@@ -453,7 +453,7 @@ PI-01·PI-03은 [Payment PR #71](https://github.com/ktcloud-cloudnative-2026/tea
 {"success":true,"data":{"orderId":1,"status":"CANCELED"},"message":"OK"}
 ```
 
-PR #62(main 병합)는 전표를 `PESSIMISTIC_WRITE` 행 잠금으로 읽고 상태를 재확인합니다. 자동 조리 시작도 같은 잠금 안에서 상태를 확인해야 하며, 자동 조리 진행은 [PR #78](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/78)(미병합)에서 구현 중입니다. 취소와 자동 조리 시작의 경합을 실제 DB로 검증하는 통합 테스트는 후속 이슈 #114입니다.
+PR #62(main 병합)는 전표를 `PESSIMISTIC_WRITE` 행 잠금으로 읽고 상태를 재확인합니다. 자동 조리 시작도 같은 잠금 안에서 상태를 확인해야 하며, 자동 조리 진행은 [PR #78](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/78)(main 병합)에서 구현됐습니다. 취소와 자동 조리 시작의 경합을 실제 DB로 검증하는 통합 테스트는 후속 이슈 #114입니다.
 
 **CI-02 — 응답 상세 미확정·PR 구현 존재:** [PR #53](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/53)은 `orderId`, `orderNo`, `status`, `waitingAhead`, `estimatedCookSec`, `expectedWaitSec`, `queuedAt`, `startedAt`, `completedAt`, `canceledAt`을 반환하는 안을 제시합니다. null 시각은 생략되며, 전표가 없으면 `404 COOKING_TICKET_NOT_FOUND`입니다. `expectedWaitSec`는 현 PR에서 **조리 완료까지**의 예상 시간(현재 조리 잔여 + 앞 대기 전표 + 자기 조리 시간)이며 DONE·CANCELED는 0입니다. 이 계산식·필드 전체의 팀 확정은 확인되지 않았습니다.
 
