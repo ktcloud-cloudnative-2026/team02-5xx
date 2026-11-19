@@ -165,7 +165,7 @@ class HttpCookingClientTest {
   void old_contract_waiting_converts_wait_to_until_start() {
     // 변경 전 Cooking: expectedWaitSec가 완료까지 시간이고 expectedReadySec가 없다.
     statusReturns(
-        "{\"status\":\"WAITING\",\"waitingAhead\":2,\"estimatedCookSec\":120,\"expectedWaitSec\":420}");
+        "{\"orderId\":100,\"status\":\"WAITING\",\"waitingAhead\":2,\"estimatedCookSec\":120,\"expectedWaitSec\":420}");
 
     var s = client.getStatus(100L).orElseThrow();
 
@@ -176,7 +176,7 @@ class HttpCookingClientTest {
   @Test
   void old_contract_cooking_has_no_wait_and_ready_is_the_remaining_time() {
     statusReturns(
-        "{\"status\":\"COOKING\",\"waitingAhead\":0,\"estimatedCookSec\":120,\"expectedWaitSec\":45,"
+        "{\"orderId\":100,\"status\":\"COOKING\",\"waitingAhead\":0,\"estimatedCookSec\":120,\"expectedWaitSec\":45,"
             + "\"startedAt\":\"2026-11-19T10:00:00+09:00\"}");
 
     var s = client.getStatus(100L).orElseThrow();
@@ -189,7 +189,7 @@ class HttpCookingClientTest {
   @Test
   void old_contract_done_and_canceled_are_zero() {
     statusReturns(
-        "{\"status\":\"DONE\",\"waitingAhead\":0,\"estimatedCookSec\":120,\"expectedWaitSec\":0}");
+        "{\"orderId\":100,\"status\":\"DONE\",\"waitingAhead\":0,\"estimatedCookSec\":120,\"expectedWaitSec\":0}");
 
     var s = client.getStatus(100L).orElseThrow();
 
@@ -231,16 +231,42 @@ class HttpCookingClientTest {
   @Test
   void contract_violating_bodies_are_invalid() {
     statusReturns(
-        "{\"status\":\"SOMETHING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":0}");
-    assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
-
-    server.reset();
-    statusReturns("{\"status\":\"WAITING\",\"estimatedCookSec\":1,\"expectedWaitSec\":0}");
+        "{\"orderId\":100,\"status\":\"SOMETHING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":0}");
     assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
 
     server.reset();
     statusReturns(
-        "{\"status\":\"WAITING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":-5}");
+        "{\"orderId\":100,\"status\":\"WAITING\",\"estimatedCookSec\":1,\"expectedWaitSec\":0}");
     assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+
+    server.reset();
+    statusReturns(
+        "{\"orderId\":100,\"status\":\"WAITING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":-5}");
+    assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+  }
+
+  @Test
+  void response_for_another_or_missing_order_id_is_invalid() {
+    statusReturns(
+        "{\"orderId\":200,\"status\":\"WAITING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":0,\"expectedReadySec\":1}");
+    assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+
+    server.reset();
+    statusReturns(
+        "{\"status\":\"WAITING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":0,\"expectedReadySec\":1}");
+    assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+
+    server.reset();
+    statusReturns(
+        "{\"orderId\":null,\"status\":\"WAITING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":0,\"expectedReadySec\":1}");
+    assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+  }
+
+  @Test
+  void response_for_the_requested_order_id_is_accepted() {
+    statusReturns(
+        "{\"orderId\":100,\"status\":\"WAITING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":0,\"expectedReadySec\":1}");
+
+    assertThat(client.getStatus(100L)).isPresent();
   }
 }

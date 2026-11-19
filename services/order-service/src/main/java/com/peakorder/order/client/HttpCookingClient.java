@@ -40,6 +40,10 @@ public class HttpCookingClient implements CookingClient {
       if (body == null || !body.success() || body.data() == null) {
         throw new BusinessException(ErrorCode.UPSTREAM_INVALID_RESPONSE);
       }
+      // 다른 주문의 조리 상태를 보여 주지 않도록 요청한 주문의 응답인지 확인한다.
+      if (!orderId.equals(body.data().orderId())) {
+        throw new BusinessException(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+      }
       return Optional.of(toStatus(body.data()));
     } catch (RestClientResponseException e) {
       if (e.getStatusCode().value() == 404 && "COOKING_TICKET_NOT_FOUND".equals(errorCodeOf(e))) {
