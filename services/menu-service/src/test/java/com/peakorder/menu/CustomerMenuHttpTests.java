@@ -11,6 +11,7 @@ import com.peakorder.menu.entity.MenuStatus;
 import com.peakorder.menu.repository.CategoryRepository;
 import com.peakorder.menu.repository.MenuOptionRepository;
 import com.peakorder.menu.repository.MenuRepository;
+import com.peakorder.menu.repository.MenuStatusRepository;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -39,6 +40,7 @@ class CustomerMenuHttpTests {
   @MockitoBean private MenuRepository menus;
   @MockitoBean private CategoryRepository categories;
   @MockitoBean private MenuOptionRepository options;
+  @MockitoBean private MenuStatusRepository statusWrites;
   private final ObjectMapper mapper = new ObjectMapper();
 
   private Menu menu(MenuStatus status) {

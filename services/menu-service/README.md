@@ -193,3 +193,17 @@ Service 단위 테스트와 실제 HTTP/OpenAPI 테스트는 Repository 모의 �
 공유 `menu_dev`로 테스트를 실행하지 않습니다.
 MI-01 세부 오류 코드/HTTP 상태 구분은 아직 서비스 간 합의가 필요합니다.
 현재는 기존 `INVALID_REQUEST`/`INTERNAL_ERROR`를 재사용하며 전용 코드를 추가하지 않았습니다.
+
+## ME-07 관리자 메뉴 판매 상태 변경 (#124)
+
+`PATCH /api/v1/admin/menus/{menuId}/status`의 세 상태 변경과 HTTP·OpenAPI·테스트를 구현했습니다.
+제안 계약은 모든 전이·HIDDEN 복귀 허용, 동일 상태는 수정 시각도 유지하는 200 성공입니다.
+조건부 단일 UPDATE로 status와 updatedAt만 변경하며 기존 메뉴 정보·옵션·ID·생성 시각을 보존합니다.
+Entity·스키마·Flyway·의존성·Inventory 변경은 없습니다. 실제 HTTP는 기본 403으로 차단합니다.
+#112 Auth 계약 정리와 별개로 Gateway 신뢰 경계는 미확정이므로 실제 관리자 인증은 연결하지 않았습니다.
+최초 독립 검증은 190건(실제 DB 53건)이었으며 최신 main `b4724aa` 통합 후에는
+Java 21 Spotless·컴파일·test·build와 격리 PostgreSQL 16 검사에서 **247건(실제 DB 54건) 통과**,
+실패·오류·생략 0건입니다. 고객·상태 HTTP 테스트의 필요한 Repository Mock만 보완했습니다.
+[ME-07 제안 계약·검증 기록](../../docs/api/menu-me07-draft.md)에 전이·동시성·롤백과 선행 PR 통합 한계를 명시했습니다.
+main의 고객 ME-01·02 및 내부 MI-01·02 회귀는 통과했습니다.
+#117·#119·#123 미병합 코드는 포함하지 않았으며 실제 인증과 ME-06 실제 코드의 동시성 통합 검증은 후속 작업입니다.
