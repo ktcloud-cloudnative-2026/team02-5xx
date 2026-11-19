@@ -57,6 +57,15 @@ public class MenuOption {
     return id;
   }
 
+  public void updateInformation(
+      String name, int extraPrice, int extraCookTimeSec, boolean defaultOption, boolean active) {
+    this.name = name;
+    this.extraPrice = extraPrice;
+    this.extraCookTimeSec = extraCookTimeSec;
+    this.defaultOption = defaultOption;
+    this.active = active;
+  }
+
   public Menu getMenu() {
     return menu;
   }
