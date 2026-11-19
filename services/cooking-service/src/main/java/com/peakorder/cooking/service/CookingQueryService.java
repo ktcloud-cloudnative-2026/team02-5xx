@@ -15,12 +15,13 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 조리 상태 조회.
  *
- * <p>예상 시간 계산 가정(명세에 계산식 없음): 조리대 1개에서 FIFO 순서로 한 건씩 조리한다.
+ * <p>예상 시간 계산 가정(명세에 계산식 없음): 조리대 1개에서 FIFO 순서로 한 건씩 조리한다. CI-02의 expectedWaitSec는 CO-01·CO-02처럼 조리
+ * 시작까지, expectedReadySec는 조리 완료까지다(#139).
  *
  * <ul>
- *   <li>COOKING: 남은 시간 = max(0, 예상 조리 시간 − 조리 시작 후 경과 시간)
- *   <li>WAITING: 조리 중 전표들의 남은 시간 합 + 내 앞 WAITING 전표들의 예상 조리 시간 합 + 내 예상 조리 시간
- *   <li>DONE·CANCELED: 0
+ *   <li>WAITING: 시작까지 = 조리 중 전표들의 남은 시간 합 + 내 앞 WAITING 전표들의 예상 조리 시간 합, 완료까지 = 시작까지 + 내 예상 조리 시간
+ *   <li>COOKING: 시작까지 = 0, 완료까지 = max(0, 예상 조리 시간 − 조리 시작 후 경과 시간)
+ *   <li>DONE·CANCELED: 둘 다 0
  * </ul>
  */
 @Service
@@ -51,11 +52,12 @@ public class CookingQueryService {
         long aheadCookSec =
             ticketRepository.sumEstimatedCookSecAheadByStatus(
                 TicketStatus.WAITING, ticket.getQueuedAt(), ticket.getId());
-        long expected = cookingRemainingSec(now) + aheadCookSec + ticket.getEstimatedCookSec();
-        yield CookingStatusResponse.of(ticket, ahead, expected);
+        long waitSec = cookingRemainingSec(now) + aheadCookSec;
+        yield CookingStatusResponse.of(
+            ticket, ahead, waitSec, waitSec + ticket.getEstimatedCookSec());
       }
-      case COOKING -> CookingStatusResponse.of(ticket, 0, remainingSec(ticket, now));
-      case DONE, CANCELED -> CookingStatusResponse.of(ticket, 0, 0);
+      case COOKING -> CookingStatusResponse.of(ticket, 0, 0, remainingSec(ticket, now));
+      case DONE, CANCELED -> CookingStatusResponse.of(ticket, 0, 0, 0);
     };
   }
 

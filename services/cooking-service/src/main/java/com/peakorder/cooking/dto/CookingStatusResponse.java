@@ -12,7 +12,8 @@ import java.time.OffsetDateTime;
  *
  * @param waitingAhead FIFO 기준 내 앞에 있는 WAITING 전표 수 (WAITING일 때만 의미 있음, 그 외 0)
  * @param estimatedCookSec 이 주문 자체의 예상 조리 시간(초)
- * @param expectedWaitSec 지금부터 이 주문의 조리 완료까지 예상 시간(초). DONE·CANCELED는 0
+ * @param expectedWaitSec 지금부터 이 주문의 조리 시작까지 예상 시간(초). CO-01·CO-02와 같은 뜻. WAITING이 아니면 0
+ * @param expectedReadySec 지금부터 이 주문의 조리 완료까지 예상 시간(초). CO-02와 같은 뜻. DONE·CANCELED는 0
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record CookingStatusResponse(
@@ -22,13 +23,14 @@ public record CookingStatusResponse(
     long waitingAhead,
     int estimatedCookSec,
     long expectedWaitSec,
+    long expectedReadySec,
     OffsetDateTime queuedAt,
     OffsetDateTime startedAt,
     OffsetDateTime completedAt,
     OffsetDateTime canceledAt) {
 
   public static CookingStatusResponse of(
-      CookingTicket ticket, long waitingAhead, long expectedWaitSec) {
+      CookingTicket ticket, long waitingAhead, long expectedWaitSec, long expectedReadySec) {
     return new CookingStatusResponse(
         ticket.getOrderId(),
         ticket.getOrderNo(),
@@ -36,6 +38,7 @@ public record CookingStatusResponse(
         waitingAhead,
         ticket.getEstimatedCookSec(),
         expectedWaitSec,
+        expectedReadySec,
         kst(ticket.getQueuedAt()),
         kst(ticket.getStartedAt()),
         kst(ticket.getCompletedAt()),
