@@ -24,6 +24,21 @@ public interface CookingTicketRepository extends JpaRepository<CookingTicket, Lo
   @Query("select t from CookingTicket t where t.orderId = :orderId")
   Optional<CookingTicket> findWithLockByOrderId(@Param("orderId") Long orderId);
 
+  /**
+   * 해당 상태의 FIFO 첫 전표를 행 잠금으로 조회한다 (자동 조리 진행). 다른 트랜잭션(CI-03 취소 등)이 잡고 있으면 끝날 때까지 기다린 뒤, 그 사이 상태가 바뀐
+   * 행은 결과에서 빠진다. 트랜잭션 안에서 호출해야 한다.
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  Optional<CookingTicket> findFirstWithLockByStatusOrderByQueuedAtAscIdAsc(TicketStatus status);
+
+  /**
+   * 트랜잭션 범위 advisory lock을 시도한다(PostgreSQL). 여러 인스턴스 중 하나만 자동 조리 진행을 실행하게 한다. 트랜잭션이 끝나면 자동으로 풀린다.
+   *
+   * @return 잠금을 얻으면 true, 다른 곳이 실행 중이면 false
+   */
+  @Query(value = "select pg_try_advisory_xact_lock(:key)", nativeQuery = true)
+  boolean tryAdvisoryXactLock(@Param("key") long key);
+
   /** 상태별 FIFO 목록: Cooking DB 등록 순서(queued_at, id) 기준 (CO-04 대기열) */
   List<CookingTicket> findByStatusOrderByQueuedAtAscIdAsc(TicketStatus status);
 
