@@ -179,3 +179,13 @@ Service 단위 테스트와 실제 HTTP/OpenAPI 테스트는 Repository 모의 �
 공유 `menu_dev`로 테스트를 실행하지 않습니다.
 MI-01 세부 오류 코드/HTTP 상태 구분은 아직 서비스 간 합의가 필요합니다.
 현재는 기존 `INVALID_REQUEST`/`INTERNAL_ERROR`를 재사용하며 전용 코드를 추가하지 않았습니다.
+
+## ME-05 관리자 메뉴 등록 (#118)
+
+`POST /api/v1/admin/menus` 등록 Controller·DTO·Service·OpenAPI 및 테스트를 추가했습니다.
+기존 Category/Menu/MenuOption 모델과 Repository로 카테고리·입력을 검증하고 메뉴·옵션을 단일 트랜잭션으로 저장합니다.
+성공 `201 + menuId`, 필수/선택 필드·기본값·오류 매핑은 [ME-05 제안 계약·검증 기록](../../docs/api/menu-me05-draft.md)에 명시했습니다.
+Entity·Flyway·의존성·Inventory는 변경하지 않았습니다.
+실제 HTTP는 #112 확정 전 기본 403 차단이며 성공 HTTP 테스트는 권한 경계를 모의합니다.
+#105/#117 코드를 가져오지 않았고 고객·관리자 조회와의 통합 회귀 및 실제 인증은 미검증입니다.
+선행 PR 통합 시 공통 인증 경계·예외 처리·테스트 mock을 정리하고 전체 회귀가 필요합니다.
