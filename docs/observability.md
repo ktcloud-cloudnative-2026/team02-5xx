@@ -183,7 +183,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 - 심각도는 두 단계: **critical**(지금 사용자에게 영향, 바로 확인) / **warning**(처리가 쌓이는 중, 업무 시간 안에 확인).
 - DB를 세는 지표는 Pod마다 같은 값이므로 `max`로 본다(2-1).
 - **값이 없음(No data)과 수집 실패는 다르다.** `up == 0`(2번)은 Prometheus가 이미 찾은 대상의 수집 실패만 잡는다. Pod가 모두 사라지거나 배포가 잘못돼 대상 자체가 없어지면 `up` 시계열도 없어져 결과가 비고, 알림이 울리지 않는다. 대상 누락은 7번 알림과 Grafana 알림의 No data 처리로 따로 다룬다(설치 후 검증 — 미정). 참고: [Grafana: Handle missing data](https://grafana.com/docs/grafana/latest/alerting/guides/missing-data/)
-- 업무 지표 알림(5·6번)의 No data는 정상으로 둔다. 서비스가 없어서 값이 없는 경우는 2·7번이 잡는다.
+- 업무 지표 알림(5·6번)의 No data는 정상으로 둔다. 서비스가 없어서 값이 없는 경우는 2·7번이 잡는다. DB 조회 실패로 값이 NaN이 되는 경우는 4-2 아래 **감시 한계** 참고.
 
 ### 4-2. 알림 목록
 
@@ -198,7 +198,8 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 | 7 | `kube_deployment_status_replicas_available{namespace="peakorder"} == 0` (또는 `absent_over_time(up{…}[5m])`) | 1분 | critical | 서비스 Pod가 하나도 없음(수집 대상 자체가 사라짐 — 2번이 못 잡는 경우) | 미정 — 설치 후 어떤 방식이 동작하는지 검증 | runbook 공통 확인 순서 |
 
 - p95 응답 시간은 기준값(SLO)이 정해지기 전까지 **대시보드에서만** 본다.
-- 6번 지표는 DB 장애 중 값을 읽지 못하면 비어 보일 수 있다. 이때는 3번(5xx)이 잡는다.
+- **감시 한계 (미정 — 후속 플랫폼 작업)**: DB를 세는 Gauge(5·6번)는 DB 조회가 실패하면 값이 NaN이 되어 `> 0` 조건이 성립하지 않는다(Micrometer가 값 함수 예외를 삼킴, #146 리뷰에서 재현). 업무 요청이 없으면 5xx(3번)도 생기지 않고, 앱과 수집이 살아 있으면 2·7번도 울리지 않는다. **지금 규칙으로는 이 경우의 자동 감지를 보장하지 않는다.**
+  - 후속 후보: ① 지표 값이 NaN인지 검사하는 규칙(PromQL `x != x`) ② DB 연결 실패 지표(`hikaricp_connections_timeout_total` 증가) 알림 ③ "요청 없음 + DB 장애" 시나리오 검증
 
 **RabbitMQ 큐별 지표 (1번)** — 2026-11-19 로컬 RabbitMQ 4.3.7에서 확인
 - `rabbitmq_prometheus` 플러그인(포트 15692)은 공식 이미지에서 켜져 있다.
