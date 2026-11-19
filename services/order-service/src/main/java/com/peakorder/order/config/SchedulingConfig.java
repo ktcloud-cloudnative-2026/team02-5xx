@@ -14,8 +14,10 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 @Configuration
 public class SchedulingConfig {
 
-  /** 동시에 돌아야 하는 @Scheduled 작업 수: OutboxRelayScheduler, CookingHealthChecker */
-  public static final int POOL_SIZE = 2;
+  /**
+   * 동시에 돌아야 하는 @Scheduled 작업 수: OutboxRelayScheduler, CookingHealthChecker, CancelFollowUpScheduler
+   */
+  public static final int POOL_SIZE = 3;
 
   @Bean
   public ThreadPoolTaskScheduler taskScheduler() {
