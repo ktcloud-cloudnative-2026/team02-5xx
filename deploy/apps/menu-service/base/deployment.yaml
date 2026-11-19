@@ -19,7 +19,7 @@ spec:
       containers:
         - name: menu-service
           # Unpublished placeholder; replace before deployment. See ../README.md.
-          image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/menu-service:sha-REPLACE_WITH_PUBLISHED_40_CHAR_COMMIT_SHA
+          image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/menu:sha-REPLACE_WITH_PUBLISHED_40_CHAR_COMMIT_SHA
           ports:
             - name: http
               containerPort: 8080

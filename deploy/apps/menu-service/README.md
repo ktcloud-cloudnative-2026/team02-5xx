@@ -6,7 +6,10 @@
 DB 환경 변수는 [PR #76](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/76),
 Java 21 이미지와 태그 규약은
 [PR #79](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/79)를 기준으로 합니다.
-미병합 PR의 소스나 파일을 가져오지 않고 배포 참조만 정의했습니다.
+PR #76·#79와 참고 구성인
+[PR #82](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/82)는
+모두 main에 병합됐습니다(2026-11-19 확인). 이 브랜치에는 해당 PR의
+소스나 파일을 별도로 가져오지 않고 배포 참조만 정의했습니다.
 현재 구성은 실제 배포 가능한 상태로 검증되지 않았습니다.
 
 ## 구조와 리소스
@@ -62,7 +65,7 @@ DB 환경 변수를 참조하는 것만으로 연결·마이그레이션 성공�
 
 ## Probe와 한계
 
-현재 서비스와 PR #76에는 Spring Boot Actuator 의존성이 없습니다.
+현재 브랜치의 서비스와 병합된 PR #76에는 Spring Boot Actuator 의존성이 없습니다.
 Readiness와 Liveness는 `tcpSocket.port: http`로 컨테이너 8080의 포트 개방을
 검사합니다. 존재하지 않는 `/actuator/health` HTTP Probe는 사용하지 않습니다.
 
@@ -82,10 +85,15 @@ Base와 두 Overlay의 현재 태그는 **미배포 플레이스홀더**입니�
 실제 게시된 이미지 SHA 또는 배포 가능 여부를 나타내지 않습니다.
 
 ```text
-ghcr.io/ktcloud-cloudnative-2026/team02-5xx/menu-service:sha-REPLACE_WITH_PUBLISHED_40_CHAR_COMMIT_SHA
+ghcr.io/ktcloud-cloudnative-2026/team02-5xx/menu:sha-REPLACE_WITH_PUBLISHED_40_CHAR_COMMIT_SHA
 ```
 
-1. PR #76의 DB 변경과 PR #79의 CI가 연동된 이후, main 게시 작업 및 GHCR에서
+CI의 `.github/ci/services.json`에서 Menu의 서비스 ID는 `menu`이며,
+`docs/ci.md`의 이미지 이름 규칙도 이 ID를 사용합니다.
+Base의 이미지 이름과 두 Overlay의 `images[0].name`은 위 경로로 일치해야
+`newTag` 치환이 적용됩니다. Kubernetes 리소스 이름은 `menu-service`를 유지합니다.
+
+1. 병합된 PR #76의 DB 변경과 PR #79의 CI를 기준으로 main 게시 작업 및 GHCR에서
    Menu 이미지 게시 성공과 출처 커밋을 확인합니다. PR의 이미지 빌드 성공만으로
    GHCR 게시를 가정하지 않습니다.
 2. 대상 환경의 `overlays/dev/kustomization.yaml` 또는
@@ -125,15 +133,25 @@ git diff --check
 - Readiness/Liveness의 TCP `http` 포트 검사
 - 지정 GHCR 경로와 배포 전 실제 게시된 SHA 태그, `latest` 및 플레이스홀더 없음
 
-작성 환경의 PATH에는 `kubectl`과 `kustomize`가 없어 Base/dev/prod 빌드와
-생성 YAML 검증은 미실행입니다. 도구가 준비된 환경에서 위 검증이 필요합니다.
-원본 매니페스트의 정적 확인은 Kustomize 렌더링이나 Kubernetes 스키마 검증을
+2026-11-19 리뷰 수정 검증에서는 저장소 밖에 준비한 공식 Kustomize v5.8.3
+Windows 실행 파일을 사용했습니다. 공식 릴리스의 `checksums.txt`와 다운로드한
+압축 파일의 SHA-256 일치를 확인했으며, 프로젝트 의존성은 변경하지 않았습니다.
+
+- 실제 Base/dev/prod 렌더링 3건 성공: Deployment·Service 각 1개,
+  namespace `peakorder`, CI와 동일한 `/menu` 이미지 이름 확인
+- 저장소 밖 YAML 검증 사본에서 dev/prod의 `newTag`만 서로 다른 시험용
+  `sha-<40자리>`로 바꾼 렌더링 2건 성공: Base 이미지 태그 치환 확인
+- 시험용 SHA는 게시 이미지가 아니며 저장소의 플레이스홀더를 대체하지 않음
+- `git diff --check` 통과
+
+Kustomize 렌더링은 Kubernetes API 서버의 스키마 검증이나 실제 배포를
 대체하지 않습니다. 이미지 존재 여부·기동, DB 연결·Flyway, TCP Probe 응답,
-Service 통신 및 실제 dev/prod 배포도 미검증입니다.
+Service 통신 및 실제 dev/prod 배포는 미검증입니다.
 
 ## 후속 연동
 
-실제 배포 전 PR #76·#79의 연동, 게시 이미지, 환경별 DB 및 Secret,
+PR #76·#79·#82는 병합됐지만 해당 사실만으로 실배포 검증이 완료되지는 않습니다.
+실제 배포 전 게시 이미지, 환경별 DB 및 Secret,
 Namespace·이미지 접근 권한, 기동 시간 검증이 필요합니다.
 Gateway / HTTPRoute / Ingress / TLS와 Argo CD Application은 별도 작업입니다.
 배포 경로는 **Git PR → Argo CD**이며 이 작업에서는 클러스터에 접근하지 않습니다.
