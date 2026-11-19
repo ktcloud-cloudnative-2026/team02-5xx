@@ -28,6 +28,7 @@ public enum ErrorCode {
       HttpStatus.SERVICE_UNAVAILABLE, "조리 서비스에 문제가 있어 지금은 주문과 결제를 할 수 없습니다. 잠시 후 다시 시도해 주세요."),
   PAYMENT_SERVICE_UNAVAILABLE(
       HttpStatus.SERVICE_UNAVAILABLE, "결제 결과를 확인할 수 없습니다. 같은 주문으로 잠시 후 다시 시도해 주세요."),
+  PAYMENT_NOT_REFUNDABLE(HttpStatus.CONFLICT, "환불할 수 없는 결제입니다. 수동 확인이 필요합니다."),
   UPSTREAM_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "연동 서비스의 응답이 올바르지 않습니다."),
   INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다.");
 

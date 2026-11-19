@@ -335,6 +335,23 @@ class OrderCancelServiceTest {
   }
 
   @Test
+  void a_refund_that_cannot_succeed_is_not_recorded_as_done_for_either_kind_of_rejection() {
+    CancelTarget paid = target(OrderStatus.PAID);
+    CancelTarget canceled = target(OrderStatus.CANCELED);
+    for (ErrorCode code :
+        List.of(ErrorCode.PAYMENT_NOT_REFUNDABLE, ErrorCode.UPSTREAM_INVALID_RESPONSE)) {
+      reads(paid, paid);
+      when(txService.findCancelTargetById(100L)).thenReturn(canceled);
+      doThrow(new BusinessException(code)).when(paymentClient).refund(9L);
+
+      service.cancelOrder(7L, 100L); // 주문은 CANCELED로 응답, 환불은 수동 확인
+
+      verify(txService, never()).markRefunded(any(), any());
+    }
+    verify(txService, org.mockito.Mockito.times(2)).markStockRestored(100L, LOCK);
+  }
+
+  @Test
   void restore_that_is_not_applicable_is_not_recorded_as_done() {
     CancelTarget paid = target(OrderStatus.PAID);
     CancelTarget canceled = target(OrderStatus.CANCELED);

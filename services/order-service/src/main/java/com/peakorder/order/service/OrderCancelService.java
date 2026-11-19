@@ -262,11 +262,21 @@ public class OrderCancelService {
       paymentClient.refund(paymentId);
       txService.markRefunded(orderId, lock);
     } catch (BusinessException e) {
-      log.warn(
-          "취소 후 환불 실패, 재시도 대상으로 남깁니다 orderId={} paymentId={} code={}",
-          orderId,
-          paymentId,
-          e.errorCode());
+      if (e.errorCode() == ErrorCode.PAYMENT_NOT_REFUNDABLE
+          || e.errorCode() == ErrorCode.UPSTREAM_INVALID_RESPONSE) {
+        // 다시 호출해도 결과가 같은 이상 상태다. 성공으로 기록하지 않고 수동 확인에 맡긴다.
+        log.error(
+            "환불할 수 없다는 응답입니다. 수동 확인 필요 orderId={} paymentId={} code={}",
+            orderId,
+            paymentId,
+            e.errorCode());
+      } else {
+        log.warn(
+            "취소 후 환불 실패, 재시도 대상으로 남깁니다 orderId={} paymentId={} code={}",
+            orderId,
+            paymentId,
+            e.errorCode());
+      }
     } catch (RuntimeException e) {
       log.warn("취소 후 환불 중 오류, 재시도 대상으로 남깁니다 orderId={} paymentId={}", orderId, paymentId, e);
     }
