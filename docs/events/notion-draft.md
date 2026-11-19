@@ -8,7 +8,7 @@
 - 공통 확정 규칙: [CLAUDE.md](../../CLAUDE.md)
 - 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
 - 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
-- 구현 기준(현재, 2026-11-19): main `6b95172`에는 Order Flyway V1~V4와 주문 생성·조회·결제·취소 API(PR #28·#29·#46·#61), Order의 이벤트 발행·수신(OrderConfirmed 발행·CookingCompleted 수신, PR #52), Cooking의 OrderConfirmed 수신(PR #57)·자동 조리 진행과 CookingCompleted 발행([PR #78](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/78))·전표 등록 시각 DB 기록(PR #109)·메뉴 이름·옵션 요약 길이 초과 시 잘라 저장(PR #113)이 병합되어 있습니다. 두 서비스를 함께 띄운 실제 이벤트 연동은 아직 확인하지 않았으며, 열린 PR의 구현을 main 반영 완료로 표시하지 않습니다.
+- 구현 기준(현재, 2026-11-19): main `6167671`에는 Order Flyway V1~V5와 주문 생성·조회·결제·취소 API(PR #28·#29·#46·#61)·관리자 영업·접수 API(PR #133)·취소 후속 처리 재시도 상한(PR #135)·주문 상세 조리 상태(PR #142), Order의 이벤트 발행·수신(OrderConfirmed 발행·CookingCompleted 수신, PR #52), Cooking의 OrderConfirmed 수신(PR #57)·자동 조리 진행과 CookingCompleted 발행([PR #78](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/78))·전표 등록 시각 DB 기록(PR #109)·메뉴 이름·옵션 요약 길이 초과 시 잘라 저장(PR #113)이 병합되어 있습니다. 두 서비스를 함께 띄운 실제 이벤트 연동은 아직 확인하지 않았으며, 열린 PR의 구현을 main 반영 완료로 표시하지 않습니다.
 
 ---
 
