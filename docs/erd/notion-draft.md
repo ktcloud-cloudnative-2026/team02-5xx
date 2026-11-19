@@ -9,7 +9,7 @@
 - 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
 - Order 도식 갱신: 2026-11-18. Order Flyway V1~V3(PR #28·#29·#46)에 맞춰 3-4 도식·설명을 고쳤습니다. Notion 원본의 같은 부분도 맞춰 수정해야 합니다.
 - 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
-- 구현 기준(현재, 2026-11-19): main `6167671`에는 Order Flyway V1~V5와 주문 생성·조회·결제·취소 API(OR-01~05, PR #28·#29·#46·#61), 관리자 영업·주문 접수 상태 API(OR-06·07, PR #133), 취소 후속 처리 재시도 상한·수동 확인 표시(V5, PR #135), 주문 상세의 Cooking 조리 상태(PR #142), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100)와 고객 메뉴 목록·상세 ME-01·ME-02(PR #105), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62)·자동 조리 진행과 CookingCompleted 발행(PR #78)·전표 등록 시각 DB 기록(PR #109)·표시용 문자열 길이 초과 처리(PR #113), Inventory 초기 구성(PR #70)과 내부 API(PR #115), Payment 내부 API(PR #71)가 병합되어 있습니다. 열린 PR(예: Cooking CI-02 변경 #141)의 구현은 main 반영 완료로 표시하지 않습니다.
+- 구현 기준(현재, 2026-11-19): main `b4724aa`에는 Order Flyway V1~V5와 주문 생성·조회·결제·취소 API(OR-01~05, PR #28·#29·#46·#61), 관리자 영업·주문 접수 상태 API(OR-06·07, PR #133), 취소 후속 처리 재시도 상한·수동 확인 표시(V5, PR #135), 주문 상세의 Cooking 조리 상태(PR #142), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100)와 고객 메뉴 목록·상세 ME-01·ME-02(PR #105), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62)·자동 조리 진행과 CookingCompleted 발행(PR #78)·전표 등록 시각 DB 기록(PR #109)·표시용 문자열 길이 초과 처리(PR #113), Inventory 초기 구성(PR #70)과 내부 API(PR #115), Payment 내부 API(PR #71), Cooking CI-02 예상 시간 변경(PR #141)이 병합되어 있습니다. 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
 
 ---
 

@@ -9,7 +9,7 @@
 - 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
 - Order API 상세 갱신: 2026-11-18. Order PR(#28·#29·#46·#52·#56)의 구현과 Menu PR #90·Payment PR #71의 호출 계약을 확인해 Order Service 절과 Menu·Payment 내부 API 절에 보완 내용을 추가했습니다. Notion 원본의 같은 부분도 맞춰 수정해야 합니다.
 - 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
-- 구현 기준(현재, 2026-11-19): main `6167671`에는 Order Flyway V1~V5와 주문 생성·조회·결제·취소 API(OR-01~05, PR #28·#29·#46·#61), 관리자 영업·주문 접수 상태 API(OR-06·07, PR #133), 취소 후속 처리의 재시도 상한·수동 확인 표시·지표(PR #135), 주문 상세의 Cooking 조리 상태(OR-04 `cooking`, PR #142), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100)와 고객 메뉴 목록·상세 ME-01·ME-02(PR #105), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62)·자동 조리 진행과 CookingCompleted 발행(PR #78)·전표 등록 시각 DB 기록(PR #109)·표시용 문자열 길이 초과 처리(PR #113), Inventory 초기 구성(PR #70)과 내부 API(II-01~04, PR #115), Payment 모의 결제·조회·환불 내부 API(PR #71)가 병합되어 있습니다. Cooking의 CI-02 예상 시간 변경(PR #141, 이슈 #139) 등 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
+- 구현 기준(현재, 2026-11-19): main `b4724aa`에는 Order Flyway V1~V5와 주문 생성·조회·결제·취소 API(OR-01~05, PR #28·#29·#46·#61), 관리자 영업·주문 접수 상태 API(OR-06·07, PR #133), 취소 후속 처리의 재시도 상한·수동 확인 표시·지표(PR #135), 주문 상세의 Cooking 조리 상태(OR-04 `cooking`, PR #142), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100)와 고객 메뉴 목록·상세 ME-01·ME-02(PR #105), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62)·자동 조리 진행과 CookingCompleted 발행(PR #78)·전표 등록 시각 DB 기록(PR #109)·표시용 문자열 길이 초과 처리(PR #113), Inventory 초기 구성(PR #70)과 내부 API(II-01~04, PR #115), Payment 모의 결제·조회·환불 내부 API(PR #71), Cooking CI-02 예상 시간을 CO-02와 같게 조리 시작까지·완료까지로 나눈 변경(PR #141)이 병합되어 있습니다. 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
 
 - 원문의 Menu Service 수정 전·후 표와 논의 사항을 함께 보존했습니다. 이 문서는 원문 보관본이며 두 표를 동시에 유효한 계약으로 간주하지 않습니다.
 
@@ -304,7 +304,7 @@ Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·
 
 - `lookup`이 `OK`가 아니면 조리 정보 필드는 모두 생략합니다. 조회 실패·시간 초과(연결 1초·응답 2초)에도 주문 상세는 `200`입니다. 응답의 `orderId`가 요청한 주문과 다르거나 없으면 계약 위반으로 보고 `UNAVAILABLE`로 처리합니다.
 - **표시 우선순위(프론트 기준, 서버 동작 변경 없음):** Order `CANCELED`·`FAILED`는 그대로, `COMPLETED`는 완료, 그 외(`PAID`)는 `lookup`이 `OK`일 때 Cooking 상태를 우선하고 `PENDING`·`UNAVAILABLE`이면 해당 문구를 표시합니다. Order `PAID`인데 Cooking이 `CANCELED`이면 취소 처리 중일 수 있으니 "취소 처리 중"으로 보이고 Order 상태를 계속 확인합니다. Cooking이 `DONE`이어도 Order가 `COMPLETED`가 될 때까지 폴링을 멈추지 않습니다.
-- **Cooking 계약 변경 전후:** Cooking CI-02가 `expectedWaitSec`=시작까지, `expectedReadySec`=완료까지로 바뀌기 전(PR #141 병합 전)에는 응답에 `expectedReadySec`가 없고 `expectedWaitSec`가 완료까지입니다. Order가 `expectedReadySec` 유무를 보고 같은 의미로 변환하므로 프론트는 위 표만 따르면 됩니다. #141 병합 후 변환 분기를 지울 예정입니다.
+- **Cooking 계약 변경:** Cooking CI-02가 `expectedWaitSec`=조리 시작까지, `expectedReadySec`=조리 완료까지로 바뀌었고(PR #141, 이슈 #139, main 병합) `expectedReadySec`는 항상 내려옵니다. 변경 전 응답(`expectedReadySec` 없음, `expectedWaitSec`=완료까지)을 같은 의미로 바꾸던 Order의 임시 변환 분기는 후속 작업(이슈)으로 제거합니다. 그때까지 프론트는 위 표만 따르면 됩니다.
 - 프론트엔드(이은제)의 계약 승인을 받았습니다. 폴링 주기·부하와 실제 Cooking↔Order 통합 확인은 후속입니다.
 
 **주문 취소(OR-05) 처리** (PR #61·#135, main 병합)
