@@ -32,7 +32,21 @@
 
 대시보드: Grafana "서비스 공통" 대시보드 (플랫폼 설치 후 링크)
 
-### 1-2. 모든 Java 서비스 공통 설정 (라이브러리 추가 없음)
+### 1-2. 모든 Java 서비스 공통 설정
+
+**필요한 의존성** — 설정만으로는 `/actuator/prometheus`가 열리지 않는다. 아래 두 줄이 있어야 한다(Cooking·Order와 같은 선언).
+```gradle
+implementation 'org.springframework.boot:spring-boot-starter-actuator'    // health, metrics
+runtimeOnly 'io.micrometer:micrometer-registry-prometheus'                // /actuator/prometheus
+```
+
+| 서비스 | actuator | micrometer-registry-prometheus |
+|---|---|---|
+| auth, menu | 추가 필요 | 추가 필요 |
+| inventory, payment | 있음 | 추가 필요 |
+| order, cooking | 있음 | 있음 |
+
+- 2026-11-19 main 기준. Prometheus는 확정 기술 스택(CLAUDE.md 1절)이지만 의존성 추가이므로, 각 서비스 담당이 **자기 서비스 PR에서** 추가한다.
 
 `application.yml`을 쓰는 서비스:
 ```yaml
@@ -164,7 +178,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 
 ### 4-1. 원칙 — 제안
 - **증상에 건다.** 사용자·업무에 영향이 있는 것(에러, 처리 못 한 이벤트)만 알림으로 하고, CPU·메모리 같은 원인은 대시보드에서 본다.
-- 모든 알림에 **지속 시간(`for`)** 을 둔다. 순간적으로 튀는 값에는 울리지 않는다.
+- 모든 알림에 **지속 시간(`for`) 또는 집계 구간**(예: `increase(…[15m])`)을 둔다. 순간적으로 튀는 값에는 울리지 않는다.
 - 모든 알림에 **런북 링크**를 단다. 대응 방법이 없는 알림은 만들지 않는다.
 - 심각도는 두 단계: **critical**(지금 사용자에게 영향, 바로 확인) / **warning**(처리가 쌓이는 중, 업무 시간 안에 확인).
 - DB를 세는 지표는 Pod마다 같은 값이므로 `max`로 본다(2-1).
@@ -177,7 +191,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 | 1 | `max by (queue) (rabbitmq_detailed_queue_messages{queue=~".+\\.dlq"}) > 0` | 1분 | warning | 처리 못 한 이벤트가 DLQ에 들어감 | **합의됨 (#52)** | runbook `DLQ` (작성 예정) |
 | 2 | `up{namespace="peakorder"} == 0` | 1분 | critical | 서비스가 죽었거나 지표를 가져오지 못함 | 제안 — `namespace` 라벨은 수집 설정 후 확인 | runbook 공통 확인 순서 |
 | 3 | 5xx 비율(1-1) > 5% | 5분 | critical | 서비스가 요청을 처리하지 못함 | 제안 — 기준값은 성공 기준(plan.md 5절)이 정해지면 조정 | runbook 공통 확인 순서 |
-| 4 | `increase(kube_pod_container_status_restarts_total{namespace="peakorder"}[15m]) >= 3` | — | warning | 재시작 반복(메모리 초과·기동 실패) | 제안 | runbook `CrashLoopBackOff` (작성 예정) |
+| 4 | `increase(kube_pod_container_status_restarts_total{namespace="peakorder"}[15m]) >= 3` | — (15분 집계 구간이 대신함) | warning | 재시작 반복(메모리 초과·기동 실패) | 제안 | runbook `CrashLoopBackOff` (작성 예정) |
 | 5 | `max(cooking_outbox_pending) > 0` | 5분 | warning | CookingCompleted 발행이 막힘(정상이면 1초 안에 비워짐) | 제안 (#52 후속, 2절 지표 구현 후) | runbook `Outbox` (작성 예정) |
 | 6 | `max(order_cancel_follow_up_manual_required) > 0` | 1분 | warning | 사람이 확인해야 하는 취소 주문이 있음 | 제안 (#135 리뷰) | `services/order-service/README.md` 수동 확인 운영 방법 |
 
@@ -200,6 +214,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 ## 5. 코드에 넣을 것 (서비스 담당 체크리스트)
 
 ### 5-1. 지표·로그
+- [ ] 의존성 `spring-boot-starter-actuator`, `micrometer-registry-prometheus` (1-2 표에서 "추가 필요"인 서비스)
 - [ ] `/actuator/prometheus` 노출 (1-2). **Gateway에는 열지 않는다** — 서비스 HTTPRoute는 `/api/v1/**`만 연결한다(`/actuator/**`·`/internal/**`는 클러스터 안에서만).
 - [ ] 공통 라벨 `application`, HTTP histogram 설정 (1-2)
 - [ ] 배포 매니페스트에 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs` (3-1)
