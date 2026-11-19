@@ -166,6 +166,54 @@ class OrderTest {
   }
 
   @Test
+  void follow_up_failures_are_counted_and_delay_the_next_attempt() {
+    Order order = Order.createTemporary(7L, now);
+    order.markConfirmed("261113-0001", 9L, now);
+    order.markCanceled("CUSTOMER_CANCEL", now);
+
+    boolean manual =
+        order.recordCancelFollowUpFailure(now.plusSeconds(10), 3, java.time.Duration.ofSeconds(30));
+
+    assertThat(manual).isFalse();
+    assertThat(order.getCancelFollowUpAttempts()).isEqualTo(1);
+    assertThat(order.getCancelFollowUpNextAttemptAt()).isEqualTo(now.plusSeconds(40));
+    assertThat(order.getCancelFollowUpManualAt()).isNull();
+  }
+
+  @Test
+  void reaching_the_attempt_limit_marks_the_order_for_a_manual_check_and_stops_retrying() {
+    Order order = Order.createTemporary(7L, now);
+    order.markConfirmed("261113-0001", 9L, now);
+    order.markCanceled("CUSTOMER_CANCEL", now);
+
+    order.recordCancelFollowUpFailure(now.plusSeconds(1), 3, java.time.Duration.ofSeconds(30));
+    order.recordCancelFollowUpFailure(now.plusSeconds(2), 3, java.time.Duration.ofSeconds(60));
+    boolean manual =
+        order.recordCancelFollowUpFailure(now.plusSeconds(3), 3, java.time.Duration.ofSeconds(120));
+
+    assertThat(manual).isTrue();
+    assertThat(order.getCancelFollowUpAttempts()).isEqualTo(3);
+    assertThat(order.getCancelFollowUpManualAt()).isEqualTo(now.plusSeconds(3));
+    assertThat(order.getCancelFollowUpManualReason()).isEqualTo("RETRY_LIMIT_EXCEEDED");
+    assertThat(order.getCancelFollowUpNextAttemptAt()).isNull();
+  }
+
+  @Test
+  void the_first_manual_mark_keeps_its_time_and_reason() {
+    Order order = Order.createTemporary(7L, now);
+    order.markConfirmed("261113-0001", 9L, now);
+    order.markCanceled("CUSTOMER_CANCEL", now);
+
+    assertThat(order.markCancelFollowUpManual("REFUND_NOT_REFUNDABLE", now.plusSeconds(5)))
+        .isTrue();
+    assertThat(order.markCancelFollowUpManual("OTHER", now.plusSeconds(9))).isFalse();
+
+    assertThat(order.getCancelFollowUpManualAt()).isEqualTo(now.plusSeconds(5));
+    assertThat(order.getCancelFollowUpManualReason()).isEqualTo("REFUND_NOT_REFUNDABLE");
+    assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
+  }
+
+  @Test
   void confirmed_states_are_paid_and_after() {
     assertThat(OrderStatus.CREATED.isConfirmed()).isFalse();
     assertThat(OrderStatus.FAILED.isConfirmed()).isFalse();

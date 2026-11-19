@@ -1,8 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { calculateTotal, formatPrice, MAX_QUANTITY } from '../menu.js';
+import useDialog from '../useDialog.js';
+import { describeItem } from '../cart.js';
 
-export default function MenuDetail({ menu, onClose }) {
-  const dialogRef = useRef(null);
+export default function MenuDetail({
+  menu,
+  onClose,
+  onAdd,
+  onOrder,
+  onViewCart,
+  feedback,
+}) {
+  const { close: closeDetail, ...dialog } = useDialog(onClose);
   const options = menu?.options.filter((option) => option.active) ?? [];
   const [optionId, setOptionId] = useState(
     (options.find((option) => option.isDefault) ?? options[0])?.id ?? null,
@@ -11,35 +20,20 @@ export default function MenuDetail({ menu, onClose }) {
   const selectedOption = options.find((option) => option.id === optionId);
   const available = menu?.status === 'ON_SALE';
 
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    dialog.showModal();
-    return () => {
-      dialog.close();
-      document.body.style.overflow = previousOverflow;
-    };
-  }, []);
-
-  function closeDetail() {
-    dialogRef.current?.close();
-    onClose();
+  const selection = {
+    menuId: menu?.id,
+    optionIds: selectedOption ? [selectedOption.id] : [],
+    quantity,
+  };
+  let selectionError = '';
+  try {
+    describeItem(selection, () => menu);
+  } catch (failure) {
+    selectionError = failure.message;
   }
 
   return (
-    <dialog
-      ref={dialogRef}
-      className="detail-modal"
-      aria-labelledby="detail-title"
-      onCancel={(event) => {
-        event.preventDefault();
-        closeDetail();
-      }}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) closeDetail();
-      }}
-    >
+    <dialog {...dialog} className="detail-modal" aria-labelledby="detail-title">
       <div className="detail-toolbar">
         <button
           className="close-button"
@@ -167,14 +161,42 @@ export default function MenuDetail({ menu, onClose }) {
                 <div className="total-row">
                   <span>총 금액</span>
                   <output aria-label="총 금액" aria-live="polite">
-                    {formatPrice(
-                      calculateTotal(
-                        menu.basePrice,
-                        selectedOption?.extraPrice ?? 0,
-                        quantity,
-                      ),
-                    )}
+                    {selectionError
+                      ? '금액 확인 불가'
+                      : formatPrice(
+                          calculateTotal(
+                            menu.basePrice,
+                            selectedOption?.extraPrice ?? 0,
+                            quantity,
+                          ),
+                        )}
                   </output>
+                </div>
+                <p
+                  className="selection-feedback"
+                  role="status"
+                  aria-live="polite"
+                >
+                  {selectionError || feedback}
+                </p>
+                <div className="detail-actions">
+                  <button
+                    className="pill-button"
+                    disabled={Boolean(selectionError)}
+                    onClick={() => onAdd(selection)}
+                  >
+                    장바구니에 담기
+                  </button>
+                  <button
+                    className="text-button"
+                    disabled={Boolean(selectionError)}
+                    onClick={() => onOrder(selection)}
+                  >
+                    주문하기
+                  </button>
+                  <button className="text-button" onClick={onViewCart}>
+                    장바구니 보기
+                  </button>
                 </div>
               </div>
             </div>

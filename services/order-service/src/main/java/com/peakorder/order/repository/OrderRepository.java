@@ -55,10 +55,19 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
       "select o.id from Order o where o.status = com.peakorder.order.entity.OrderStatus.CANCELED"
           + " and o.orderNo is not null and o.canceledAt <= :before"
           + " and (o.payLockUntil is null or o.payLockUntil <= :now)"
+          + " and o.cancelFollowUpManualAt is null"
+          + " and (o.cancelFollowUpNextAttemptAt is null or o.cancelFollowUpNextAttemptAt <= :now)"
           + " and (o.stockRestoredAt is null or (o.paymentId is not null and o.refundedAt is null))"
           + " order by o.canceledAt asc")
   List<Long> findCancelFollowUpIds(
       @Param("before") OffsetDateTime before, @Param("now") OffsetDateTime now, Pageable pageable);
+
+  /** 수동 확인이 필요하다고 표시됐고 후속 처리(복원·환불)가 아직 끝나지 않은 취소 주문 수(지표용). */
+  @Query(
+      "select count(o) from Order o where o.status = com.peakorder.order.entity.OrderStatus.CANCELED"
+          + " and o.orderNo is not null and o.cancelFollowUpManualAt is not null"
+          + " and (o.stockRestoredAt is null or (o.paymentId is not null and o.refundedAt is null))")
+  long countCancelFollowUpManual();
 
   /**
    * Cooking 응답을 모른 채 남은 취소 요청의 주문 ID. 확정된 주문(조리 완료 제외) 중 취소를 요청했고 아직 결과를 확정하지 못한 것을 오래된 요청부터, 다른

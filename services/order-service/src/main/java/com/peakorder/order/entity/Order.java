@@ -75,6 +75,18 @@ public class Order {
   @Column(name = "cancel_requested_at")
   private OffsetDateTime cancelRequestedAt;
 
+  @Column(name = "cancel_follow_up_attempts", nullable = false)
+  private int cancelFollowUpAttempts;
+
+  @Column(name = "cancel_follow_up_next_attempt_at")
+  private OffsetDateTime cancelFollowUpNextAttemptAt;
+
+  @Column(name = "cancel_follow_up_manual_at")
+  private OffsetDateTime cancelFollowUpManualAt;
+
+  @Column(name = "cancel_follow_up_manual_reason")
+  private String cancelFollowUpManualReason;
+
   @Column(name = "stock_restored_at")
   private OffsetDateTime stockRestoredAt;
 
@@ -203,6 +215,35 @@ public class Order {
     }
   }
 
+  /**
+   * 취소 후속 처리가 한 번 실패했음을 기록한다. 실패 횟수를 늘리고, 상한에 닿았으면 수동 확인 필요로 표시하며(이후 자동 재시도 안 함), 아니면 다음 시도 시각을
+   * 정한다.
+   *
+   * @return 이번 실패로 수동 확인 필요가 된 경우 true
+   */
+  public boolean recordCancelFollowUpFailure(
+      OffsetDateTime now, int maxAttempts, java.time.Duration nextDelay) {
+    this.cancelFollowUpAttempts++;
+    this.updatedAt = now;
+    if (this.cancelFollowUpAttempts >= maxAttempts) {
+      return markCancelFollowUpManual("RETRY_LIMIT_EXCEEDED", now);
+    }
+    this.cancelFollowUpNextAttemptAt = now.plus(nextDelay);
+    return false;
+  }
+
+  /** 사람이 확인해야 하는 주문으로 표시한다. 처음 표시한 시각과 이유를 유지하며, 새로 표시했으면 true를 돌려준다. */
+  public boolean markCancelFollowUpManual(String reason, OffsetDateTime now) {
+    if (this.cancelFollowUpManualAt != null) {
+      return false;
+    }
+    this.cancelFollowUpManualAt = now;
+    this.cancelFollowUpManualReason = reason;
+    this.cancelFollowUpNextAttemptAt = null;
+    this.updatedAt = now;
+    return true;
+  }
+
   /** 취소로 재고 복원을 끝낸 시각을 남긴다. 처음 기록한 값을 유지한다. */
   public void markStockRestored(OffsetDateTime now) {
     if (this.stockRestoredAt == null) {
@@ -284,6 +325,22 @@ public class Order {
 
   public Long getPaymentId() {
     return paymentId;
+  }
+
+  public int getCancelFollowUpAttempts() {
+    return cancelFollowUpAttempts;
+  }
+
+  public OffsetDateTime getCancelFollowUpNextAttemptAt() {
+    return cancelFollowUpNextAttemptAt;
+  }
+
+  public OffsetDateTime getCancelFollowUpManualAt() {
+    return cancelFollowUpManualAt;
+  }
+
+  public String getCancelFollowUpManualReason() {
+    return cancelFollowUpManualReason;
   }
 
   public OffsetDateTime getCancelRequestedAt() {

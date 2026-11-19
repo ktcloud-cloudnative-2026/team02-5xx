@@ -11,9 +11,11 @@ import com.peakorder.order.entity.OrderStatus;
 import com.peakorder.order.exception.BusinessException;
 import com.peakorder.order.exception.ErrorCode;
 import com.peakorder.order.service.OrderTxService.CancelTarget;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -41,16 +43,19 @@ public class OrderCancelService {
   private final CookingClient cookingClient;
   private final InventoryClient inventoryClient;
   private final PaymentClient paymentClient;
+  private final CancelFollowUpPolicy retryPolicy;
 
   public OrderCancelService(
       OrderTxService txService,
       CookingClient cookingClient,
       InventoryClient inventoryClient,
-      PaymentClient paymentClient) {
+      PaymentClient paymentClient,
+      CancelFollowUpPolicy retryPolicy) {
     this.txService = txService;
     this.cookingClient = cookingClient;
     this.inventoryClient = inventoryClient;
     this.paymentClient = paymentClient;
+    this.retryPolicy = retryPolicy;
   }
 
   public OrderDetailResponse cancelOrder(Long userId, Long orderId) {
@@ -229,56 +234,150 @@ public class OrderCancelService {
 
   /**
    * 재고 복원과 환불을 각각 시도한다. 한쪽이 실패해도 다른 쪽은 계속하고, 실패한 단계는 기록하지 않아 재시도 대상으로 남는다. 어느 경우에도 주문은 CANCELED다.
+   *
+   * <p>실패가 있으면 재시도 상한을 위해 기록한다. 남은 단계가 전부 "다시 호출해도 결과가 같은" 실패(환불 불가 409, 복원 불가 409, 계약과 다른 응답)이면 바로
+   * 수동 확인 필요로 표시하고, 하나라도 재시도로 풀릴 수 있는 실패(장애·시간 초과)면 실패 횟수와 다음 시도 시각을 기록해 점점 늦게 다시 시도하다가 상한에 닿으면 수동
+   * 확인 필요로 표시한다.
    */
   private OrderDetailResponse finishFollowUps(Long orderId, UUID lock, CancelTarget target) {
+    List<StepResult> failures = new ArrayList<>();
+    boolean lostLock = false;
     if (target.stockRestoreRemaining()) {
-      restoreStock(orderId, lock);
+      StepResult r = restoreStock(orderId, lock);
+      lostLock |= r.kind() == StepResult.Kind.LOST;
+      if (r.kind() != StepResult.Kind.DONE) {
+        failures.add(r);
+      }
     }
     if (target.refundRemaining()) {
-      refund(orderId, lock, target.paymentId());
+      StepResult r = refund(orderId, lock, target.paymentId());
+      lostLock |= r.kind() == StepResult.Kind.LOST;
+      if (r.kind() != StepResult.Kind.DONE) {
+        failures.add(r);
+      }
+    }
+    if (!failures.isEmpty() && !lostLock) {
+      recordFailure(orderId, lock, target, failures);
     }
     return latest(orderId);
   }
 
-  private void restoreStock(Long orderId, UUID lock) {
+  /** 이번 실패를 재시도 상한 기록에 반영한다. 기록 자체가 실패해도 다음 주기에 다시 시도하므로 예외를 삼킨다. */
+  private void recordFailure(
+      Long orderId, UUID lock, CancelTarget target, List<StepResult> failures) {
+    try {
+      boolean allPermanent = failures.stream().allMatch(f -> f.kind() == StepResult.Kind.PERMANENT);
+      String reasons =
+          failures.stream()
+              .map(StepResult::reason)
+              .filter(r -> r != null)
+              .distinct()
+              .collect(Collectors.joining(","));
+      boolean becameManual =
+          allPermanent
+              ? txService.markCancelFollowUpManual(orderId, lock, reasons)
+              : txService.recordCancelFollowUpFailure(orderId, lock, retryPolicy);
+      if (becameManual) {
+        log.error(
+            "수동 확인 필요: 취소 후속 처리를 더 이상 자동 재시도하지 않습니다 orderId={} orderNo={} paymentId={} reason={}",
+            orderId,
+            target.orderNo(),
+            target.paymentId(),
+            allPermanent || reasons.isEmpty()
+                ? (reasons.isEmpty() ? "RETRY_LIMIT_EXCEEDED" : reasons)
+                : "RETRY_LIMIT_EXCEEDED(" + reasons + ")");
+      }
+    } catch (RuntimeException e) {
+      log.warn("취소 후속 처리 실패 기록에 실패했습니다 orderId={}", orderId, e);
+    }
+  }
+
+  private StepResult restoreStock(Long orderId, UUID lock) {
     try {
       keepLockOrStop(orderId, lock);
       RestoreResult restored = inventoryClient.restore(orderId);
       if (restored == RestoreResult.RESTORED) {
-        txService.markStockRestored(orderId, lock);
-      } else {
-        log.error("재고를 복원할 수 없다는 응답입니다. 수동 확인 필요 orderId={}", orderId);
+        return txService.markStockRestored(orderId, lock) ? StepResult.done() : StepResult.lost();
       }
+      log.error("재고를 복원할 수 없다는 응답입니다. 영구 실패 orderId={}", orderId);
+      return StepResult.permanent("RESTORE_NOT_APPLICABLE");
     } catch (BusinessException e) {
+      if (e.errorCode() == ErrorCode.ORDER_PAY_IN_PROGRESS) {
+        return StepResult.lost();
+      }
+      if (e.errorCode() == ErrorCode.UPSTREAM_INVALID_RESPONSE) {
+        log.error("재고 복원 응답이 계약과 다릅니다. 영구 실패 orderId={} code={}", orderId, e.errorCode());
+        return StepResult.permanent("RESTORE_INVALID_RESPONSE");
+      }
       log.warn("취소 후 재고 복원 실패, 재시도 대상으로 남깁니다 orderId={} code={}", orderId, e.errorCode());
+      return StepResult.transientFailure();
     } catch (RuntimeException e) {
       log.warn("취소 후 재고 복원 중 오류, 재시도 대상으로 남깁니다 orderId={}", orderId, e);
+      return StepResult.transientFailure();
     }
   }
 
-  private void refund(Long orderId, UUID lock, Long paymentId) {
+  private StepResult refund(Long orderId, UUID lock, Long paymentId) {
     try {
       keepLockOrStop(orderId, lock);
       paymentClient.refund(paymentId);
-      txService.markRefunded(orderId, lock);
+      return txService.markRefunded(orderId, lock) ? StepResult.done() : StepResult.lost();
     } catch (BusinessException e) {
+      if (e.errorCode() == ErrorCode.ORDER_PAY_IN_PROGRESS) {
+        return StepResult.lost();
+      }
       if (e.errorCode() == ErrorCode.PAYMENT_NOT_REFUNDABLE
           || e.errorCode() == ErrorCode.UPSTREAM_INVALID_RESPONSE) {
         // 다시 호출해도 결과가 같은 이상 상태다. 성공으로 기록하지 않고 수동 확인에 맡긴다.
         log.error(
-            "환불할 수 없다는 응답입니다. 수동 확인 필요 orderId={} paymentId={} code={}",
+            "환불할 수 없다는 응답입니다. 영구 실패 orderId={} paymentId={} code={}",
             orderId,
             paymentId,
             e.errorCode());
-      } else {
-        log.warn(
-            "취소 후 환불 실패, 재시도 대상으로 남깁니다 orderId={} paymentId={} code={}",
-            orderId,
-            paymentId,
-            e.errorCode());
+        return StepResult.permanent(
+            e.errorCode() == ErrorCode.PAYMENT_NOT_REFUNDABLE
+                ? "REFUND_NOT_REFUNDABLE"
+                : "REFUND_INVALID_RESPONSE");
       }
+      log.warn(
+          "취소 후 환불 실패, 재시도 대상으로 남깁니다 orderId={} paymentId={} code={}",
+          orderId,
+          paymentId,
+          e.errorCode());
+      return StepResult.transientFailure();
     } catch (RuntimeException e) {
       log.warn("취소 후 환불 중 오류, 재시도 대상으로 남깁니다 orderId={} paymentId={}", orderId, paymentId, e);
+      return StepResult.transientFailure();
+    }
+  }
+
+  /** 후속 처리 한 단계의 결과. */
+  private record StepResult(Kind kind, String reason) {
+    enum Kind {
+      /** 끝났다. */
+      DONE,
+      /** 장애·시간 초과처럼 재시도하면 풀릴 수 있는 실패. */
+      TRANSIENT,
+      /** 다시 호출해도 결과가 같은 실패(수동 확인 대상). */
+      PERMANENT,
+      /** 처리 독점을 잃어 아무것도 확정하지 못했다. 기록하지 않는다. */
+      LOST
+    }
+
+    static StepResult done() {
+      return new StepResult(Kind.DONE, null);
+    }
+
+    static StepResult transientFailure() {
+      return new StepResult(Kind.TRANSIENT, null);
+    }
+
+    static StepResult permanent(String reason) {
+      return new StepResult(Kind.PERMANENT, reason);
+    }
+
+    static StepResult lost() {
+      return new StepResult(Kind.LOST, null);
     }
   }
 
