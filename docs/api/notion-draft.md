@@ -380,7 +380,7 @@ MI-01의 요청·응답은 [Menu PR #90](https://github.com/ktcloud-cloudnative-
 | II-01 | `409 INSUFFICIENT_STOCK`, `409 STOCK_NOT_LINKED`는 확보 불가 | 두 업무 오류를 Order의 `409 OUT_OF_STOCK`으로 변환. 현재 코드는 errorCode 본문을 읽지 않고 HTTP 409 전체를 같은 오류로 변환하므로 추가 409 도입 시 확인 필요 |
 | II-02 | `409 HOLD_NOT_ACTIVE`는 만료·해제, `404 HOLD_NOT_FOUND`는 확보 없음 | 위 두 HTTP 상태만 `409 STOCK_CONFIRM_FAILED`로 해석. 결제 후라면 환불·주문 종료로 이어짐. 다른 4xx는 `502 UPSTREAM_INVALID_RESPONSE`, 5xx·연결 실패는 `503 INVENTORY_SERVICE_UNAVAILABLE`이며 결과 불명 상태를 임의로 실패 확정하지 않음 |
 | II-03 | 본문 없는 DELETE. 이미 만료·해제됐어도 200, 확정된 확보는 409, 없는 확보는 404 | 현재 release 호출은 모든 RestClientException을 `503 INVENTORY_SERVICE_UNAVAILABLE`로 변환. 취소 흐름에서의 세부 오류 해석은 후속 구현 필요 |
-| II-04 | `POST /internal/v1/inventory/restorations`, 본문 `{"orderId":1}`. 복원 불가 시 `409 RESTORE_NOT_APPLICABLE` | Order 호출 구현은 PR #61(미병합): 200만 성공(`RESTORED`), 409는 복원 불가로 성공 기록 안 함, 그 밖의 4xx는 `502`, 5xx·연결 실패는 재시도 대상. **성공 응답 JSON과 추가 오류 코드는 Inventory 담당 확인 전** |
+| II-04 | `POST /internal/v1/inventory/restorations`, 본문 `{"orderId":1}`. 복원 불가 시 `409 RESTORE_NOT_APPLICABLE` | Order 호출 구현은 PR #61(미병합): 200만 성공(`RESTORED`), 409는 복원 불가로 성공 기록 안 함, 그 밖의 4xx는 `502`, 5xx·연결 실패는 재시도 대상. Inventory 담당(남규리)이 [Inventory PR #115](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/115) 구현과 대조해 확인: 성공 시 `200 {orderId, restored: true}`, 이미 복원된 주문도 같은 `200`, 복원 불가는 `409 RESTORE_NOT_APPLICABLE`, 추가 오류 코드는 요청 형식 오류 `400`뿐 |
 
 II-01의 다음 JSON은 **Order 호출측 PR의 현행 제안**입니다. Inventory 제공자와 요청·응답 전체가 확정됐다는 근거는 없으므로 구현 전에 상호 확인합니다.
 
