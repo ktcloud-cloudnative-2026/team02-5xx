@@ -92,6 +92,11 @@ export default function AdminMenuEditor({
     >
       <form ref={formRef} onSubmit={submit} noValidate>
         <div className="am-dialog-body">
+          <div className="am-image-placeholder" aria-hidden="true">
+            <span>▧</span>
+            <strong>메뉴 이미지</strong>
+            <small>이미지 주소 입력 · 파일 업로드 미지원</small>
+          </div>
           <p className="am-help">
             {editing
               ? '판매 상태는 목록의 ‘상태 변경’에서 관리합니다. 기존 옵션은 삭제하지 않고 비활성화할 수 있습니다.'
@@ -104,11 +109,6 @@ export default function AdminMenuEditor({
           )}
           <fieldset disabled={saving}>
             <legend>기본 정보</legend>
-            <div className="am-image-placeholder" aria-hidden="true">
-              <span>▧</span>
-              <strong>메뉴 이미지</strong>
-              <small>이미지 주소 입력 · 파일 업로드 미지원</small>
-            </div>
             <div className="am-form-grid">
               {field('name', '메뉴 이름 *')}
               <label className="am-field">

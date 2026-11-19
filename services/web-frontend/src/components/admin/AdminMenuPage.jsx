@@ -264,7 +264,9 @@ export default function AdminMenuPage({ adapter }) {
                   <span>카테고리</span>
                   <select
                     value={filters.categoryId}
-                    onChange={(event) => filter('categoryId', event.target.value)}
+                    onChange={(event) =>
+                      filter('categoryId', event.target.value)
+                    }
                   >
                     <option value="">전체 카테고리</option>
                     {result.categories.map((category) => (

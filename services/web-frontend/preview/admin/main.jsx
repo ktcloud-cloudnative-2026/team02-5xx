@@ -15,8 +15,8 @@ function AdminPreview() {
     <>
       <AdminMenuPage key={`${empty}-${generation}`} adapter={adapter} />
       <details
+        className="am-preview-tools"
         style={{
-          margin: '12px 20px 20px',
           font: '12px sans-serif',
           color: '#435448',
         }}

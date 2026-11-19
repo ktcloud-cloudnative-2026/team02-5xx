@@ -97,6 +97,10 @@ test('isolated static preview serves no HMR, backend endpoint or product admin r
     const html = await index.text();
     assert.ok(html.includes('관리자 Mock 미리보기'));
     assert.ok(!html.includes('/@vite/client'));
+    // The isolated preview declares its own icon, avoiding Chromium's implicit
+    // /favicon.ico request without adding assets to the customer product.
+    assert.ok(html.includes('rel="icon"'));
+    assert.ok(html.includes('data:image/svg+xml,'));
     for (const [path, body] of preview.files)
       if (path.endsWith('.js')) {
         assert.ok(!body.toString().includes('/@vite/client'));
