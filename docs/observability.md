@@ -98,7 +98,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 | Cooking | `cooking_outbox_pending` | Gauge | CookingCompleted(EV-02) 발행이 막혔나 (늘기만 하면 이상) | 제안 (#52 후속) |
 | Order | `order_cancel_follow_up_manual_required` | Gauge | 사람이 확인해야 하는 취소 주문 수 | 구현 (#135) |
 | Order | (담당자 기입) — 예: 발행 대기 이벤트 수 | | | #52 후속 |
-| RabbitMQ | DLQ 메시지 수 (`*.dlq` 큐) | RabbitMQ 지표 | 처리 못 한 이벤트가 있나 | 합의됨 (#52) — 지표 이름은 설치 후 확인 |
+| RabbitMQ | `rabbitmq_detailed_queue_messages{queue=~".+\\.dlq"}` | Gauge (RabbitMQ) | 처리 못 한 이벤트가 있나 | 합의됨 (#52) |
 | Auth · Menu · Inventory · Payment | (담당자 기입) | | | |
 
 ## 3. 로그 형식 (모든 서비스 같게)
@@ -160,9 +160,41 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 - RabbitMQ 리스너·스케줄러 로그는 HTTP 요청이 아니라 요청 ID가 없다. 이때는 `orderId`·`eventId`로 이어 본다. 전달 규칙은 5절.
 
 ## 4. 알림 기준
-| 조건 | 받는 사람 | 대응 문서(런북) |
-|---|---|---|
-| <에러율 5%가 5분 넘음> | | |
+
+### 4-1. 원칙 — 제안
+- **증상에 건다.** 사용자·업무에 영향이 있는 것(에러, 처리 못 한 이벤트)만 알림으로 하고, CPU·메모리 같은 원인은 대시보드에서 본다.
+- 모든 알림에 **지속 시간(`for`)** 을 둔다. 순간적으로 튀는 값에는 울리지 않는다.
+- 모든 알림에 **런북 링크**를 단다. 대응 방법이 없는 알림은 만들지 않는다.
+- 심각도는 두 단계: **critical**(지금 사용자에게 영향, 바로 확인) / **warning**(처리가 쌓이는 중, 업무 시간 안에 확인).
+- DB를 세는 지표는 Pod마다 같은 값이므로 `max`로 본다(2-1).
+- 업무 지표가 비어 있을 때(No data)는 정상으로 둔다. 서비스가 죽어서 값이 없는 경우는 아래 2번(`up == 0`)이 잡는다.
+
+### 4-2. 알림 목록
+
+| # | 조건 | 지속 | 심각도 | 무엇을 알리나 | 상태 | 대응 문서 |
+|---|---|---|---|---|---|---|
+| 1 | `max by (queue) (rabbitmq_detailed_queue_messages{queue=~".+\\.dlq"}) > 0` | 1분 | warning | 처리 못 한 이벤트가 DLQ에 들어감 | **합의됨 (#52)** | runbook `DLQ` (작성 예정) |
+| 2 | `up{namespace="peakorder"} == 0` | 1분 | critical | 서비스가 죽었거나 지표를 가져오지 못함 | 제안 | runbook 공통 확인 순서 |
+| 3 | 5xx 비율(1-1) > 5% | 5분 | critical | 서비스가 요청을 처리하지 못함 | 제안 — 기준값은 성공 기준(plan.md 5절)이 정해지면 조정 | runbook 공통 확인 순서 |
+| 4 | `increase(kube_pod_container_status_restarts_total{namespace="peakorder"}[15m]) >= 3` | — | warning | 재시작 반복(메모리 초과·기동 실패) | 제안 | runbook `CrashLoopBackOff` (작성 예정) |
+| 5 | `max(cooking_outbox_pending) > 0` | 5분 | warning | CookingCompleted 발행이 막힘(정상이면 1초 안에 비워짐) | 제안 (#52 후속, 2절 지표 구현 후) | runbook `Outbox` (작성 예정) |
+| 6 | `max(order_cancel_follow_up_manual_required) > 0` | 1분 | warning | 사람이 확인해야 하는 취소 주문이 있음 | 제안 (#135 리뷰) | `services/order-service/README.md` 수동 확인 운영 방법 |
+
+- p95 응답 시간은 기준값(SLO)이 정해지기 전까지 **대시보드에서만** 본다.
+- Order 발행 대기 이벤트 알림(#52 후속)은 Order 지표가 생기면 5번과 같은 방식으로 추가한다.
+- 6번 지표는 DB 장애 중 값을 읽지 못하면 비어 보일 수 있다. 이때는 2·3번이 잡는다.
+
+**RabbitMQ 큐별 지표 (1번)** — 2026-11-19 로컬 RabbitMQ 4.3.7에서 확인
+- `rabbitmq_prometheus` 플러그인(포트 15692)은 공식 이미지에서 켜져 있다.
+- 큐 이름(`queue`) 라벨이 붙은 줄은 `/metrics/per-object`와 `/metrics/detailed?family=queue_coarse_metrics`에서 나온다. 필요한 묶음만 가져오는 **`/metrics/detailed?family=queue_coarse_metrics`** 를 수집한다(플랫폼 PR에서 설정).
+  ```
+  rabbitmq_detailed_queue_messages{vhost="/",queue="cooking.order-confirmed.dlq"} 0
+  ```
+- DLQ는 `cooking.order-confirmed.dlq`(Cooking 선언), `order.cooking-completed.dlq`(Order 선언) 두 개다(#52).
+
+### 4-3. 받는 곳 — 미정
+- Grafana 알림 연락처(contact point)로 보낸다. 채널은 팀 결정(#138 결정 요청 6) 후 적는다.
+- 당분간 critical·warning 모두 같은 채널로 보내고, 심각도는 메시지 제목에 표시한다.
 
 ## 5. 코드에 처음부터 넣을 것
 - [ ] `/metrics` 엔드포인트
