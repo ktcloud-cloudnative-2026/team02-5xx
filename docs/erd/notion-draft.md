@@ -9,7 +9,7 @@
 - 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
 - Order 도식 갱신: 2026-11-18. Order Flyway V1~V3(PR #28·#29·#46)에 맞춰 3-4 도식·설명을 고쳤습니다. Notion 원본의 같은 부분도 맞춰 수정해야 합니다.
 - 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
-- 구현 기준(현재, 2026-11-18): main `38c1bab`에는 Order Flyway V1~V3와 주문 생성·조회·결제 API(OR-01~04, PR #28·#29·#46), Menu MI-01·MI-02(PR #90·#100)가 병합되어 있습니다. 이벤트(PR #52)·Cooking 장애 차단(PR #56)·Payment(PR #71)·Cooking 취소(PR #62) 등 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
+- 구현 기준(현재, 2026-11-19): main `fbe8118`에는 Order Flyway V1~V3와 주문 생성·조회·결제 API(OR-01~04, PR #28·#29·#46), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62), Inventory 초기 구성(PR #70)이 병합되어 있습니다. 주문 취소 OR-05(PR #61)·Payment(PR #71)·Cooking 자동 조리·CookingCompleted 발행(PR #78)·Inventory 내부 API(PR #115) 등 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
 
 ---
 
@@ -489,12 +489,12 @@ erDiagram
 | Order 상태 | CREATED, PAID, WAITING, COOKING, COMPLETED, CANCELED, FAILED | Order PR의 CHECK와 enum은 도식과 일치. 현재 이벤트 처리는 PAID→COMPLETED이며 WAITING·COOKING 반영 방식은 미확정 |
 | Cooking 상태·관계 | WAITING→COOKING→DONE, WAITING→CANCELED. order_id UNIQUE, 전표-항목 FK | [PR #62](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/62)의 V1에 상태 CHECK, quantity > 0, cook_time_sec·estimated_cook_sec >= 0, (status, queued_at, id) INDEX 존재. CI-03은 행 잠금으로 취소 경합 제어 |
 | Cooking 혼잡도 | congestion_thresholds로 기준값 관리 | V1에는 id, busy_wait_sec(>0), updated_at 존재. 도식의 선택 이력 표 congestion_snapshots는 PR에서 제외. 확정된 필수 표 누락으로 간주하지 않음 |
-| Inventory | inventories.menu_id NULL 허용·UNIQUE, 확보 상태 RESERVED/CONFIRMED/RELEASED/EXPIRED | **main 미병합·PR 구현 존재:** [PR #70](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/70)의 V1에서 아래 네 테이블·주요 제약을 확인. PR은 RESTORED를 추가하므로 기존 Notion 도식과 상태값 차이를 구분. 마이그레이션 존재가 API·멱등 처리 전체의 구현 완료를 의미하지 않음 |
+| Inventory | inventories.menu_id NULL 허용·UNIQUE, 확보 상태 RESERVED/CONFIRMED/RELEASED/EXPIRED | **main 병합(PR #70, 초기 구성)·내부 API는 PR #115 미병합:** [PR #70](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/70)의 V1에서 아래 네 테이블·주요 제약을 확인. PR은 RESTORED를 추가하므로 기존 Notion 도식과 상태값 차이를 구분. 마이그레이션 존재가 API·멱등 처리 전체의 구현 완료를 의미하지 않음 |
 | 이벤트 이력 | 업무 변경·Outbox 저장, processed_events.event_id UUID PK로 중복 방지 | Order·Cooking PR에 event_id UNIQUE Outbox와 Processed Event 존재. 수신은 이력 삽입과 업무 반영을 같은 트랜잭션에서 처리. [이벤트 계약](../events/notion-draft.md) 참조 |
 
 #### Inventory V1 확인 — PR #70
 
-확인 대상: [V1__create_inventory_tables.sql, `df7ba02`](https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/df7ba02024d6df8d7a716adbddf602a904619c61/services/inventory-service/src/main/resources/db/migration/V1__create_inventory_tables.sql). **main 미병합·PR 구현 존재**이며, 실제 main DB 적용 상태는 확인하지 않았습니다.
+확인 대상: [V1__create_inventory_tables.sql, `df7ba02`](https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/df7ba02024d6df8d7a716adbddf602a904619c61/services/inventory-service/src/main/resources/db/migration/V1__create_inventory_tables.sql). **main 병합(PR #70)** 이며, 실제 배포 환경의 DB 적용 상태는 확인하지 않았습니다.
 
 | 테이블 | V1의 주요 제약조건·인덱스 |
 | --- | --- |

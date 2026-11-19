@@ -8,11 +8,11 @@
 - 공통 확정 규칙: [CLAUDE.md](../../CLAUDE.md)
 - 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
 - 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
-- 구현 기준(현재, 2026-11-18): main `38c1bab`에는 Order Flyway V1~V3와 주문 생성·조회·결제 API(PR #28·#29·#46)가 병합되어 있습니다. `OrderConfirmed`는 PR #46에서 `outbox_events`에 저장까지 하며 RabbitMQ 발행은 PR #52입니다. 이벤트 발행·수신(PR #52)은 병합 전이며, 열린 PR의 구현을 main 반영 완료로 표시하지 않습니다.
+- 구현 기준(현재, 2026-11-19): main `fbe8118`에는 Order Flyway V1~V3와 주문 생성·조회·결제 API(PR #28·#29·#46), Order의 이벤트 발행·수신(OrderConfirmed 발행·CookingCompleted 수신, PR #52), Cooking의 OrderConfirmed 수신(PR #57)이 병합되어 있습니다. Cooking의 자동 조리 진행·CookingCompleted 발행([PR #78](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/78))은 병합 전이며, 열린 PR의 구현을 main 반영 완료로 표시하지 않습니다.
 
 ---
 
-> HTTP API와 구분해 관리합니다. 아래 상세는 2026-11-16 Order·Cooking 담당자 합의를 명시한 PR #52·#57을 기준으로 최신화했습니다. 계약은 확정됐지만 관련 PR은 아직 열려 있으며, main에서 실제 연동이 완료된 상태는 아닙니다.
+> HTTP API와 구분해 관리합니다. 아래 상세는 2026-11-16 Order·Cooking 담당자 합의를 명시한 PR #52·#57을 기준으로 최신화했습니다. Order #52와 Cooking #57은 main에 병합됐습니다. 계약은 확정됐지만 CookingCompleted 발행(Cooking #78)이 병합 전이라 양방향 연동이 main에서 완료된 상태는 아닙니다.
 
 | ID | 이벤트명 | 발신자 | 수신자 | 기능 |
 | --- | --- | --- | --- | --- |
@@ -23,7 +23,7 @@
 
 ## 확정된 브로커 계약
 
-근거: [Order PR #52의 합의 표](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/52), [Cooking PR #57](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/57), [Notion 최신 API](https://app.notion.com/p/4102f07e9478802f91a4da2ae18ab56f). **확정·구현 중**이며 main의 큐 생성·배포 완료를 뜻하지 않습니다.
+근거: [Order PR #52의 합의 표](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/52), [Cooking PR #57](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/57), [Notion 최신 API](https://app.notion.com/p/4102f07e9478802f91a4da2ae18ab56f). **확정, Order #52·Cooking #57 main 병합**이며 배포 환경의 큐 생성·실제 연동 확인 완료를 뜻하지 않습니다.
 
 | 구분 | 이름·속성 |
 | --- | --- |
@@ -87,7 +87,7 @@ Cooking 저장 규칙은 `cook_time_sec = cookTimeSec + Σ options.extraCookTime
 
 completedAt은 ISO 8601(+09:00)입니다. Order PR은 PAID·WAITING·COOKING인 주문을 완료 처리하고, 이미 처리한 eventId는 무시합니다. 취소·미확정 주문 등 처리 불가능한 상태는 아래 재시도 분류를 따릅니다.
 
-**확정·미구현 범위:** 확인한 Cooking PR #62에는 자동 조리 시작·완료 스케줄러와 CookingCompleted 발행기가 아직 없습니다. Order의 수신 구현만 존재하므로 양방향 연동 완료로 보지 않습니다. Order의 중간 WAITING·COOKING 상태 반영 방식도 미확정입니다.
+**확정·미구현 범위:** main에 병합된 Cooking(#57·#62)에는 자동 조리 시작·완료 스케줄러와 CookingCompleted 발행기가 없고, [Cooking PR #78](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/78)(미병합)에서 구현 중입니다. Order의 수신 구현만 main에 있으므로 양방향 연동 완료로 보지 않습니다. Order의 중간 WAITING·COOKING 상태 반영 방식도 미확정입니다.
 
 ## 발행·재시도·DLQ
 
