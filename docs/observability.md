@@ -28,7 +28,7 @@
 | 포화 | 재시작 수 (15분) | `increase(kube_pod_container_status_restarts_total{namespace="peakorder"}[15m])` | K8s (kube-state-metrics) | 미정 — 〃 |
 
 - CPU·메모리는 서비스(`container`)별로 가장 많이 쓰는 Pod를 본다. Pod 하나하나는 대시보드에서 `by (pod)`로 펼쳐 본다.
-- **대시보드에만 두는 지표** (알림 기준 아님): JVM 힙 `jvm_memory_used_bytes{area="heap"}`, GC 시간 `jvm_gc_pause_seconds`. 메모리 누수·GC 원인을 찾을 때 본다.
+- **대시보드에만 두는 지표** (알림 기준 아님): JVM 힙 `jvm_memory_used_bytes{area="heap"}`, GC 시간 `jvm_gc_pause_seconds`(메모리 누수·GC 원인을 찾을 때), DB 연결 대기 요청 수 `hikaricp_connections_pending`(사용률이 100%가 되기 전에 막힘을 먼저 본다).
 
 대시보드: Grafana "서비스 공통" 대시보드 (플랫폼 설치 후 링크)
 
@@ -89,6 +89,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 - K8s 지표는 `container!=""`로 거른다. cAdvisor가 Pod 합계 줄을 따로 내보내서, 빼지 않으면 두 번 더해진다.
 - DB 커넥션·CPU·메모리처럼 **Pod마다 따로 있는 자원은 `max`로** 본다. `sum`으로 합치면 한 Pod만 꽉 찬 상황이 가려진다.
 - histogram을 켜면 `uri × method × status` 조합마다 버킷이 생겨 지표 수가 늘어난다. 많아지면 `management.metrics.distribution.maximum-expected-value.http.server.requests`로 버킷 상한을 줄인다.
+- **DB 서버 전체 연결 수 — 후속(미정)**: `hikaricp_*`는 각 앱의 연결 풀만 본다. t2-db 한 대에 dev·prod DB 12개가 있고 Hikari 기본 풀은 Pod당 10개라, 서비스 6개 × 환경 2개만으로도 PostgreSQL 기본 `max_connections`(100)를 넘을 수 있다. 서비스별 `maximum-pool-size` 기준과 DB 서버 쪽 전체 연결 수 감시(postgres_exporter 등)는 DB 담당(남규리 님)과 후속으로 정한다(#146 리뷰).
 
 ## 2. 업무 지표 (서비스별)
 
