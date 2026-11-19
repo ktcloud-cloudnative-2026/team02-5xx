@@ -46,10 +46,7 @@ class CookingDashboardServiceTest {
   private void givenCookingRemaining200Sec() {
     CookingTicket cooking =
         CookingTicket.create(
-            1L,
-            "261117-0001",
-            List.of(CookingTicketItem.of(1L, "버거", null, 1, 300)),
-            NOW.minusSeconds(200));
+            1L, "261117-0001", List.of(CookingTicketItem.of(1L, "버거", null, 1, 300)));
     cooking.start(NOW.minusSeconds(100));
     when(ticketRepository.findByStatusOrderByQueuedAtAscIdAsc(TicketStatus.COOKING))
         .thenReturn(List.of(cooking));

@@ -7,11 +7,12 @@
 - 가져온 날짜: 2026-11-13 (Asia/Seoul)
 - 공통 확정 규칙: [CLAUDE.md](../../CLAUDE.md)
 - 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
-- 구현 기준: main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없습니다. 열린 PR의 구현을 main 반영 완료로 표시하지 않습니다.
+- 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
+- 구현 기준(현재, 2026-11-19): main `df38c7f`에는 Order Flyway V1~V4와 주문 생성·조회·결제·취소 API(PR #28·#29·#46·#61), Order의 이벤트 발행·수신(OrderConfirmed 발행·CookingCompleted 수신, PR #52), Cooking의 OrderConfirmed 수신(PR #57)과 자동 조리 진행·CookingCompleted 발행([PR #78](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/78))이 병합되어 있습니다. 두 서비스를 함께 띄운 실제 이벤트 연동은 아직 확인하지 않았으며, 열린 PR의 구현을 main 반영 완료로 표시하지 않습니다.
 
 ---
 
-> HTTP API와 구분해 관리합니다. 아래 상세는 2026-11-16 Order·Cooking 담당자 합의를 명시한 PR #52·#57을 기준으로 최신화했습니다. 계약은 확정됐지만 관련 PR은 아직 열려 있으며, main에서 실제 연동이 완료된 상태는 아닙니다.
+> HTTP API와 구분해 관리합니다. 아래 상세는 2026-11-16 Order·Cooking 담당자 합의를 명시한 PR #52·#57을 기준으로 최신화했습니다. Order #52, Cooking #57·#78은 main에 병합됐습니다. 계약은 확정됐고 양방향 구현이 모두 main에 있으나, 두 서비스를 함께 띄운 실제 연동 확인은 아직 하지 않았습니다.
 
 | ID | 이벤트명 | 발신자 | 수신자 | 기능 |
 | --- | --- | --- | --- | --- |
@@ -22,7 +23,7 @@
 
 ## 확정된 브로커 계약
 
-근거: [Order PR #52의 합의 표](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/52), [Cooking PR #57](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/57), [Notion 최신 API](https://app.notion.com/p/4102f07e9478802f91a4da2ae18ab56f). **확정·구현 중**이며 main의 큐 생성·배포 완료를 뜻하지 않습니다.
+근거: [Order PR #52의 합의 표](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/52), [Cooking PR #57](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/57), [Notion 최신 API](https://app.notion.com/p/4102f07e9478802f91a4da2ae18ab56f). **확정, Order #52·Cooking #57 main 병합**이며 배포 환경의 큐 생성·실제 연동 확인 완료를 뜻하지 않습니다.
 
 | 구분 | 이름·속성 |
 | --- | --- |
@@ -86,7 +87,7 @@ Cooking 저장 규칙은 `cook_time_sec = cookTimeSec + Σ options.extraCookTime
 
 completedAt은 ISO 8601(+09:00)입니다. Order PR은 PAID·WAITING·COOKING인 주문을 완료 처리하고, 이미 처리한 eventId는 무시합니다. 취소·미확정 주문 등 처리 불가능한 상태는 아래 재시도 분류를 따릅니다.
 
-**확정·미구현 범위:** 확인한 Cooking PR #62에는 자동 조리 시작·완료 스케줄러와 CookingCompleted 발행기가 아직 없습니다. Order의 수신 구현만 존재하므로 양방향 연동 완료로 보지 않습니다. Order의 중간 WAITING·COOKING 상태 반영 방식도 미확정입니다.
+**구현 상태:** Cooking의 자동 조리 시작·완료 스케줄러와 CookingCompleted 발행기는 [Cooking PR #78](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/78)로 main에 병합됐습니다. 양방향 구현이 모두 main에 있으나 서비스끼리의 실제 연동은 확인하지 않았으므로 연동 완료로 보지 않습니다. Order의 중간 WAITING·COOKING 상태 반영 방식도 미확정입니다.
 
 ## 발행·재시도·DLQ
 
@@ -95,7 +96,7 @@ completedAt은 ISO 8601(+09:00)입니다. Order PR은 PAID·WAITING·COOKING인 
 | 발행 성공 판정 | publisher confirm을 받고 라우팅 실패 반환이 없는 경우에만 Outbox SENT |
 | 브로커 장애·확인 타임아웃·라우팅할 큐 없음 | PENDING 유지 후 재발행. 최소 한 번 전달이므로 수신자 멱등 처리 필수 |
 | 일시적 수신 오류 | 최초 포함 최대 3회, 1초·2초 간격. 소진 시 reject(requeue=false)로 DLQ |
-| JSON 형식 오류·필수값 누락·잘못된 값·처리 불가능한 상태 | 재시도 없이 DLQ. PR의 ListenerRetryPolicy는 Jackson/변환·IllegalArgumentException·IllegalStateException 계열을 분류 |
+| JSON 형식 오류·필수값 누락·잘못된 값·존재하지 않는 주문·처리 불가능한 상태 | 재시도 없이 DLQ. PR의 ListenerRetryPolicy는 Jackson/변환·IllegalArgumentException·IllegalStateException 계열을 분류하며, 존재하지 않는 주문(`orderId`에 해당하는 주문 없음)은 재시도해도 결과가 같아 IllegalArgumentException으로 바로 DLQ로 보냄(Cooking 리뷰 반영, 2026-11-18) |
 | 정상·중복 수신 | 업무 트랜잭션 완료 후 ack. 처리 실패의 중복 방지 기록도 같은 트랜잭션에서 롤백 |
 | DLQ 감시 | 합의: 메시지 수 > 0이 1분 지속하면 Grafana 알림. 모니터링 구성 후 적용할 항목이며 배포 완료는 확인되지 않음 |
 
