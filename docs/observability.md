@@ -2,9 +2,10 @@
 
 [← README](../README.md)
 
-> 시작용 예시입니다. 팀에서 정한 내용으로 고치거나, 필요 없으면 지워도 됩니다.
+> 모든 서비스가 같은 이름·형식·기준으로 지표와 로그를 내보내기 위한 공통 규칙입니다(#138).
 >
-> 외부 도구로 써도 됩니다(추천: [Notion](https://www.notion.so)). 그 경우 이 파일에는 링크와 한 줄 요약만 남깁니다.
+> 항목마다 **합의됨**(근거 PR·이슈 있음) / **제안**(이 문서로 합의 요청) / **미정**(플랫폼 설치 후 또는 팀 결정 후 확정)을 표시합니다.
+> 이번 범위: 문서만. Cooking 적용, Prometheus·Grafana·Loki·Alloy 설치, 알림 규칙·런북 작성은 별도 이슈로 진행합니다.
 
 ## 1. 공통 지표 (모든 서비스) — 골든 시그널: 트래픽 · 에러 · 지연 · 포화
 
@@ -95,7 +96,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 | Cooking | `cooking_tickets_started_total`, `cooking_tickets_completed_total` | Counter | 처리 속도가 주문 속도를 따라가나 | 제안 |
 | Cooking | `cooking_tickets_canceled_total` | Counter | 취소가 갑자기 늘었나 (Order 취소 흐름 이상 신호, CI-03) | 제안 |
 | Cooking | `cooking_order_confirmed_received_total{result="created"\|"duplicate"}` | Counter | OrderConfirmed(EV-01)가 끊기지 않고 들어오나. `duplicate` 증가는 재발행 신호 | 제안 |
-| Cooking | `cooking_outbox_pending` | Gauge | CookingCompleted(EV-02) 발행이 막혔나 (늘기만 하면 이상) | 제안 (#52 후속) |
+| Cooking | `cooking_outbox_pending` | Gauge | CookingCompleted(EV-02) 발행이 막혔나 (정상이면 1초 안에 0, 계속 남아 있으면 이상 — 4-2 5번) | 제안 (#52 후속) |
 | Order | `order_cancel_follow_up_manual_required` | Gauge | 사람이 확인해야 하는 취소 주문 수 | 구현 (#135) |
 | Order | (담당자 기입) — 예: 발행 대기 이벤트 수 | | | #52 후속 |
 | RabbitMQ | `rabbitmq_detailed_queue_messages{queue=~".+\\.dlq"}` | Gauge (RabbitMQ) | 처리 못 한 이벤트가 있나 | 합의됨 (#52) |
@@ -174,7 +175,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 | # | 조건 | 지속 | 심각도 | 무엇을 알리나 | 상태 | 대응 문서 |
 |---|---|---|---|---|---|---|
 | 1 | `max by (queue) (rabbitmq_detailed_queue_messages{queue=~".+\\.dlq"}) > 0` | 1분 | warning | 처리 못 한 이벤트가 DLQ에 들어감 | **합의됨 (#52)** | runbook `DLQ` (작성 예정) |
-| 2 | `up{namespace="peakorder"} == 0` | 1분 | critical | 서비스가 죽었거나 지표를 가져오지 못함 | 제안 | runbook 공통 확인 순서 |
+| 2 | `up{namespace="peakorder"} == 0` | 1분 | critical | 서비스가 죽었거나 지표를 가져오지 못함 | 제안 — `namespace` 라벨은 수집 설정 후 확인 | runbook 공통 확인 순서 |
 | 3 | 5xx 비율(1-1) > 5% | 5분 | critical | 서비스가 요청을 처리하지 못함 | 제안 — 기준값은 성공 기준(plan.md 5절)이 정해지면 조정 | runbook 공통 확인 순서 |
 | 4 | `increase(kube_pod_container_status_restarts_total{namespace="peakorder"}[15m]) >= 3` | — | warning | 재시작 반복(메모리 초과·기동 실패) | 제안 | runbook `CrashLoopBackOff` (작성 예정) |
 | 5 | `max(cooking_outbox_pending) > 0` | 5분 | warning | CookingCompleted 발행이 막힘(정상이면 1초 안에 비워짐) | 제안 (#52 후속, 2절 지표 구현 후) | runbook `Outbox` (작성 예정) |
@@ -199,7 +200,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 ## 5. 코드에 넣을 것 (서비스 담당 체크리스트)
 
 ### 5-1. 지표·로그
-- [ ] `/actuator/prometheus` 노출 (1-2). **Gateway에는 열지 않는다** — HTTPRoute는 `/api/v1/**`만 연결한다.
+- [ ] `/actuator/prometheus` 노출 (1-2). **Gateway에는 열지 않는다** — 서비스 HTTPRoute는 `/api/v1/**`만 연결한다(`/actuator/**`·`/internal/**`는 클러스터 안에서만).
 - [ ] 공통 라벨 `application`, HTTP histogram 설정 (1-2)
 - [ ] 배포 매니페스트에 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs` (3-1)
 - [ ] 업무 지표 (2절, 서비스별)
