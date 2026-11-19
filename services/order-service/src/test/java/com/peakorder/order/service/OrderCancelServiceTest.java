@@ -50,6 +50,7 @@ class OrderCancelServiceTest {
     when(txService.tryAcquireCancelLock(100L)).thenReturn(Optional.of(LOCK));
     when(txService.renewPayLock(any(), any())).thenReturn(true);
     when(txService.markCanceled(any(), any(), any())).thenReturn(true);
+    when(txService.markCancelRequested(any(), any())).thenReturn(true);
     when(txService.markStockRestored(any(), any())).thenReturn(true);
     when(txService.markRefunded(any(), any())).thenReturn(true);
     when(inventoryClient.releaseHold(any())).thenReturn(HoldRelease.RELEASED);
@@ -385,6 +386,155 @@ class OrderCancelServiceTest {
         .isInstanceOf(IllegalStateException.class);
 
     verify(txService).releasePayLock(100L, LOCK);
+  }
+
+  // ---- Cooking 응답을 모른 채 끝난 취소 요청 (ekimje 리뷰) ----
+
+  @Test
+  void the_cancel_request_is_recorded_before_cooking_is_called() {
+    CancelTarget paid = target(OrderStatus.PAID);
+    reads(paid, paid);
+    when(txService.findCancelTargetById(100L))
+        .thenReturn(target(OrderStatus.CANCELED, 55L, null, now, now));
+
+    service.cancelOrder(7L, 100L);
+
+    InOrder order = inOrder(txService, cookingClient);
+    order.verify(txService).markCancelRequested(100L, LOCK);
+    order.verify(cookingClient).cancel(100L);
+    order.verify(txService).markCanceled(100L, LOCK, "CUSTOMER_CANCEL");
+    verify(txService, never()).clearCancelRequested(any(), any());
+  }
+
+  @Test
+  void cooking_is_not_called_when_the_cancel_request_cannot_be_recorded() {
+    CancelTarget paid = target(OrderStatus.PAID);
+    reads(paid, paid);
+    when(txService.markCancelRequested(any(), any())).thenReturn(false);
+
+    assertThat(errorOf(() -> service.cancelOrder(7L, 100L)))
+        .isEqualTo(ErrorCode.ORDER_PAY_IN_PROGRESS);
+
+    verify(cookingClient, never()).cancel(any());
+  }
+
+  @Test
+  void a_timeout_keeps_the_cancel_request_so_it_can_be_confirmed_later() {
+    CancelTarget paid = target(OrderStatus.PAID);
+    reads(paid, paid);
+    when(cookingClient.cancel(100L))
+        .thenThrow(new BusinessException(ErrorCode.COOKING_SERVICE_UNAVAILABLE));
+
+    assertThat(errorOf(() -> service.cancelOrder(7L, 100L)))
+        .isEqualTo(ErrorCode.COOKING_SERVICE_UNAVAILABLE);
+
+    verify(txService).markCancelRequested(100L, LOCK);
+    verify(txService, never()).clearCancelRequested(any(), any());
+    verify(txService, never()).markCanceled(any(), any(), any());
+  }
+
+  @Test
+  void a_definite_refusal_clears_the_cancel_request() {
+    CancelTarget paid = target(OrderStatus.PAID);
+    for (CancelResult refusal :
+        List.of(
+            CancelResult.ALREADY_STARTED,
+            CancelResult.ALREADY_DONE,
+            CancelResult.TICKET_NOT_FOUND)) {
+      reads(paid, paid);
+      when(cookingClient.cancel(100L)).thenReturn(refusal);
+
+      assertThat(errorOf(() -> service.cancelOrder(7L, 100L))).isNotNull();
+    }
+
+    verify(txService, org.mockito.Mockito.times(3)).clearCancelRequested(100L, LOCK);
+  }
+
+  @Test
+  void a_response_that_breaks_the_contract_clears_the_cancel_request_instead_of_retrying_forever() {
+    CancelTarget paid = target(OrderStatus.PAID);
+    reads(paid, paid);
+    when(cookingClient.cancel(100L))
+        .thenThrow(new BusinessException(ErrorCode.UPSTREAM_INVALID_RESPONSE));
+
+    assertThat(errorOf(() -> service.cancelOrder(7L, 100L)))
+        .isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+
+    verify(txService).clearCancelRequested(100L, LOCK);
+  }
+
+  @Test
+  void a_failure_to_clear_the_request_does_not_hide_the_real_answer() {
+    CancelTarget paid = target(OrderStatus.PAID);
+    reads(paid, paid);
+    when(cookingClient.cancel(100L)).thenReturn(CancelResult.ALREADY_STARTED);
+    doThrow(new IllegalStateException("db")).when(txService).clearCancelRequested(any(), any());
+
+    assertThat(errorOf(() -> service.cancelOrder(7L, 100L)))
+        .isEqualTo(ErrorCode.COOKING_ALREADY_STARTED);
+  }
+
+  @Test
+  void the_scheduler_confirms_a_cancel_whose_answer_was_unknown_then_returns_stock_and_payment() {
+    when(txService.findCancelRequestIds(anyInt(), anyInt())).thenReturn(List.of(100L));
+    when(txService.findCancelTargetById(100L))
+        .thenReturn(
+            target(OrderStatus.PAID),
+            target(OrderStatus.CANCELED)); // markCanceled 뒤 후속 처리용으로 다시 읽음
+
+    int resolved = service.retryUnresolvedCancelRequests(10, 20);
+
+    assertThat(resolved).isEqualTo(1);
+    InOrder order = inOrder(cookingClient, txService, inventoryClient, paymentClient);
+    order.verify(cookingClient).cancel(100L);
+    order.verify(txService).markCanceled(100L, LOCK, "CUSTOMER_CANCEL");
+    order.verify(inventoryClient).restore(100L);
+    order.verify(paymentClient).refund(9L);
+    order.verify(txService).releasePayLock(100L, LOCK);
+  }
+
+  @Test
+  void the_scheduler_gives_up_on_orders_cooking_has_already_started_and_clears_the_request() {
+    when(txService.findCancelRequestIds(anyInt(), anyInt())).thenReturn(List.of(100L));
+    when(txService.findCancelTargetById(100L)).thenReturn(target(OrderStatus.PAID));
+    when(cookingClient.cancel(100L)).thenReturn(CancelResult.ALREADY_STARTED);
+
+    int resolved = service.retryUnresolvedCancelRequests(10, 20);
+
+    assertThat(resolved).isZero();
+    verify(txService).clearCancelRequested(100L, LOCK);
+    verify(txService, never()).markCanceled(any(), any(), any());
+    verify(txService).releasePayLock(100L, LOCK);
+  }
+
+  @Test
+  void the_scheduler_keeps_the_request_while_cooking_still_does_not_answer() {
+    when(txService.findCancelRequestIds(anyInt(), anyInt())).thenReturn(List.of(100L));
+    when(txService.findCancelTargetById(100L)).thenReturn(target(OrderStatus.PAID));
+    when(cookingClient.cancel(100L))
+        .thenThrow(new BusinessException(ErrorCode.COOKING_SERVICE_UNAVAILABLE));
+
+    int resolved = service.retryUnresolvedCancelRequests(10, 20);
+
+    assertThat(resolved).isZero();
+    verify(txService, never()).clearCancelRequested(any(), any());
+    verify(txService).releasePayLock(100L, LOCK);
+  }
+
+  @Test
+  void the_scheduler_skips_orders_being_processed_or_already_settled() {
+    when(txService.findCancelRequestIds(anyInt(), anyInt())).thenReturn(List.of(100L, 101L, 102L));
+    when(txService.tryAcquireCancelLock(101L)).thenReturn(Optional.empty());
+    when(txService.tryAcquireCancelLock(102L)).thenReturn(Optional.of(LOCK));
+    when(txService.findCancelTargetById(100L))
+        .thenReturn(target(OrderStatus.CANCELED, 55L, null, now, now));
+    when(txService.findCancelTargetById(102L)).thenReturn(target(OrderStatus.COMPLETED));
+
+    int resolved = service.retryUnresolvedCancelRequests(10, 20);
+
+    assertThat(resolved).isZero();
+    verify(cookingClient, never()).cancel(any());
+    verify(txService, never()).findCancelTargetById(101L);
   }
 
   // ---- 스케줄러가 부르는 재시도 ----

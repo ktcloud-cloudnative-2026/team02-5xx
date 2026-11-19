@@ -60,6 +60,21 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
   List<Long> findCancelFollowUpIds(
       @Param("before") OffsetDateTime before, @Param("now") OffsetDateTime now, Pageable pageable);
 
+  /**
+   * Cooking 응답을 모른 채 남은 취소 요청의 주문 ID. 확정된 주문(조리 완료 제외) 중 취소를 요청했고 아직 결과를 확정하지 못한 것을 오래된 요청부터, 다른
+   * 요청이 처리 중인 주문은 건너뛴다.
+   */
+  @Query(
+      "select o.id from Order o where o.status in :statuses"
+          + " and o.cancelRequestedAt is not null and o.cancelRequestedAt <= :before"
+          + " and (o.payLockUntil is null or o.payLockUntil <= :now)"
+          + " order by o.cancelRequestedAt asc")
+  List<Long> findCancelRequestIds(
+      @Param("statuses") Collection<OrderStatus> statuses,
+      @Param("before") OffsetDateTime before,
+      @Param("now") OffsetDateTime now,
+      Pageable pageable);
+
   /** 토큰이 일치할 때만 독점을 놓는다. 다른 요청이 이어받은 독점은 건드리지 않는다. */
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query(

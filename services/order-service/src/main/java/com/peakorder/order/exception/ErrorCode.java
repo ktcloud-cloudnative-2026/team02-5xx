@@ -17,7 +17,8 @@ public enum ErrorCode {
   COOKING_ALREADY_DONE(HttpStatus.CONFLICT, "조리가 이미 끝나 취소할 수 없습니다."),
   COOKING_ORDER_PENDING(HttpStatus.CONFLICT, "주문이 접수 처리 중입니다. 잠시 후 다시 시도해 주세요."),
   COOKING_SERVICE_UNAVAILABLE(
-      HttpStatus.SERVICE_UNAVAILABLE, "조리 서비스에서 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요."),
+      HttpStatus.SERVICE_UNAVAILABLE,
+      "취소 요청의 결과를 확인하지 못했습니다. 요청은 접수되어 확인되는 대로 자동 처리됩니다. 잠시 후 주문 상태를 확인해 주세요."),
   HOLD_EXPIRED(HttpStatus.CONFLICT, "재고 확보 시간이 지나 주문이 종료되었습니다. 새로 주문해 주세요."),
   PAYMENT_FAILED(HttpStatus.PAYMENT_REQUIRED, "결제에 실패했습니다. 새로 주문해 주세요."),
   STOCK_CONFIRM_FAILED(HttpStatus.CONFLICT, "재고를 확정하지 못해 주문이 종료되었습니다. 새로 주문해 주세요."),

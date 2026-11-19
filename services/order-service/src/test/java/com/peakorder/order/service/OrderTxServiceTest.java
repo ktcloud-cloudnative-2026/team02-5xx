@@ -240,6 +240,32 @@ class OrderTxServiceTest {
   }
 
   @Test
+  void cancel_request_is_recorded_only_for_the_lock_owner_of_a_cancelable_confirmed_order() {
+    Order paid = lockedBy(TOKEN);
+    paid.markConfirmed("261113-0001", 9L, now);
+    when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(paid));
+    assertThat(service.markCancelRequested(100L, OTHER)).isFalse();
+    assertThat(paid.getCancelRequestedAt()).isNull();
+    assertThat(service.markCancelRequested(100L, TOKEN)).isTrue();
+    assertThat(paid.getCancelRequestedAt()).isEqualTo(now);
+
+    service.clearCancelRequested(100L, OTHER);
+    assertThat(paid.getCancelRequestedAt()).isEqualTo(now);
+    service.clearCancelRequested(100L, TOKEN);
+    assertThat(paid.getCancelRequestedAt()).isNull();
+
+    Order created = lockedBy(TOKEN);
+    when(orderRepository.findWithLockById(101L)).thenReturn(Optional.of(created));
+    assertThat(service.markCancelRequested(101L, TOKEN)).isFalse();
+
+    Order completed = lockedBy(TOKEN);
+    completed.markConfirmed("261113-0002", 9L, now);
+    completed.markCompleted(now, now);
+    when(orderRepository.findWithLockById(102L)).thenReturn(Optional.of(completed));
+    assertThat(service.markCancelRequested(102L, TOKEN)).isFalse();
+  }
+
+  @Test
   void cancel_target_tells_which_follow_up_steps_remain() {
     Order order = lockedBy(TOKEN);
     order.markConfirmed("261113-0004", 9L, now);

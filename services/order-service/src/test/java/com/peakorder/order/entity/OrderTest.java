@@ -152,6 +152,20 @@ class OrderTest {
   }
 
   @Test
+  void cancel_request_time_keeps_the_first_value_and_can_be_cleared() {
+    Order order = Order.createTemporary(7L, now);
+    order.markConfirmed("261113-0001", 9L, now);
+
+    order.markCancelRequested(now.plusSeconds(10));
+    order.markCancelRequested(now.plusSeconds(99));
+    assertThat(order.getCancelRequestedAt()).isEqualTo(now.plusSeconds(10));
+    assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID);
+
+    order.clearCancelRequested(now.plusSeconds(20));
+    assertThat(order.getCancelRequestedAt()).isNull();
+  }
+
+  @Test
   void confirmed_states_are_paid_and_after() {
     assertThat(OrderStatus.CREATED.isConfirmed()).isFalse();
     assertThat(OrderStatus.FAILED.isConfirmed()).isFalse();

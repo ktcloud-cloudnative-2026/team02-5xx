@@ -116,6 +116,40 @@ public class OrderCancelService {
     return completed;
   }
 
+  /**
+   * Cooking 응답을 모른 채 남은 취소 요청을 다시 확인한다(CI-03은 멱등). 스케줄러가 주기적으로 호출한다. Cooking이 취소를 받아들이면 주문을
+   * CANCELED로 바꾸고 후속 처리를 이어가며, 조리 시작·완료 등으로 거절하면 취소 요청 기록을 지운다. 여전히 응답을 모르면 다음 주기에 다시 확인한다.
+   *
+   * @return 이번에 취소를 확정한 주문 수
+   */
+  public int retryUnresolvedCancelRequests(int graceSec, int limit) {
+    List<Long> ids = txService.findCancelRequestIds(graceSec, limit);
+    int resolved = 0;
+    for (Long orderId : ids) {
+      Optional<UUID> acquired = txService.tryAcquireCancelLock(orderId);
+      if (acquired.isEmpty()) {
+        continue; // 다른 요청이 처리 중
+      }
+      UUID lock = acquired.get();
+      try {
+        CancelTarget target = txService.findCancelTargetById(orderId);
+        if (target.status() == OrderStatus.CANCELED || target.status() == OrderStatus.COMPLETED) {
+          continue; // 이미 다른 경로로 정리됨
+        }
+        cancelConfirmed(orderId, lock);
+        resolved++;
+      } catch (BusinessException e) {
+        // 조리 시작·완료 등 거절, 또는 아직 응답을 모름. 거절은 기록이 지워져 더 이상 확인하지 않는다.
+        log.info("취소 요청 재확인 결과 취소하지 못했습니다 orderId={} code={}", orderId, e.errorCode());
+      } catch (RuntimeException e) {
+        log.warn("취소 요청 재확인 실패, 다음 주기에 다시 시도합니다 orderId={}", orderId, e);
+      } finally {
+        releaseQuietly(orderId, lock);
+      }
+    }
+    return resolved;
+  }
+
   /** 결제 전 주문 취소: 재고 확보만 해제한다. 결제를 요청한 적이 있으면 결제가 됐을 수 있어 취소하지 않는다. */
   private OrderDetailResponse cancelBeforePayment(Long orderId, UUID lock, CancelTarget target) {
     if (target.paymentRequestedAt() != null) {
@@ -139,22 +173,58 @@ public class OrderCancelService {
     return latest(orderId);
   }
 
-  /** 확정된 주문 취소: Cooking이 취소를 받아들일 때만 CANCELED로 바꾸고 후속 처리를 이어간다. */
+  /**
+   * 확정된 주문 취소: Cooking이 취소를 받아들일 때만 CANCELED로 바꾸고 후속 처리를 이어간다. Cooking을 호출하기 직전에 취소 요청 시각을 기록해 두므로,
+   * 응답을 모른 채(타임아웃 등) 끝나도 {@link #retryUnresolvedCancelRequests}가 CI-03을 다시 호출해 확정한다(Cooking 취소는
+   * 멱등).
+   */
   private OrderDetailResponse cancelConfirmed(Long orderId, UUID lock) {
     keepLockOrStop(orderId, lock);
-    CancelResult result = cookingClient.cancel(orderId);
+    if (!txService.markCancelRequested(orderId, lock)) {
+      throw new BusinessException(ErrorCode.ORDER_PAY_IN_PROGRESS);
+    }
+    CancelResult result = askCooking(orderId, lock);
     switch (result) {
       case ALREADY_STARTED -> throw new BusinessException(ErrorCode.COOKING_ALREADY_STARTED);
       case ALREADY_DONE -> throw new BusinessException(ErrorCode.COOKING_ALREADY_DONE);
       case TICKET_NOT_FOUND -> throw new BusinessException(ErrorCode.COOKING_ORDER_PENDING);
       case CANCELED -> {
-        // 취소가 확정됐다. 아래 저장에 실패해도 Cooking 취소는 멱등이라 재호출하면 이어서 처리된다.
+        // 취소가 확정됐다. 아래 저장에 실패해도 Cooking 취소는 멱등이라 재확인으로 이어진다.
       }
     }
     if (!txService.markCanceled(orderId, lock, CUSTOMER_CANCEL)) {
       throw new BusinessException(ErrorCode.ORDER_PAY_IN_PROGRESS);
     }
     return finishFollowUps(orderId, lock, txService.findCancelTargetById(orderId));
+  }
+
+  /**
+   * Cooking에 취소를 요청한다. 취소 불가로 거절되거나(조리 시작·완료·접수 전) 계약과 다른 응답이면 재확인해도 소용없으므로 취소 요청 기록을 지운다. 결과를 모르는
+   * 경우 (COOKING_SERVICE_UNAVAILABLE)만 기록을 남겨 스케줄러가 다시 확인하게 한다.
+   */
+  private CancelResult askCooking(Long orderId, UUID lock) {
+    CancelResult result;
+    try {
+      result = cookingClient.cancel(orderId);
+    } catch (BusinessException e) {
+      if (e.errorCode() != ErrorCode.COOKING_SERVICE_UNAVAILABLE) {
+        log.error("Cooking 취소 응답이 계약과 다릅니다. 재확인하지 않습니다 orderId={} code={}", orderId, e.errorCode());
+        clearCancelRequestedQuietly(orderId, lock);
+      }
+      throw e;
+    }
+    if (result != CancelResult.CANCELED) {
+      clearCancelRequestedQuietly(orderId, lock);
+    }
+    return result;
+  }
+
+  private void clearCancelRequestedQuietly(Long orderId, UUID lock) {
+    try {
+      txService.clearCancelRequested(orderId, lock);
+    } catch (RuntimeException e) {
+      log.warn("취소 요청 기록을 지우지 못했습니다. 다음 확인에서 다시 판단합니다 orderId={}", orderId, e);
+    }
   }
 
   /**

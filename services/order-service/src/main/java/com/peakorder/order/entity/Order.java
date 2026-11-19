@@ -72,6 +72,9 @@ public class Order {
   @Column(name = "payment_requested_at")
   private OffsetDateTime paymentRequestedAt;
 
+  @Column(name = "cancel_requested_at")
+  private OffsetDateTime cancelRequestedAt;
+
   @Column(name = "stock_restored_at")
   private OffsetDateTime stockRestoredAt;
 
@@ -181,6 +184,25 @@ public class Order {
     this.canceledAt = now;
   }
 
+  /**
+   * 확정된 주문의 취소를 Cooking에 요청하기 직전에 남긴다. Cooking 응답을 모른 채 값이 남아 있으면 나중에 CI-03을 다시 호출해 결과를 확정한다. 처음
+   * 기록한 시각을 유지한다.
+   */
+  public void markCancelRequested(OffsetDateTime now) {
+    if (this.cancelRequestedAt == null) {
+      this.cancelRequestedAt = now;
+      this.updatedAt = now;
+    }
+  }
+
+  /** Cooking이 취소를 거절해 취소 요청이 더 이상 유효하지 않을 때 지운다. */
+  public void clearCancelRequested(OffsetDateTime now) {
+    if (this.cancelRequestedAt != null) {
+      this.cancelRequestedAt = null;
+      this.updatedAt = now;
+    }
+  }
+
   /** 취소로 재고 복원을 끝낸 시각을 남긴다. 처음 기록한 값을 유지한다. */
   public void markStockRestored(OffsetDateTime now) {
     if (this.stockRestoredAt == null) {
@@ -262,6 +284,10 @@ public class Order {
 
   public Long getPaymentId() {
     return paymentId;
+  }
+
+  public OffsetDateTime getCancelRequestedAt() {
+    return cancelRequestedAt;
   }
 
   public OffsetDateTime getStockRestoredAt() {

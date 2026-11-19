@@ -34,6 +34,9 @@ public class OrderTxService {
 
   private static final List<OrderStatus> PAY_LOCK_STATUSES = List.of(OrderStatus.CREATED);
 
+  private static final List<OrderStatus> CANCELABLE_CONFIRMED_STATUSES =
+      List.of(OrderStatus.PAID, OrderStatus.WAITING, OrderStatus.COOKING);
+
   private static final List<OrderStatus> CANCEL_LOCK_STATUSES =
       List.of(
           OrderStatus.CREATED,
@@ -182,6 +185,44 @@ public class OrderTxService {
               return true;
             })
         .orElse(false);
+  }
+
+  /**
+   * 취소 요청 시각을 기록한다(Cooking 호출 직전). 내 독점이고 확정된 주문(조리 완료 제외)일 때만 기록하며 기록했으면 true. false면 호출자는
+   * Cooking을 호출하지 않아야 한다.
+   */
+  @Transactional
+  public boolean markCancelRequested(Long orderId, UUID lockToken) {
+    return orderRepository
+        .findWithLockById(orderId)
+        .filter(order -> holds(order, lockToken) && isCancelableConfirmed(order.getStatus()))
+        .map(
+            order -> {
+              order.markCancelRequested(now());
+              return true;
+            })
+        .orElse(false);
+  }
+
+  /** Cooking이 취소를 거절했을 때 취소 요청 기록을 지운다(재확인 대상에서 뺀다). 내 독점일 때만 반영한다. */
+  @Transactional
+  public void clearCancelRequested(Long orderId, UUID lockToken) {
+    orderRepository
+        .findWithLockById(orderId)
+        .filter(order -> holds(order, lockToken))
+        .ifPresent(order -> order.clearCancelRequested(now()));
+  }
+
+  /** Cooking 응답을 모른 채 남은 취소 요청의 주문 ID(오래된 것부터). */
+  @Transactional(readOnly = true)
+  public List<Long> findCancelRequestIds(int graceSec, int limit) {
+    OffsetDateTime now = now();
+    return orderRepository.findCancelRequestIds(
+        CANCELABLE_CONFIRMED_STATUSES, now.minusSeconds(graceSec), now, PageRequest.of(0, limit));
+  }
+
+  private static boolean isCancelableConfirmed(OrderStatus status) {
+    return CANCELABLE_CONFIRMED_STATUSES.contains(status);
   }
 
   /** 재고 복원을 끝냈음을 기록한다. 내 독점일 때만 반영하며 반영했으면 true. */
