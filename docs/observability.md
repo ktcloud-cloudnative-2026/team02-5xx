@@ -75,10 +75,31 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 - DB 커넥션·CPU·메모리처럼 **Pod마다 따로 있는 자원은 `max`로** 본다. `sum`으로 합치면 한 Pod만 꽉 찬 상황이 가려진다.
 - histogram을 켜면 `uri × method × status` 조합마다 버킷이 생겨 지표 수가 늘어난다. 많아지면 `management.metrics.distribution.maximum-expected-value.http.server.requests`로 버킷 상한을 줄인다.
 
-## 2. 업무 지표 (서비스별) — [성공 기준](plan.md#5-성공-기준-숫자로)에서
-| 서비스 | 지표 | 왜 |
-|---|---|---|
-| | | |
+## 2. 업무 지표 (서비스별)
+
+> 근거: [성공 기준](plan.md#5-성공-기준-숫자로)이 아직 비어 있어, 각 서비스 요구사항과 이벤트 계약(#52)에서 가져온다. 성공 기준이 정해지면 다시 맞춘다.
+
+### 2-1. 규칙
+- 이름은 서비스 이름으로 시작한다. 코드(Micrometer)에서는 `cooking.tickets`처럼 점으로 짓고, Prometheus에서는 `cooking_tickets`로 보인다(Counter는 `_total`이 붙는다).
+- 상태처럼 값이 몇 개로 정해진 것만 라벨로 쓴다. `orderId`·`userId`처럼 값이 계속 늘어나는 것은 라벨로 쓰지 않는다.
+- "지금 몇 개"는 Gauge, "몇 번 일어났나"는 Counter(`rate`·`increase`로 본다).
+- DB를 세는 Gauge는 scrape마다 쿼리가 나가므로 **인덱스를 타는 쿼리**로 만든다. Pod마다 같은 DB를 세므로 알림·대시보드에서는 **`max`**로 본다.
+- 사용자에게 보이는 값(예: 혼잡도)은 **API와 같은 계산을 재사용**해, 화면과 대시보드 값이 다르지 않게 한다.
+
+### 2-2. 지표
+
+| 서비스 | 지표 (Prometheus) | 종류 | 무엇을 보나 | 상태 |
+|---|---|---|---|---|
+| Cooking | `cooking_tickets{status="waiting"\|"cooking"}` | Gauge | 지금 주방이 얼마나 밀렸나 | 제안 |
+| Cooking | `cooking_expected_wait_seconds` | Gauge | 지금 주문하면 조리 시작까지 예상 대기(CO-01과 같은 값) | 제안 |
+| Cooking | `cooking_tickets_started_total`, `cooking_tickets_completed_total` | Counter | 처리 속도가 주문 속도를 따라가나 | 제안 |
+| Cooking | `cooking_tickets_canceled_total` | Counter | 취소가 갑자기 늘었나 (Order 취소 흐름 이상 신호, CI-03) | 제안 |
+| Cooking | `cooking_order_confirmed_received_total{result="created"\|"duplicate"}` | Counter | OrderConfirmed(EV-01)가 끊기지 않고 들어오나. `duplicate` 증가는 재발행 신호 | 제안 |
+| Cooking | `cooking_outbox_pending` | Gauge | CookingCompleted(EV-02) 발행이 막혔나 (늘기만 하면 이상) | 제안 (#52 후속) |
+| Order | `order_cancel_follow_up_manual_required` | Gauge | 사람이 확인해야 하는 취소 주문 수 | 구현 (#135) |
+| Order | (담당자 기입) — 예: 발행 대기 이벤트 수 | | | #52 후속 |
+| RabbitMQ | DLQ 메시지 수 (`*.dlq` 큐) | RabbitMQ 지표 | 처리 못 한 이벤트가 있나 | 합의됨 (#52) — 지표 이름은 설치 후 확인 |
+| Auth · Menu · Inventory · Payment | (담당자 기입) | | | |
 
 ## 3. 로그 형식 (모든 서비스 같게)
 ```json
