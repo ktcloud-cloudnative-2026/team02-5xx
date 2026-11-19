@@ -23,6 +23,7 @@ class MenuCreateAuthorizationTests {
   @MockitoBean AdminMenuCreateService service;
   @MockitoBean MenuRepository menus;
   @MockitoBean MenuOptionRepository options;
+  @MockitoBean CategoryRepository categories;
 
   @Test
   void deniesAnonymousRequest() throws Exception {

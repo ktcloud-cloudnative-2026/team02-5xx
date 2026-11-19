@@ -18,9 +18,17 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER}
     password: ${RABBITMQ_PASSWORD}
+    publisher-confirm-type: correlated # 브로커 수신 확인 후에만 outbox를 SENT로
+    publisher-returns: true # 바인딩된 큐가 없어 되돌아온 메시지 감지
+    template:
+      mandatory: true
     listener:
       simple:
         default-requeue-rejected: false # 실패 메시지는 재큐잉하지 않고 DLQ로 (재시도 정책은 RabbitConfig 참고)
+
+# Order의 COOKING_SERVICE_URL 로컬 기본값(localhost:8084)과 맞춤 (PR #56 리뷰). K8s에서는 환경 변수 SERVER_PORT로 바꿀 수 있음
+server:
+  port: 8084
 
 # RabbitMQ 이벤트 계약 (Order #51과 합의, 2026-11-16)
 events:
@@ -31,11 +39,27 @@ events:
     routing-key: order.confirmed
   cooking-completed:
     routing-key: cooking.completed
+  outbox:
+    enabled: true
+    poll-interval-ms: 1000
+    batch-size: 50
 
-# 관리자 API 노출: 인증(STORE_ADMIN) 연동 전까지 기본 꺼짐. 로컬·dev에서만 COOKING_ADMIN_ENABLED=true (PR #53 리뷰)
 cooking:
+  # 관리자 API 노출: 인증(STORE_ADMIN) 연동 전까지 기본 꺼짐. 로컬·dev에서만 COOKING_ADMIN_ENABLED=true (PR #53 리뷰)
   admin:
     enabled: ${COOKING_ADMIN_ENABLED:false}
+  # 자동 조리 진행 (회의 11/5·11/11 결정)
+  progress:
+    enabled: true
+    interval-ms: 1000
+  congestion:
+    default-busy-wait-sec: 600 # congestion_thresholds에 기준값이 없을 때 쓰는 혼잡 기준(초)
+
+# Menu 내부 API (CO-02에서 MI-01 호출). 로컬 기본값은 Order와 같은 8081, K8s에서는 MENU_SERVICE_URL로 주입
+menu:
+  base-url: ${MENU_SERVICE_URL:http://localhost:8081}
+  connect-timeout-ms: 1000
+  read-timeout-ms: 2000
 
 management:
   endpoints:

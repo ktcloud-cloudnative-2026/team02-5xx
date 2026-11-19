@@ -18,7 +18,13 @@ public interface PaymentClient {
    */
   PaymentResult pay(Long orderId, int amount, String idempotencyKey);
 
-  /** 결제를 취소·환불한다. 이미 환불된 결제는 Payment가 중복 환불하지 않는다. */
+  /**
+   * 결제를 취소·환불한다. 이미 환불된 결제는 Payment가 중복 환불하지 않고 같은 200으로 응답하므로 재호출해도 안전하다.
+   *
+   * @throws com.peakorder.order.exception.BusinessException 환불됨을 확인하지 못하면 던진다. 승인되지 않은 결제(409)는
+   *     PAYMENT_NOT_REFUNDABLE, 그 밖의 4xx·계약과 다른 응답은 UPSTREAM_INVALID_RESPONSE(둘 다 다시 호출해도 결과가 같아 수동
+   *     확인 대상), 5xx·시간 초과는 PAYMENT_SERVICE_UNAVAILABLE(재시도 대상)
+   */
   void refund(Long paymentId);
 
   /**

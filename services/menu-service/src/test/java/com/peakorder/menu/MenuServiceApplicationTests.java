@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.peakorder.menu.entity.Menu;
 import com.peakorder.menu.entity.MenuOption;
 import com.peakorder.menu.entity.MenuStatus;
+import com.peakorder.menu.repository.CategoryRepository;
 import com.peakorder.menu.repository.MenuOptionRepository;
 import com.peakorder.menu.repository.MenuRepository;
 import java.net.URI;
@@ -36,8 +37,8 @@ class MenuServiceApplicationTests {
 
   @LocalServerPort private int port;
   @MockitoBean private MenuRepository menus;
+  @MockitoBean private CategoryRepository categories;
   @MockitoBean private MenuOptionRepository options;
-  @MockitoBean private com.peakorder.menu.repository.CategoryRepository categories;
 
   @Test
   void documentsPurchaseValidationEndpoint() throws Exception {

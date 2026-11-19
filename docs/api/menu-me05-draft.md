@@ -172,3 +172,61 @@ main 대상 전체 diff는 #118 관련 15개 파일이며 Cooking 변경·생성
 이번 제출은 인증·선행 조회 PR 통합 미완료를 명시한 Draft PR까지입니다.
 실제 STORE_ADMIN 201·비회원 401·CUSTOMER 403, #105/#117 통합 회귀, 원격 CI 성공은 이 로컬 결과로 대체하지 않습니다.
 공통 인증 경계·예외 처리·테스트 mock 통합과 전체 회귀는 선행 계약/PR 통합 후 필요합니다.
+
+### PR #119 최신 main 통합 검증 (2026-11-19)
+
+기존 HEAD `c94ae37bda88196fdd2f0409debc0264cd291557`에
+`origin/main` `6167671c583e6b6f90f8590883187433c07810c2`를
+`git merge --no-commit --no-ff origin/main`으로 반영했습니다. 텍스트 충돌은 없었습니다.
+#105 고객 API는 main을 통해 반영했으며, #117·#123·#127의 미병합 코드는 가져오지 않았습니다.
+
+자동 병합된 MenuServiceApplicationTests에서 CategoryRepository MockitoBean이 중복돼
+main의 선언 하나만 유지했습니다. MenuCreateAuthorizationTests는 DataSource를 제외하면서
+main의 CustomerMenuService도 로드하므로 CategoryRepository Mock 하나를 추가했습니다.
+제품 Controller·DTO·Service·인증 경계·Entity·Flyway·의존성은 이번 통합에서 변경하지 않았습니다.
+
+main 대비 고유 변경은 **14개 파일**입니다. 기존 PR 15개 중 MenuServiceApplicationTests의
+CategoryRepository Mock 추가가 이미 main에 반영돼 해당 파일은 main과 동일해졌습니다.
+새 파일 추가나 기존 등록 기능·테스트 삭제로 줄어든 것이 아닙니다.
+
+Java 21.0.7 / 기존 Gradle·Spotless, 기존 PostgreSQL 16.16 바이너리로 검증했습니다.
+새 TEMP 클러스터·역할 `menu119_owner`·DB `menu_119_main_integration`과
+`127.0.0.1:54177`만 사용했습니다. 기존 클러스터·역할·DB와 공유 DB는 변경하지 않았습니다.
+
+```powershell
+# menu-service에서 전용 MENU_DB_TEST_* 지정 후 실행
+.\gradlew.bat --no-daemon spotlessCheck test build --rerun-tasks --console=plain
+git diff --check
+```
+
+| 검사 | 실제 실행·통과 | 실패·오류·생략 |
+| --- | --- | --- |
+| AdminMenuCreateDatabaseTests | 6 | 0 |
+| AdminMenuCreateHttpTests | 22 | 0 |
+| AdminMenuCreateDtoTests | 17 | 0 |
+| MenuCreateAuthorizationTests | 5 | 0 |
+| AdminMenuCreateServiceTests | 24 | 0 |
+| MenuDatabaseTests | 36 | 0 |
+| MenuServiceApplicationTests | 46 | 0 |
+| CustomerMenuHttpTests / CustomerMenuServiceTests | 35 / 21 | 0 |
+| MenuExistenceServiceTests / PurchaseValidationServiceTests | 9 / 23 | 0 |
+| 전체 | **244** | **0** |
+
+**PostgreSQL 실제 DB 42건**은 세 상태 메뉴·옵션 등록, 0개 옵션·입력 경계, 존재하지 않는
+카테고리, 두 번째 옵션의 DB 제약 오류 시 메뉴·첫 옵션까지 전체 롤백을 포함합니다.
+Flyway V1 성공과 전체 실행 후 categories·menus·menu_options 각 0행을 확인하고
+전용 서버를 정상 종료했습니다. 임시 비밀번호 파일·환경 변수는 제거했습니다.
+Spotless·Java 컴파일·test·build는 성공했으며 기존 제안 계약을 확정 계약으로 바꾸지 않았습니다.
+
+기본 403 차단과 위조 역할·사용자 ID·검증되지 않은 Bearer 토큰의 거부를 확인했습니다.
+#112의 Auth AU-01·02·09·10 계약 정리와 별개로 Gateway A/B 검증·신뢰 경계는 미확정입니다.
+실제 STORE_ADMIN 등록·비회원 401·CUSTOMER 403 연결을 완료한 것이 아닙니다.
+
+#117 통합 시 공통 MenuServiceApplicationTests의 Repository Mock을 한 번씩만 선언하고
+조회/등록 테스트를 모두 유지해야 합니다. README의 관리자 조회·등록 설명도 함께 보존해야 합니다.
+MenuCreateAuthorization과 #117의 관리자 조회 인증 경계, 각 Controller 범위의 예외 처리기를
+향후 합의된 공통 경계에 연결할 때 정리해야 하며 이번에 임의 통합하지 않았습니다.
+
+실행 로그·DB 확인·XML 사본은 TEMP의
+`peak119-main-validation-5e59e3ef9ab64fb0b0b150efc125c7bb`에 보존했습니다.
+이번 단계는 로컬 병합·충돌/의존성 검토·검증까지이며 Commit·Push·PR 상태 변경은 하지 않습니다.

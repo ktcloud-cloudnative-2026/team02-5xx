@@ -64,3 +64,8 @@ events:
 cooking-health:
   interval-ms: 5000
   failure-threshold: 3
+
+# 관리자 API(OR-06·07) 노출: 인증(STORE_ADMIN) 방식이 정해지기 전(#112)까지 기본 꺼짐. 로컬·dev에서만 ORDER_ADMIN_ENABLED=true
+order:
+  admin:
+    enabled: ${ORDER_ADMIN_ENABLED:false}

@@ -23,3 +23,9 @@ events:
     routing-key: order.confirmed
   cooking-completed:
     routing-key: cooking.completed
+  outbox:
+    enabled: false # 테스트에는 DB·RabbitMQ가 없으므로 outbox 발행 스케줄러를 끈다
+
+cooking:
+  progress:
+    enabled: false # 테스트에는 DB가 없으므로 자동 조리 진행 스케줄러를 끈다

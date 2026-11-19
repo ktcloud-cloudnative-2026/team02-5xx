@@ -12,6 +12,7 @@ import com.peakorder.menu.repository.MenuOptionRepository;
 import com.peakorder.menu.repository.MenuRepository;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
+import java.util.List;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -43,6 +44,40 @@ class MenuDatabaseTests {
     registry.add("spring.datasource.url", () -> System.getenv("MENU_DB_TEST_URL"));
     registry.add("spring.datasource.username", () -> System.getenv("MENU_DB_TEST_USERNAME"));
     registry.add("spring.datasource.password", () -> System.getenv("MENU_DB_TEST_PASSWORD"));
+  }
+
+  @Test
+  void publicQueriesExcludeHiddenFetchCategoryAndOrderAllOptions() {
+    var category = categories.saveAndFlush(new Category("Customer query", 0));
+    var onSale =
+        menus.saveAndFlush(new Menu(category, "On sale", null, null, 0, 0, MenuStatus.ON_SALE));
+    var paused =
+        menus.saveAndFlush(new Menu(category, "Paused", null, null, 0, 0, MenuStatus.PAUSED));
+    var hidden =
+        menus.saveAndFlush(new Menu(category, "Hidden", null, null, 0, 0, MenuStatus.HIDDEN));
+    var first = options.saveAndFlush(new MenuOption(paused, "Inactive default", 0, 0, true, false));
+    var second = options.saveAndFlush(new MenuOption(paused, "Active", 100, 0, false, true));
+    entityManager.clear();
+    var visible = menus.findByStatusIn(List.of(MenuStatus.ON_SALE, MenuStatus.PAUSED));
+    assertThat(visible)
+        .extracting(Menu::getId)
+        .contains(onSale.getId(), paused.getId())
+        .doesNotContain(hidden.getId());
+    var loaded =
+        visible.stream().filter(m -> m.getId().equals(paused.getId())).findFirst().orElseThrow();
+    assertThat(
+            entityManager
+                .getEntityManagerFactory()
+                .getPersistenceUnitUtil()
+                .isLoaded(loaded, "category"))
+        .isTrue();
+    assertThat(loaded.getCategory().getId()).isEqualTo(category.getId());
+    var loadedOptions = options.findByMenuIdOrderByIdAsc(paused.getId());
+    assertThat(loadedOptions)
+        .extracting(MenuOption::getId)
+        .containsExactly(first.getId(), second.getId());
+    assertThat(loadedOptions.getFirst().isActive()).isFalse();
+    assertThat(loadedOptions.getFirst().isDefault()).isTrue();
   }
 
   @Test
