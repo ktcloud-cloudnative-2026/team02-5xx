@@ -487,7 +487,7 @@ erDiagram
 | 대상 | 확인된 설계·동시성 정책 | 열린 PR과의 차이·확인 사항 |
 | --- | --- | --- |
 | Order 확보 정보 | orderId로 확보하고 holdId로 확정·해제 | [PR #29](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/29)의 V2(2026-11-18 main 병합)에 orders.hold_id, hold_expires_at 추가. **도식에 반영함(2026-11-18).** Inventory의 확정·해제 요청·응답은 2026-11-16 담당자(남규리)와 합의 |
-| Order 결제·주문번호 | 결제·재고 확정 후 orderNo 발급 | [PR #46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)의 V3(main 병합, 2026-11-18)에 orders.payment_id·payment_requested_at·pay_lock_until·pay_lock_token와 order_no_counters(order_date PK, last_seq > 0) 추가. **도식에 반영함(2026-11-18).** 취소 후속 처리용 컬럼(`stock_restored_at`·`refunded_at`, V4)은 아직 제안 단계라 도식에 넣지 않음 |
+| Order 결제·주문번호 | 결제·재고 확정 후 orderNo 발급 | [PR #46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)의 V3(main 병합, 2026-11-18)에 orders.payment_id·payment_requested_at·pay_lock_until·pay_lock_token와 order_no_counters(order_date PK, last_seq > 0) 추가. **도식에 반영함(2026-11-18).** 취소 후속 처리용 컬럼(`cancel_requested_at`·`stock_restored_at`·`refunded_at`, V4)은 아래 "Order 취소 후속 처리" 행을 참고 |
 | Order 취소 후속 처리 | 취소 확정 후 재고 복원·환불, 중복 처리 방지 | [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)의 V4(main 병합, 2026-11-19)에 orders.cancel_requested_at·stock_restored_at·refunded_at와, 취소 후속 처리가 남은 주문·응답을 모른 취소 요청을 찾는 부분 인덱스 2개 추가. **도식에 반영함(2026-11-19).** 복원·환불이 끝나지 않은 주문은 두 시각 중 NULL인 단계가 재시도 대상 |
 | Order 상태 | CREATED, PAID, WAITING, COOKING, COMPLETED, CANCELED, FAILED | Order PR의 CHECK와 enum은 도식과 일치. 현재 이벤트 처리는 PAID→COMPLETED이며 WAITING·COOKING 반영 방식은 미확정 |
 | Cooking 상태·관계 | WAITING→COOKING→DONE, WAITING→CANCELED. order_id UNIQUE, 전표-항목 FK | [PR #62](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/62)의 V1에 상태 CHECK, quantity > 0, cook_time_sec·estimated_cook_sec >= 0, (status, queued_at, id) INDEX 존재. CI-03은 행 잠금으로 취소 경합 제어 |
@@ -531,6 +531,7 @@ erDiagram
 | 2026-11-12 | 남규리 | 3-8 설명 보완 (outbox·processed 역할, 중복 처리 순서) | 11/11 회의 결정 반영, 이벤트 중복 처리 방지 |
 | 2026-11-12 | 이태훈 | 3-4, 3-6 설명 보완<br>(대기열 등록 및 조리 완료 상태 연동)<br> | 11/12 팀 회의록 반영<br>주문 확정 후 대기열 등록 및 조리 완료 후 주문상태 반영 절차 명확화 |
 | 2026-11-18 | 김민규 | 3-4 주문: `orders`에 `hold_id`·`hold_expires_at`·`payment_id` 추가, `order_no_counters` 표 추가, `store_operations` 단일 행(id=1)·초기값 설명, CHECK·인덱스 설명, OR-07/08을 OR-06/07로 정정<br>4항: 조리 시간 저장 문장 정리(Order는 저장하지 않음)와 위 항목의 설계 이유 추가 | Order 서비스 Flyway V1~V3 구현(PR #28·#29·#46)과 ERD를 맞추기 위해 |
+| 2026-11-19 | 김민규 | 3-4 주문: `orders`에 `cancel_requested_at`·`stock_restored_at`·`refunded_at`(V4) 추가, "최신 계약과 Flyway 비교" 표와 구현 기준(main `df38c7f`) 갱신 | Order 취소 API(PR #61)와 V4가 main에 병합되어 도식·설명을 맞춤 |
 
 ## 이벤트 저장·중복 방지 흐름
 
