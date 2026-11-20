@@ -119,7 +119,7 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 **OR-09 응답**: 고객용 상세(OR-04)의 값에 더해 `userId`, `cancelReason`, `failReason`, `paymentId`, `cancelRequestedAt`(Cooking에 취소를 요청한 시각, 응답을 모르면 남음), `stockRestoredAt`·`refundedAt`(후속 처리 완료 시각, 비어 있으면 아직 안 끝남 또는 대상 아님), `manualReviewRequired`·`manualReviewReason`(예: `REFUND_NOT_REFUNDABLE`, `RESTORE_NOT_APPLICABLE`, `RETRY_LIMIT_EXCEEDED`), `cancelFollowUpAttempts`.
 
 - 조회만 하며 외부 서비스를 호출하지 않는다.
-- V6(`idx_orders_ordered_at`)이 기간 검색·최신순 정렬을 돕는다. 30만 건에서 목록 조회가 약 11ms에서 약 0.1ms로 줄었다(로컬 PostgreSQL 16).
+- V6(`idx_orders_ordered_at`)이 기간 검색·최신순 정렬을 돕는다. 30만 건에서 목록 조회가 약 11ms에서 약 0.1ms로 줄었다(로컬 PostgreSQL 16). 일반 `CREATE INDEX`라 생성 중 `orders` 쓰기가 대기할 수 있으므로, 주문 데이터가 쌓인 환경에 적용하기 전에 건수·적용 시점을 DB 담당과 확인한다.
 - 결제는 됐는데 환불이 실패해 `FAILED`로 끝난 주문(`failReason`이 `*_REFUND_NEEDED`)은 아직 `manualReviewRequired`에 포함하지 않는다. 상세의 `failReason`으로 확인한다.
 
 ## 주문 취소 (OR-05)
