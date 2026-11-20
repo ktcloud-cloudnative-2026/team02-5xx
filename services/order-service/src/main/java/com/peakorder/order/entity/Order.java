@@ -271,6 +271,17 @@ public class Order {
     this.updatedAt = now;
   }
 
+  /**
+   * 취소 후속 처리(재고 복원·환불)가 자동 재시도로 풀리지 않아 사람이 확인해야 하는 주문인가. 수동 확인 지표({@code
+   * OrderRepository.countCancelFollowUpManual})와 같은 기준이다.
+   */
+  public boolean needsManualReview() {
+    return status == OrderStatus.CANCELED
+        && orderNo != null
+        && cancelFollowUpManualAt != null
+        && (stockRestoredAt == null || (paymentId != null && refundedAt == null));
+  }
+
   public Long getId() {
     return id;
   }
