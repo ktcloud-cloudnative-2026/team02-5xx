@@ -6,7 +6,7 @@
 
 ## 기준과 선행 작업
 
-- 설정 이름은 [Auth PR #164](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/164)의 `eb58a74` 구현 기준이다. 아직 main 반영 전이며, 현재 main과 배포 이미지가 JWT 기능을 제공한다고 가정하지 않는다.
+- 설정 이름은 [Auth PR #164](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/164)의 검증된 구현 기준이다. #164는 외부 DB 승인과 CI 통과 후 main `b5bc639f4f692a56b124545410b1468dd40b5b49`로 Squash 병합됐다. 실행 중인 dev 이미지는 아래 직접 조회 결과처럼 초기본이며, 새 코드 활성화는 별도 이미지/설정 변경으로 진행한다.
 - 기존 [Auth 배포 구성](../../README.md), [dev Overlay](../../overlays/dev/kustomization.yaml), [#112 계약](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/112)을 따른다. 기존 CI·서비스 코드·HTTPRoute·Argo CD Application은 바꾸지 않는다.
 - prod Gateway 상태는 [#171 적용 기록](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/171#issuecomment-7028783145)에 근거하며 직접 재검증한 결과는 아니다. Gateway 삭제·재생성·ADDRESS 변경을 포함하지 않는다.
 
@@ -73,3 +73,41 @@ prod Auth 배포·prod Argo CD 등록, Gateway GitOps 편입, TLS/CORS 운영 �
 - Prettier·Git 공백 검사 통과. 실제 비밀값·키·토큰·임시 산출물은 준비 파일에 포함하지 않았다.
 - 실제 Secret 존재·파일 읽기·키 유효성·DB 마이그레이션·클러스터 기동·HTTPS 브라우저·Gateway 연동은 검증하지 않았다. 구조 검증을 실제 배포 성공으로 표시하지 않는다.
 - 서비스 코드는 바꾸지 않아 Auth JUnit 134개와 기존 공통 CI 테스트를 중복 실행하지 않았다. #164의 검증 결과와 이 준비 작업의 결과는 구분한다.
+
+## dev 직접 조회 결과와 남은 확인 (2026-11-20)
+
+사용자 요청으로 t2-dev-cp의 hostname·현재 컨텍스트를 확인한 뒤 kubectl get과 응답 상태 조회만 수행했다. Secret 값·SSH 개인키·DB 내용은 읽거나 출력하지 않았고, 생성·apply·Sync·삭제는 하지 않았다.
+
+| 항목                  | 직접 확인한 상태                                                                                                  |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Gateway               | peakorder-gateway, ADDRESS 10.10.22.100, HTTP 80 listener 1개. TLS·hostname·인증서 참조 없음                      |
+| HTTPRoute             | Auth 경로와 임시 gw-echo 경로가 존재. hostname 제한 없음                                                          |
+| Auth Deployment       | 초기본 sha-317b6ee68bf4cba0f356b5ebdd19abfc02c715d0, Ready 1. DB/JWT 환경 변수 주입 없음                          |
+| 프론트엔드 Deployment | peakorder에서 web-frontend가 조회되지 않음                                                                        |
+| Auth Argo CD          | main·overlays/dev, automated 설정 없음, Synced·Healthy. 조회된 revision은 b5bc639                                 |
+| 제안한 Secret         | auth-service-db·auth-service-runtime·auth-service-jwt가 조회되지 않음. 다른 이름의 Secret을 모두 조사한 것은 아님 |
+| JWKS                  | dev Gateway HTTP /api/v1/auth/jwks 응답 404                                                                       |
+| dev IP의 HTTPS        | https://10.10.22.100 연결 실패(curl exit 7, HTTP 000)                                                             |
+| 외부 dev HTTPS 도메인 | Git 문서·Issue와 이번 조회에서 확정 근거를 찾지 못함. 외부 TLS 종료가 없다고 단정하지 않음                        |
+
+Argo CD의 Git revision이 b5bc639로 표시돼도 실행 코드는 Deployment에 고정된 이미지 태그로 결정된다. 현재 초기본 이미지·수동 Sync·환경 변수 부재 상태에서 코드 병합만으로 V2가 자동 적용됐다고 간주하지 않는다. DB 담당의 승인 리뷰에 있는 자동 적용 예상은 실제 배포 설정과 구분한다.
+
+DB 담당 NamGyuri는 [#164 리뷰](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/164#pullrequestreview-5987094069)에서 V2를 DB 범위로 승인했다. auth_dev라는 DB명은 해당 담당자 보고이며 이번 작업에서 DB 연결로 검증하지 않았다. ERD 보조 컬럼 반영과 만료·폐기 토큰 정리 시 expires_at 인덱스 검토는 후속 사항이며 원본 ERD를 수정하지 않았다.
+
+### 실제 값 확정이 필요한 항목
+
+| 담당           | 확인할 내용                                                 | 현재 상태                                          |
+| -------------- | ----------------------------------------------------------- | -------------------------------------------------- |
+| Gateway·프론트 | dev 외부 HTTPS 주소, 프론트/API 동일 출처, TLS 종료 위치    | 확인 근거 없음. prod 도메인을 임의 재사용하지 않음 |
+| Auth·Gateway   | dev issuer·audience·kid와 JWKS 연결 주소                    | 기존 설정·논의에서 실제 값을 찾지 못함             |
+| Auth·DB·운영   | Auth dev DB 접속 Secret 이름/키, 준비·주입 책임과 실행 승인 | DB 스키마 리뷰 승인 완료, 제안한 Secret은 없음     |
+| Auth·운영      | 실제 JWT 키 생성·보관·Secret 주입 책임                      | 실제 키 생성·조회·등록하지 않음                    |
+| Auth·프론트    | 실제 이용약관·개인정보 동의 버전                            | 테스트 버전을 실제 값으로 사용하지 않음            |
+
+위 값은 추측으로 채우지 않는다. 실제 비밀번호·개인키는 댓글로 수집하지 않고 승인된 비공개 주입 경로로 처리한다. HTTPS/Origin·쿠키 조건을 맞추기 위해 Secure 속성을 끄는 우회도 하지 않는다.
+
+### 이미지 게시 확인
+
+병합 SHA `b5bc639f4f692a56b124545410b1468dd40b5b49`의 Auth 이미지 `ghcr.io/ktcloud-cloudnative-2026/team02-5xx/auth:sha-b5bc639f4f692a56b124545410b1468dd40b5b49`가 GHCR에 존재함을 확인했다. 플랫폼 linux/amd64, USER=app, OCI revision 라벨이 같은 SHA임을 확인했다. 현재 dev Overlay의 태그는 변경하지 않았다.
+
+전체 main CI의 최종 판정은 [이미지 게시 실행](https://github.com/ktcloud-cloudnative-2026/team02-5xx/actions/runs/44669173529)에서 확인하고, 성공을 실제 활성화의 선행 조건으로 유지한다. 이미지 존재만으로 쿠키·DB·Gateway 연동까지 검증됐다고 표시하지 않는다.
