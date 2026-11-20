@@ -13,12 +13,8 @@ import com.peakorder.auth.exception.ErrorCode;
 import com.peakorder.auth.repository.UserAgreementRepository;
 import com.peakorder.auth.repository.UserRepository;
 import jakarta.validation.Validator;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.EnumSet;
-import java.util.Locale;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -93,16 +89,7 @@ public class RegistrationService {
   }
 
   private String normalizeEmail(String value) {
-    if (value == null) {
-      throw new BusinessException(ErrorCode.INVALID_REQUEST);
-    }
-    String email = value.strip();
-    if (!validator.validate(new EmailInput(email)).isEmpty()) {
-      throw new BusinessException(ErrorCode.INVALID_REQUEST);
-    }
-    int separator = email.lastIndexOf('@');
-    return email.substring(0, separator + 1)
-        + email.substring(separator + 1).toLowerCase(Locale.ROOT);
+    return EmailAddress.normalize(value, validator);
   }
 
   private void validateAgreements(RegistrationRequest request) {
@@ -129,6 +116,4 @@ public class RegistrationService {
       throw new BusinessException(ErrorCode.REQUIRED_AGREEMENT_MISSING);
     }
   }
-
-  private record EmailInput(@NotBlank @Email @Size(max = 254) String value) {}
 }

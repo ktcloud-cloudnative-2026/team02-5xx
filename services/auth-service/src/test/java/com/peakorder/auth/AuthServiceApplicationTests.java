@@ -54,6 +54,14 @@ class AuthServiceApplicationTests {
     assertThat(script.body()).contains("SwaggerUIBundle");
   }
 
+  @Test
+  void unconfiguredSessionFeatureRemainsUnavailableWithoutBreakingStartup() throws Exception {
+    var response = get("/api/v1/auth/jwks");
+    assertThat(response.statusCode()).isEqualTo(503);
+    assertThat(new ObjectMapper().readTree(response.body()).path("errorCode").asString())
+        .isEqualTo("AUTHENTICATION_UNAVAILABLE");
+  }
+
   private HttpResponse<String> get(String path) throws Exception {
     try (var client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build()) {
       var request =
