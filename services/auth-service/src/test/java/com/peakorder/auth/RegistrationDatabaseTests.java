@@ -57,7 +57,7 @@ class RegistrationDatabaseTests {
 
   @BeforeEach
   void clearLocalTestData() {
-    jdbc.execute("TRUNCATE TABLE user_agreements, users RESTART IDENTITY");
+    jdbc.execute("TRUNCATE TABLE refresh_tokens, user_agreements, users RESTART IDENTITY");
   }
 
   @Test

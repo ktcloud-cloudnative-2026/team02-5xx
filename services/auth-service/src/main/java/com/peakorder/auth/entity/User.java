@@ -68,4 +68,20 @@ public class User {
   public String getEmail() {
     return email;
   }
+
+  public String getPasswordHash() {
+    return passwordHash;
+  }
+
+  public String getNickname() {
+    return nickname;
+  }
+
+  public UserRole getRole() {
+    return role;
+  }
+
+  public UserStatus getStatus() {
+    return status;
+  }
 }
