@@ -41,7 +41,7 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 - 임시: 사용자 식별은 `X-User-Id` 헤더를 쓴다. 클라이언트가 임의로 보낼 수 있어 **다른 사용자의 ID를 알면 그 사용자의 주문을 조회할 수 있다.** 인증 방식이 확정되면 검증된 사용자 정보로 교체해야 한다.
   - **외부 노출 금지 조건**: 인증 교체 전에는 `/api/v1/orders` 경로를 Gateway·Ingress로 외부에 열지 않는다. 로컬·개발자 확인과 서비스 간 테스트에만 쓰고, order-service의 외부 Ingress·Gateway 라우트 추가 PR은 인증 교체 이슈가 끝나기 전에는 병합하지 않는다.
   - 교체 작업은 별도 이슈로 관리한다(Auth 담당과 JWT 전달 방식 합의 필요).
-- 매장은 기본 영업 종료·주문 미접수 상태이며, 접수 상태를 바꾸는 관리자 API(OR-07)는 아직 없다. 로컬 확인 시 `store_operations`를 직접 갱신한다.
+- 매장은 기본 영업 종료·주문 미접수 상태이며, 접수 상태는 관리자 API(OR-07, 기본 꺼짐)로 바꾼다. 켜지 않은 로컬에서는 `store_operations`를 직접 갱신한다.
 - Menu·Inventory 내부 API의 요청·응답 필드는 초안이다(`client` 패키지 참고). 담당자와 합의 후 확정한다.
 
 ### 주문 상세의 조리 상태 (OR-04, CI-02 연동)
@@ -88,7 +88,39 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 - 요청·응답 필드: `isOpen`(영업 여부), `acceptingOrders`(주문 접수 여부), `updatedAt`(마지막 변경 시각, KST). `PATCH`는 **보낸 항목만** 바꾸며 둘 다 비었거나 값이 불린이 아니면 `400 INVALID_REQUEST`다. 값이 바뀐 경우에만 `updatedAt`을 갱신한다.
 - 주문 생성(OR-01)은 `isOpen`과 `acceptingOrders`가 **둘 다 true**일 때만 받고, 변경은 다음 요청부터 바로 반영된다(아니면 `409 STORE_NOT_ACCEPTING_ORDERS`). 이미 만들어진 주문의 결제(OR-02)·조회·취소는 이 설정과 무관하다. 초기값은 영업 종료·접수 안 함이다.
 - 동시에 두 관리자가 서로 다른 항목을 보내도 행 잠금으로 직렬화해 서로의 값을 덮어쓰지 않는다. 인증이 없어 "누가" 바꿨는지는 남기지 못하고 변경 전후 값만 로그로 남긴다.
-- **기본 꺼짐**: 관리자 권한 검사 방식은 Auth·Gateway·JWT 공통 계약(#112)에서 정해진다. 그 전에는 누구나 영업을 열고 닫을 수 있으므로 `order.admin.enabled`(환경 변수 `ORDER_ADMIN_ENABLED`, 기본 `false`)가 켜진 로컬·dev에서만 이 API를 등록한다. 꺼져 있으면 경로가 존재하지 않는 것처럼 `404`다. 운영(prod)에서는 켜지 않는다. Cooking 관리자 API(`COOKING_ADMIN_ENABLED`)와 같은 방식이다.
+- **기본 꺼짐**: 관리자 권한 검사 방식은 Auth·Gateway·JWT 공통 계약(#112)에서 정해진다. 그 전에는 누구나 영업을 열고 닫을 수 있으므로 `order.admin.enabled`(환경 변수 `ORDER_ADMIN_ENABLED`, 기본 `false`)가 켜진 경우에만 이 API를 등록하며, 격리된 로컬 검증 환경에서만 켜고 외부 접근이 가능하거나 공유되는 dev·prod에서는 켜지 않는다. 꺼져 있으면 경로가 존재하지 않는 것처럼 `404`다. 운영(prod)에서는 켜지 않는다. Cooking 관리자 API(`COOKING_ADMIN_ENABLED`)와 같은 방식이다.
+
+## 관리자 주문 조회 (OR-08·OR-09)
+
+가게 관리자가 전체 사용자의 주문을 조회한다(권한 STORE_ADMIN). **인증이 없어 `order.admin.enabled`(`ORDER_ADMIN_ENABLED`, 기본 `false`)가 켜져야만 경로가 등록되고, 꺼져 있으면 `404`다.** 영업·접수(OR-06·07)와 같은 방식이며 `X-User-Role` 같은 헤더만 보고 접근을 허용하지 않는다. 격리된 로컬 검증 환경에서만 켜고 공유 dev·prod에서는 켜지 않는다(인증은 이슈 #112 이후).
+
+| ID | 경로 | 설명 |
+|---|---|---|
+| OR-08 | `GET /api/v1/admin/orders` | 주문 목록·검색 |
+| OR-09 | `GET /api/v1/admin/orders/{orderId}` | 주문 상세(없으면 `404 ORDER_NOT_FOUND`) |
+
+**OR-08 검색 조건** (모두 선택, 함께 쓰면 AND)
+
+| 파라미터 | 설명 |
+|---|---|
+| `from`, `to` | 주문 시각(`orderedAt`) 기준 날짜(`yyyy-MM-dd`, KST, 양 끝 포함). 한 번에 최대 31일 |
+| `orderNo` | 주문번호 정확히 일치 |
+| `status` | 주문 상태(`CREATED`·`PAID`·`WAITING`·`COOKING`·`COMPLETED`·`CANCELED`·`FAILED`, 대소문자 무관) |
+| `manualReviewRequired` | `true`면 수동 확인이 필요한 주문만. `false`·생략은 거르지 않음 |
+| `page`, `size` | 0부터 시작, 기본 20개·최대 100개(고객 목록과 같음). 최신 주문 순(`orderedAt` 내림차순) |
+
+- 기간을 주지 않으면 **최근 31일**, 한쪽만 주면 반대쪽을 31일 범위로 채운다. 시작이 종료보다 늦거나 31일을 넘거나 날짜·상태 형식이 틀리면 `400 INVALID_REQUEST`.
+- `orderNo`만 주면(기간 없이) 유일키라서 기간 제한 없이 전체에서 찾는다.
+- 임시 주문(`CREATED`·`FAILED`)도 포함한다(고객 목록은 숨김). 상태로 거를 수 있다.
+- 목록의 한 줄: `orderId`, `orderNo`, `userId`, `status`, `totalAmount`, `orderedAt`, `canceledAt`, `itemCount`, `representativeMenuName`, `manualReviewRequired`. 사용자는 ID만 있다(Order는 이름·연락처를 갖지 않는다).
+
+**수동 확인 필요(`manualReviewRequired`)란**: 취소한 주문의 재고 복원·환불이 재시도로 풀리지 않아 사람이 확인해야 하는 상태다([취소 후속 처리 재시도 상한](#주문-취소-or-05) 참고). 환불이 계속 거절돼 손님 돈이 안 돌아갔거나 재고가 복원되지 않은 주문이다. 수동 확인 지표(`order_cancel_follow_up_manual_required`)와 같은 기준이라, 후속 처리가 모두 끝나면 `false`로 돌아간다.
+
+**OR-09 응답**: 고객용 상세(OR-04)의 값에 더해 `userId`, `cancelReason`, `failReason`, `paymentId`, `cancelRequestedAt`(Cooking에 취소를 요청한 시각, 응답을 모르면 남음), `stockRestoredAt`·`refundedAt`(후속 처리 완료 시각, 비어 있으면 아직 안 끝남 또는 대상 아님), `manualReviewRequired`·`manualReviewReason`(예: `REFUND_NOT_REFUNDABLE`, `RESTORE_NOT_APPLICABLE`, `RETRY_LIMIT_EXCEEDED`), `cancelFollowUpAttempts`.
+
+- 조회만 하며 외부 서비스를 호출하지 않는다.
+- V6(`idx_orders_ordered_at`)이 기간 검색·최신순 정렬을 돕는다. 30만 건에서 목록 조회가 약 11ms에서 약 0.1ms로 줄었다(로컬 PostgreSQL 16). 일반 `CREATE INDEX`라 생성 중 `orders` 쓰기가 대기할 수 있으므로, 주문 데이터가 쌓인 환경에 적용하기 전에 건수·적용 시점을 DB 담당과 확인한다.
+- 결제는 됐는데 환불이 실패해 `FAILED`로 끝난 주문(`failReason`이 `*_REFUND_NEEDED`)은 아직 `manualReviewRequired`에 포함하지 않는다. 상세의 `failReason`으로 확인한다.
 
 ## 주문 취소 (OR-05)
 
