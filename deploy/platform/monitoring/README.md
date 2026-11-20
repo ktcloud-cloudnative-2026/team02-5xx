@@ -42,7 +42,7 @@ dev 클러스터 `monitoring` namespace에 Prometheus·Alertmanager·Grafana·ku
 | `grafana.admin.existingSecret` | `grafana-admin` | 관리자 계정은 dev에 직접 만든 Secret 참조(Git에 값 없음) |
 | `grafana.persistence` | 끔 | dev 1단계. 대시보드는 ConfigMap으로 관리 |
 | `kube-state-metrics.collectors` | 기본 목록에서 `secrets`만 제외 | 클러스터 전체 Secret list·watch 권한이 생기지 않는다(`kube_secret_*` 지표 미사용) |
-| 팀 라벨 | `commonLabels`·`grafana.extraLabels`·`kube-state-metrics.customLabels`·`prometheus-node-exporter.commonLabels`에 `team: team02` | 서브차트는 본 차트의 `commonLabels`를 받지 않는다 |
+| 공통 라벨 `app`·`team` | 본 차트: `commonLabels.team`(app은 차트가 `kube-prometheus-stack-<구성 요소>`로 붙임) / 서브차트: `grafana.extraLabels`·`kube-state-metrics.customLabels`·`prometheus-node-exporter.commonLabels`에 `app: grafana`·`kube-state-metrics`·`node-exporter` + `team: team02` / Operator가 만드는 Pod: `prometheusSpec`·`alertmanagerSpec.podMetadata.labels`에 `app: prometheus`·`alertmanager` + `team` | CLAUDE.md 8절, `docs/observability.md` 1절(공통 인프라는 컴포넌트 이름). 서브차트는 본 차트의 `commonLabels`를 받지 않는다. 추가 라벨은 selector에 들어가지 않는다(selector는 `app.kubernetes.io/name`·`instance`) |
 
 ## 자원
 
@@ -77,6 +77,7 @@ helm template monitoring prometheus-community/kube-prometheus-stack --version 93
 | `monitoring` | PrometheusRule (30), ConfigMap (27), ServiceMonitor (8), Service (6), ServiceAccount (6), Deployment (3), Secret (2), DaemonSet (1), Prometheus (1), Alertmanager (1), Role (1), RoleBinding (1) |
 
 - 모든 namespace 리소스는 `monitoring`에 만들어진다. 다른 namespace에 만드는 리소스는 없다.
+- `app`·`team` 라벨은 CRD 10개를 뺀 93개 리소스와 Pod 템플릿(Deployment 3·DaemonSet 1)·Operator가 만들 Pod(`podMetadata`)에 모두 있다.
 - MutatingWebhookConfiguration·ValidatingWebhookConfiguration·Job·Pod(helm hook)는 없다.
 - AppProject 허용 목록은 위 종류와 정확히 같다(빠짐·남음 없음, 스크립트로 대조).
 - Prometheus·Alertmanager의 StatefulSet은 Operator가 실행 중에 만든다(Argo CD가 만드는 리소스가 아니라 AppProject 목록에 없다).
@@ -91,7 +92,9 @@ helm template monitoring prometheus-community/kube-prometheus-stack --version 93
 | `monitoring-grafana` | **Role** (`monitoring`) | `monitoring-grafana` | configmaps·secrets `get,list,watch` | `monitoring` 안에서만 읽기 |
 
 - ClusterRoleBinding·RoleBinding은 모두 같은 이름의 Role ↔ 같은 이름의 ServiceAccount 1:1이다.
-- **Operator의 클러스터 범위 Secret 권한**은 Prometheus·Alertmanager 설정 Secret을 만들고, ServiceMonitor가 참조하는 인증 Secret을 읽기 위한 차트 기본 동작이다. 감시 namespace를 제한(`prometheusOperator.namespaces`)해 줄이는 방안은 후속으로 검토한다.
+- **Operator의 클러스터 범위 Secret 권한(`get,list,watch,create,update,delete`)은 현재 그대로 남아 있다.** Prometheus·Alertmanager 설정 Secret을 만들고 ServiceMonitor가 참조하는 인증 Secret을 읽기 위한 차트 기본 동작이다.
+  - AppProject의 `monitoring` 대상·종류 제한은 이 ClusterRole의 접근 범위를 줄이지 않는다.
+  - `prometheusOperator.namespaces`(예: `monitoring,peakorder`)는 Operator의 **감시 범위만** 줄이고 ClusterRole은 그대로다(렌더링으로 확인). 권한 자체를 줄이려면 차트 RBAC 대신 namespace별 Role을 직접 관리해야 한다 → 이 범위로 둘지 플랫폼 담당 확인 필요.
 - 전체 rules는 렌더링 결과에서 확인할 수 있다(`kind: ClusterRole` 검색).
 
 ### 기본 수집 대상 (ServiceMonitor 8개)
@@ -103,11 +106,16 @@ apiserver, kubelet(cAdvisor 포함), kube-state-metrics, node-exporter, Promethe
 `t2-dev-cp`에서, **병합 커밋 전체 SHA**로 진행한다(`deploy/argocd/README.md`와 같은 방식).
 
 1. 접속 확인: `hostname`(t2-dev-cp), `kubectl config current-context`
-2. Grafana 관리자 Secret 생성 (값은 문서·채팅·Git에 남기지 않는다)
+2. Grafana 관리자 Secret 생성 — 비밀번호를 명령 인수나 셸 기록에 남기지 않는다
    ```bash
+   read -rsp 'Grafana 관리자 비밀번호: ' GF_PW; echo     # 입력이 화면·history에 남지 않음
    kubectl -n monitoring create secret generic grafana-admin \
-     --from-literal=admin-user=admin --from-literal=admin-password='<비밀번호>'
+     --from-literal=admin-user=admin \
+     --from-file=admin-password=<(printf '%s' "$GF_PW")  # 값이 아니라 /dev/fd 경로가 인수로 전달됨
+   unset GF_PW
+   kubectl -n monitoring get secret grafana-admin              # DATA 2 확인(값은 출력하지 않음)
    ```
+   비밀번호는 팀 비공개 채널에서 관리하고 문서·댓글·로그에 남기지 않는다.
 3. AppProject → Application 순서로 검증 후 등록
    ```bash
    REV='<병합 커밋 전체 SHA>'
@@ -135,7 +143,7 @@ kubectl -n monitoring port-forward --address 127.0.0.1 svc/monitoring-grafana 30
 
 ## 한계
 
-- CRD 10개는 차트에 고정된 파일이라 `team: team02` 라벨이 없다.
+- **CRD 10개(`*.monitoring.coreos.com`)는 차트 `crds/`의 고정 파일이라 `app`·`team` 라벨을 붙일 수 없다.** CLAUDE.md 8절 공통 라벨의 예외로 #176에서 팀 승인을 요청했다(승인 기록 후 병합). CRD는 클러스터 공용 리소스 정의라 특정 팀 리소스가 아니다.
 - `local-path` 저장소는 Pod가 처음 뜬 노드에 고정되고 확장할 수 없다. 그 노드에 문제가 생기면 지표가 사라질 수 있다(dev 한정 감수).
 - 알림 채널(#138 결정 요청)이 정해지기 전까지 Alertmanager는 기본 설정이며, 알림은 화면에서만 확인한다.
 - etcd·scheduler·controller-manager·kube-proxy·CoreDNS는 수집하지 않는다.
@@ -144,5 +152,5 @@ kubectl -n monitoring port-forward --address 127.0.0.1 svc/monitoring-grafana 30
 
 - **RabbitMQ 큐별 지표**: 정진혁 님이 `rabbitmq.yaml`(15692 `prometheus` 포트)·NetworkPolicy(`monitoring` → 15692)를 별도 PR로 진행(#176). 적용 후 RabbitMQ ServiceMonitor(`/metrics/detailed?family=queue_coarse_metrics`)와 DLQ 알림 추가
 - 서비스 `/actuator/prometheus` ServiceMonitor, `docs/observability.md` 4절 알림 규칙, 대시보드, `docs/runbook.md`
-- Operator 감시 namespace 제한 검토, CoreDNS(기존 kube-dns Service) 수집 검토
+- Operator 권한 축소(namespace별 Role 직접 관리) 여부, CoreDNS(기존 kube-dns Service) 수집 검토
 - Loki·Alloy(로깅), prod 구성

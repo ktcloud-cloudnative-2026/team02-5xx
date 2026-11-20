@@ -3,9 +3,12 @@
 # - 기본값에서 바꾼 것만 적는다. 전체 기본값: helm show values prometheus-community/kube-prometheus-stack --version 93.2.2
 # - 비밀값은 여기에 쓰지 않는다. Grafana 관리자 계정은 dev에 직접 만든 Secret을 참조한다.
 
-# 모든 리소스에 팀 라벨 (CLAUDE.md 8절). app 라벨은 차트가 구성 요소별로 붙이므로 덮어쓰지 않는다.
-# commonLabels는 본 차트에만 적용되므로 서브차트(grafana·kube-state-metrics·node-exporter)는 각자 설정에 따로 넣는다.
-# CRD 10개는 차트의 crds/ 폴더에 고정된 파일이라 라벨을 붙일 수 없다(한계).
+# 공통 라벨 app·team (CLAUDE.md 8절, docs/observability.md 1절: 공통 인프라는 app에 컴포넌트 이름)
+# - 본 차트 리소스: 차트가 app(kube-prometheus-stack-<구성 요소>)을 붙이므로 team만 더한다.
+# - 서브차트(grafana·kube-state-metrics·node-exporter)는 commonLabels를 받지 않아 각자 설정에 app·team을 넣는다.
+#   이 라벨들은 selector에 들어가지 않는다(selector는 app.kubernetes.io/name·instance).
+# - Operator가 실행 중에 만드는 Prometheus·Alertmanager Pod는 podMetadata로 넣는다.
+# - CRD 10개는 차트 crds/의 고정 파일이라 라벨을 붙일 수 없다 → #176에서 팀 예외 승인 요청.
 commonLabels:
   team: team02
 
@@ -64,6 +67,10 @@ prometheus:
     ruleSelectorNilUsesHelmValues: false
     probeSelectorNilUsesHelmValues: false
     # local-path는 볼륨 확장이 안 되므로 처음부터 크기를 정하고, 크기 기준 보관 한도도 둔다.
+    podMetadata:
+      labels:
+        app: prometheus
+        team: team02
     retention: 7d
     retentionSize: 8GB
     storageSpec:
@@ -86,6 +93,10 @@ prometheus:
 # 알림 채널은 #138 결정 전이라 기본 설정 그대로 두고 화면에서만 확인한다. dev에서는 저장소 없이 시작.
 alertmanager:
   alertmanagerSpec:
+    podMetadata:
+      labels:
+        app: alertmanager
+        team: team02
     resources:
       requests:
         cpu: 10m
@@ -96,9 +107,10 @@ alertmanager:
 
 # --- Grafana ---
 # 외부 노출 없음(port-forward로만 접속). 관리자 계정은 dev에 직접 만든 Secret을 참조한다(Git에 값 없음).
-#   kubectl -n monitoring create secret generic grafana-admin --from-literal=admin-user=admin --from-literal=admin-password=<비밀번호>
+# 만드는 절차는 README "dev 적용" 2번(비밀번호를 명령 인수·셸 기록에 남기지 않는 방식).
 grafana:
   extraLabels:
+    app: grafana
     team: team02
   # helm test용 Pod(bats 이미지). Argo CD에서는 쓰지 않으므로 만들지 않는다.
   testFramework:
@@ -127,6 +139,7 @@ grafana:
 # --- kube-state-metrics (Kubernetes 객체 상태: 재시작 수, 복제본 등) ---
 kube-state-metrics:
   customLabels:
+    app: kube-state-metrics
     team: team02
   # 기본 목록에서 secrets만 뺀다 → 클러스터 전체 Secret list·watch 권한이 생기지 않는다(kube_secret_* 지표는 쓰지 않음).
   collectors:
@@ -169,6 +182,7 @@ kube-state-metrics:
 # t2-dev-cp 메모리 사용이 78%라 제한을 작게 둔다.
 prometheus-node-exporter:
   commonLabels:
+    app: node-exporter
     team: team02
   resources:
     requests:
