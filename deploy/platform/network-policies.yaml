@@ -1,0 +1,243 @@
+# peakorder 네임스페이스 들어오는 트래픽(ingress) 허용 명단.
+# - 기본은 전부 차단하고, 서비스마다 필요한 호출만 연다 (#112 A안: Gateway 우회 차단).
+# - 나가는 트래픽(egress)은 막지 않는다. DB(t2-db)·DNS 접속은 그대로다.
+# - 노드에서 오는 kubelet 검사(probe)는 Calico가 항상 허용한다.
+# - 호출 관계 근거: Order → Menu·Inventory·Payment·Cooking, Cooking → Menu, Inventory → Menu(IN-05),
+#   Order·Payment·Cooking → RabbitMQ (각 서비스 client·application 설정).
+# - 새 서비스를 추가하면 여기에도 허용 규칙을 추가해야 한다(없으면 막힘).
+
+# 0. 기본 차단: 명단에 없는 들어오는 요청은 모두 막는다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: peakorder
+  labels:
+    app: network-policy
+    team: team02
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+# 1. Gateway로 외부에 열리는 서비스: Gateway(envoy) + 모니터링
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-auth-service
+  namespace: peakorder
+  labels:
+    app: network-policy
+    team: team02
+spec:
+  podSelector:
+    matchLabels:
+      app: auth-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web-frontend
+  namespace: peakorder
+  labels:
+    app: network-policy
+    team: team02
+spec:
+  podSelector:
+    matchLabels:
+      app: web-frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-order-service
+  namespace: peakorder
+  labels:
+    app: network-policy
+    team: team02
+spec:
+  podSelector:
+    matchLabels:
+      app: order-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 8080
+---
+# 2. 외부 + 내부 호출을 같이 받는 서비스
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-menu-service
+  namespace: peakorder
+  labels:
+    app: network-policy
+    team: team02
+spec:
+  podSelector:
+    matchLabels:
+      app: menu-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+        - podSelector:
+            matchLabels:
+              app: order-service
+        - podSelector:
+            matchLabels:
+              app: cooking-service
+        - podSelector:
+            matchLabels:
+              app: inventory-service
+      ports:
+        - port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cooking-service
+  namespace: peakorder
+  labels:
+    app: network-policy
+    team: team02
+spec:
+  podSelector:
+    matchLabels:
+      app: cooking-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+        - podSelector:
+            matchLabels:
+              app: order-service
+      ports:
+        - port: 8080
+---
+# 3. 내부에서만 불리는 서비스: Order + 모니터링 (Gateway 없음)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-inventory-service
+  namespace: peakorder
+  labels:
+    app: network-policy
+    team: team02
+spec:
+  podSelector:
+    matchLabels:
+      app: inventory-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+        - podSelector:
+            matchLabels:
+              app: order-service
+      ports:
+        - port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-payment-service
+  namespace: peakorder
+  labels:
+    app: network-policy
+    team: team02
+spec:
+  podSelector:
+    matchLabels:
+      app: payment-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+        - podSelector:
+            matchLabels:
+              app: order-service
+      ports:
+        - port: 8080
+---
+# 4. 공통 인프라
+# RabbitMQ: 메시지를 쓰는 서비스만 5672(amqp). 관리 화면 15672는 kubectl port-forward로만 쓴다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-rabbitmq
+  namespace: peakorder
+  labels:
+    app: network-policy
+    team: team02
+spec:
+  podSelector:
+    matchLabels:
+      app: rabbitmq
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: order-service
+        - podSelector:
+            matchLabels:
+              app: payment-service
+        - podSelector:
+            matchLabels:
+              app: cooking-service
+      ports:
+        - port: 5672
+# Redis: 지금 사용하는 서비스가 없어 허용 규칙을 두지 않는다(기본 차단).
+# 사용하는 서비스가 생기면 같은 형식으로 allow-redis를 추가한다.
