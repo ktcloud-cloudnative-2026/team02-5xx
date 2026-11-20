@@ -4,4 +4,4 @@ resources:
   - ../../base
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/order
-    newTag: sha-eeee6a21cdfaeea17cc42aaf3b8829197639eae5
+    newTag: sha-b05b9c0981ad9e12c60af8ab544dd9cd4da77c0b

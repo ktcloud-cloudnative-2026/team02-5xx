@@ -21,7 +21,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: order-service
-          image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/order:sha-eeee6a21cdfaeea17cc42aaf3b8829197639eae5
+          image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/order:sha-b05b9c0981ad9e12c60af8ab544dd9cd4da77c0b
           ports:
             - name: http
               containerPort: 8080
