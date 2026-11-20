@@ -3,6 +3,7 @@ package com.peakorder.inventory.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -22,6 +23,7 @@ import com.peakorder.inventory.repository.InventoryReservationItemRepository;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class InventoryAdminServiceTest {
@@ -139,7 +141,7 @@ class InventoryAdminServiceTest {
     Inventory inventory = linkedStockItem(1L, 5L);
     when(menuClient.checkExistence(10L)).thenReturn(new MenuExistence(10L, true, "ON_SALE"));
     when(inventoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(inventory));
-    when(itemRepository.existsActiveHoldForMenu(5L)).thenReturn(true);
+    when(itemRepository.existsHoldOrConfirmedForMenu(5L)).thenReturn(true);
 
     assertThatThrownBy(() -> service.linkMenu(1L, new MenuLinkRequest(10L)))
         .isInstanceOf(BusinessException.class)
@@ -160,5 +162,33 @@ class InventoryAdminServiceTest {
         .extracting("errorCode")
         .isEqualTo(ErrorCode.MENU_SERVICE_UNAVAILABLE);
     assertThat(inventory.getMenuId()).isEqualTo(5L);
+  }
+
+  @Test
+  void linkMenu_rejects_unlink_when_confirmed_order_can_be_restored() {
+    Inventory inventory = linkedStockItem(1L, 5L);
+    when(inventoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(inventory));
+    when(itemRepository.existsHoldOrConfirmedForMenu(5L)).thenReturn(true);
+
+    assertThatThrownBy(() -> service.linkMenu(1L, new MenuLinkRequest(null)))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.STOCK_ITEM_IN_USE);
+    assertThat(inventory.getMenuId()).isEqualTo(5L);
+  }
+
+  @Test
+  void linkMenu_checks_orders_only_after_locking_stock_item() {
+    when(menuClient.checkExistence(10L)).thenReturn(new MenuExistence(10L, true, "ON_SALE"));
+    when(inventoryRepository.findByIdForUpdate(1L))
+        .thenReturn(Optional.of(linkedStockItem(1L, 5L)));
+    when(itemRepository.existsHoldOrConfirmedForMenu(5L)).thenReturn(true);
+
+    assertThatThrownBy(() -> service.linkMenu(1L, new MenuLinkRequest(10L)))
+        .isInstanceOf(BusinessException.class);
+
+    InOrder order = inOrder(inventoryRepository, itemRepository);
+    order.verify(inventoryRepository).findByIdForUpdate(1L);
+    order.verify(itemRepository).existsHoldOrConfirmedForMenu(5L);
   }
 }

@@ -41,6 +41,7 @@ export DB_USER=<사용자> DB_PASSWORD=<비밀번호>
 | `STOCK_HOLD_TTL` | 재고 임시 확보 유효시간 | `5m` (테스트 환경은 `10s`) |
 | `INVENTORY_EXPIRY_CHECK_DELAY_MS` | 만료 스케줄러 실행 간격(ms). 한 번 돈 뒤 이만큼 쉬고 다시 실행 | `5000` |
 | `MENU_SERVICE_URL` | Menu 서비스 주소. IN-05에서 MI-02(메뉴 존재 확인) 호출에 사용. 연결 2초·응답 3초 제한 | `http://localhost:8081` |
+| `INVENTORY_ADMIN_ENABLED` | 관리자 API(IN-03·04·05) 등록 여부. 인증(#112) 연동 전까지 꺼 두고 격리된 로컬에서만 `true`. 꺼져 있으면 관리자 경로 404 | `false` |
 
 ## 외부 API (프론트 → Inventory)
 
@@ -53,8 +54,8 @@ export DB_USER=<사용자> DB_PASSWORD=<비밀번호>
 
 - IN-03·04·05는 바뀐 재고 항목 `{stockItemId, menuId, stockQty, reservedQty, availableQty, lowStockThreshold, lowStock}`을 돌려준다.
 - IN-01의 `orderable`은 재고 기준만 본다(연결됨 + 주문 가능 수량 1 이상). 메뉴 판매 상태와의 결합은 프론트가 한다. 미연결 메뉴는 오류가 아니라 `false`. 잠금 없이 읽는다. `menuIds`가 없거나 숫자가 아니거나 0 이하이거나 100개를 넘으면 400.
-- IN-05 오류: 없는 메뉴 404 `MENU_NOT_FOUND`, 숨김 메뉴 409 `MENU_NOT_LINKABLE`, 이미 다른 재고에 연결된 메뉴 409 `MENU_ALREADY_LINKED`, 현재 메뉴로 결제 대기(`RESERVED`) 중인 확보가 있으면 409 `STOCK_ITEM_IN_USE`, Menu 장애 503 `MENU_SERVICE_UNAVAILABLE`(기존 연결 유지). ON_SALE·PAUSED 메뉴는 연결할 수 있다.
-- 관리자 API의 `STORE_ADMIN` 권한 검사는 JWT 공통 계약(#112) 확정 후 추가한다.
+- IN-05 오류: 없는 메뉴 404 `MENU_NOT_FOUND`, 숨김 메뉴 409 `MENU_NOT_LINKABLE`, 이미 다른 재고에 연결된 메뉴 409 `MENU_ALREADY_LINKED`, 현재 메뉴로 결제 대기(`RESERVED`)이거나 복원될 수 있는 확정(`CONFIRMED`) 주문이 있으면 409 `STOCK_ITEM_IN_USE`, Menu 장애 503 `MENU_SERVICE_UNAVAILABLE`(기존 연결 유지). ON_SALE·PAUSED 메뉴는 연결할 수 있다.
+- 관리자 API는 `INVENTORY_ADMIN_ENABLED=true`일 때만 등록된다(기본 꺼짐, 꺼져 있으면 404). 공유 dev·prod에서는 JWT 공통 계약(#112)의 `STORE_ADMIN` 인가와 Gateway 격리를 확인하기 전까지 켜지 않는다.
 - IN-02(목록), IN-06(논리 삭제, Flyway V2 필요)은 아직 구현하지 않았다.
 
 ## 내부 API (Order → Inventory)

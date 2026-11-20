@@ -62,9 +62,11 @@ public class InventoryAdminService {
       return StockItemResponse.from(inventory);
     }
 
-    // 4. 지금 메뉴로 결제 대기 중인 주문이 있으면 바꿀 수 없다
+    // 4. 지금 메뉴로 끝나지 않은 주문(RESERVED, 복원될 수 있는 CONFIRMED)이 있으면 바꿀 수 없다.
+    //    II-04는 메뉴 번호로 재고를 찾으므로, 확정 후 연결이 바뀌면 다른 재고가 늘거나 복원이 실패한다.
+    //    재고 행을 잠근 뒤 확인하므로 같은 재고로 새 확보(II-01)·복원(II-04)이 끼어들 수 없다.
     if (inventory.getMenuId() != null
-        && itemRepository.existsActiveHoldForMenu(inventory.getMenuId())) {
+        && itemRepository.existsHoldOrConfirmedForMenu(inventory.getMenuId())) {
       throw new BusinessException(ErrorCode.STOCK_ITEM_IN_USE);
     }
 
