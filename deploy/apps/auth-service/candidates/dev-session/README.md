@@ -12,43 +12,57 @@
 
 ## 외부에서 준비할 값
 
-아래 Secret 이름·키는 **연결 후보**이며 실제 존재 여부나 값은 조회하지 않았다. 환경별 값과 준비 여부를 담당자에게 확인한다. 값을 Git·PR·로그·셸 기록에 복사하지 않는다. dev는 Auth 소유 dev DB에만 연결한다.
+아래 Secret 이름·키는 **연결 후보**이며 실제 값은 조회하지 않았다. 제안한 이름의 존재 여부는 아래 직접 조회 기록을 따른다. 환경별 값과 준비 여부를 담당자에게 확인한다. 값을 Git·PR·로그·셸 기록에 복사하지 않는다. dev는 Auth 소유 dev DB에만 연결한다.
 
-| Secret 후보          | 키              | 컨테이너 환경 변수 또는 파일              | 확인 담당                                |
-| -------------------- | --------------- | ----------------------------------------- | ---------------------------------------- |
-| auth-service-db      | DB_URL          | AUTH_DB_URL                               | Auth·DB: Auth dev DB 주소                |
-| auth-service-db      | DB_USER         | AUTH_DB_USERNAME                          | DB: Auth dev 전용 계정                   |
-| auth-service-db      | DB_PASSWORD     | AUTH_DB_PASSWORD                          | DB: 비공개 경로로 주입                   |
-| auth-service-runtime | issuer          | AUTH_JWT_ISSUER                           | Auth·Gateway: 발급자 식별 값             |
-| auth-service-runtime | audience        | AUTH_JWT_AUDIENCE                         | Auth·Gateway: 검증 대상 값               |
-| auth-service-runtime | key-id          | AUTH_JWT_KEY_ID                           | Auth·Gateway: 공개 JWKS kid와 일치       |
-| auth-service-runtime | allowed-origins | AUTH_ALLOWED_ORIGINS                      | Gateway·프론트: 정확한 HTTPS Origin 목록 |
-| auth-service-runtime | terms-version   | AUTH_TERMS_VERSION                        | Auth·프론트: 실제 이용약관 버전          |
-| auth-service-runtime | privacy-version | AUTH_PRIVACY_VERSION                      | Auth·프론트: 실제 개인정보 동의 버전     |
-| auth-service-jwt     | private-key.pem | /var/run/secrets/auth-jwt/private-key.pem | Auth·운영: RSA PKCS#8 개인키             |
-| auth-service-jwt     | public-key.pem  | /var/run/secrets/auth-jwt/public-key.pem  | Auth·운영: 대응하는 X.509 공개키         |
+| Secret 후보          | 키              | 컨테이너 환경 변수 또는 파일              | 확인 담당                                  |
+| -------------------- | --------------- | ----------------------------------------- | ------------------------------------------ |
+| auth-service-db      | DB_URL          | AUTH_DB_URL                               | Auth·DB: Auth dev DB 주소                  |
+| auth-service-db      | DB_USER         | AUTH_DB_USERNAME                          | DB: Auth dev 전용 계정                     |
+| auth-service-db      | DB_PASSWORD     | AUTH_DB_PASSWORD                          | DB: 비공개 경로로 주입                     |
+| auth-service-runtime | issuer          | AUTH_JWT_ISSUER                           | Auth·Gateway: 발급자 식별 값               |
+| auth-service-runtime | audience        | AUTH_JWT_AUDIENCE                         | Auth·Gateway: 검증 대상 값                 |
+| auth-service-runtime | key-id          | AUTH_JWT_KEY_ID                           | Auth·Gateway: 공개 JWKS kid와 일치         |
+| auth-service-runtime | allowed-origins | AUTH_ALLOWED_ORIGINS                      | Gateway·프론트: 정확한 HTTPS Origin 목록   |
+| auth-service-runtime | terms-version   | AUTH_TERMS_VERSION                        | 2단계 Auth·프론트: 실제 이용약관 버전      |
+| auth-service-runtime | privacy-version | AUTH_PRIVACY_VERSION                      | 2단계 Auth·프론트: 실제 개인정보 동의 버전 |
+| auth-service-jwt     | private-key.pem | /var/run/secrets/auth-jwt/private-key.pem | Auth·운영: RSA PKCS#8 개인키               |
+| auth-service-jwt     | public-key.pem  | /var/run/secrets/auth-jwt/public-key.pem  | Auth·운영: 대응하는 X.509 공개키           |
 
 issuer·audience·Origin·약관 버전은 비밀번호가 아니지만 ConfigMap 허용을 추가하지 않고 Secret 참조 방식으로 함께 주입하는 후보다. 이름·배포 책임이 정해지면 일괄 맞춘다. 현재 AppProject에는 Secret 생성 권한이 없으며 이 작업에서 권한을 넓히지 않는다. Secret은 실제 배포 전에 승인된 별도 운영 경로로 준비한다.
 
 JWT 키는 2048비트 이상의 대응 쌍이고 kid는 Auth 검증 규칙을 만족해야 한다. 기존 공통 Java 이미지는 USER=app을 사용한다. UID를 고정하지 않고 보조 그룹 2000과 Secret 0440·readOnly 마운트를 조합했다. 실제 배포 전 해당 이미지 사용자와 Secret 파일 읽기를 확인한다. 실행 중 파일 변경만으로 키가 자동 재로딩된다고 가정하지 않는다. 키 교체는 별도 절차다.
 
-## 실제 연결 전 완료 조건
+## 단계별 실제 연결 조건
 
-1. #164의 인증·DB 변경에 대한 작성자 외 팀원 승인을 확인하고 Squash 병합한다. AI가 자동 병합하지 않는다.
-2. 병합 커밋의 main CI에서 검사·GHCR 게시·CI Final 성공을 확인하고 실제 존재하는 전체 SHA 이미지 태그를 확인한다. PR head 태그나 현재 초기본 태그를 새 JWT 이미지로 간주하지 않는다.
-3. 위 표의 dev 값·Secret 주입 책임과 약관 버전을 확인한다. dev DB 백업/복구 준비, 현재 Flyway 이력·V1/V2 적용 가능 여부는 DB 담당 승인 하에 점검한다. 비밀값을 출력하지 않는다.
-4. Gateway·프론트와 dev HTTPS 주소, Secure/Strict 쿠키 저장·전송, 정확한 Origin을 확인한다. prod 도메인·IP를 dev 발급자나 Origin으로 임의 재사용하지 않는다. CORS 응답·credentials·TLS 종료 위치는 이 패치로 설정되지 않는다.
-5. 별도 dev 활성화 Issue·PR에서 dev 이미지 태그 갱신과 이 패치 연결을 함께 검토한다. 현재 dev/prod Overlay는 준비 PR에서 수정하지 않는다.
-6. 실제 활성화 PR의 CI와 외부 승인을 받은 후 기존 Auth Argo CD Application의 dev 경로로 수동 Sync한다. AppProject·Gateway 재생성이나 prod 직접 apply는 포함하지 않는다.
+### 1단계: Auth 서버·공개 JWKS 확인
 
-**기능 활성화와 Flyway는 별개다.** #164 이미지가 DB에 연결해 기동하면 AUTH_SESSION_ENABLED=false여도 V2가 적용 대상이다. 신규 기능을 끄는 것을 DB 변경 승인 생략으로 사용하지 않는다. 수동 DDL·자동 down migration은 수행하지 않는다.
+- dev HTTP Gateway 10.10.22.100을 이용한 공개키 응답 확인은 dev 프론트 HTTPS 확정을 기다리지 않고 준비할 수 있다. 확인 대상 URL은 http://10.10.22.100/api/v1/auth/jwks이며 현재 응답은 404다.
+- patch.yaml은 DB·JWT 서버 설정 10개만 담는다. 실제 키·DB Secret, 승인된 issuer/audience/kid 및 허용 Origin은 기동에 필요하다. 현재 Auth 코드는 빈 Origin 목록을 거절하므로 임의 기본값으로 우회하지 않는다.
+- 약관 버전은 서버/JWKS 기동의 선행 조건이 아니어서 registration-patch.yaml로 분리했다. 미주입 시 기존 코드의 REGISTRATION_UNAVAILABLE 정책이 유지되며 회원가입 성공을 주장하지 않는다.
+- 이 단계는 공개 JWKS 메타데이터 확인이다. 실제 계정의 비밀번호·토큰을 HTTP로 보내는 브라우저 인증 검증을 포함하지 않는다. 실제 활성화 PR에서 공개 HTTP 업무 경로의 제한도 Gateway 담당과 확인한다.
+- Gateway SecurityPolicy의 원격 JWKS 취득 방식은 별도 확인한다. 설치된 CRD는 remoteJWKS.uri를 HTTPS URI로 설명하며 localJWKS도 지원한다. HTTP 공개키 응답을 확인한 것만으로 remoteJWKS.uri의 HTTP 사용이 검증됐다고 보지 않는다. Gateway 담당이 원격 HTTPS 또는 검증한 공개키의 localJWKS 등 지원 방식을 결정한다.
+
+### 2단계: 프론트·회원가입·브라우저 세션 연동
+
+- patch.yaml에 registration-patch.yaml을 추가해 실제 약관 버전 2개를 함께 주입한다. 테스트 버전을 실제 문서 버전으로 대체하지 않는다.
+- 은제님의 #175 검토처럼 브라우저에서 프론트와 /api/v1/auth가 동일 HTTPS origin으로 제공되는지 확인한다. 별도 origin이면 CORS credentials·SameSite=Strict 전송 조건을 실제 브라우저로 검증해 계약을 맞춘다.
+- Secure/HttpOnly/Strict 속성은 유지한다. 쿠키 저장·전송·회전·삭제, 탭 간 동시 갱신·초기 복원·204·401/403 흐름은 이 단계의 검증이다. 기본 Vite 설정에는 API proxy가 없어 로컬 주소 후보만으로 상대 경로 연동 완료를 판단하지 않는다.
+
+### 두 단계의 공통 배포 조건
+
+1. #164의 외부 승인·Squash 병합과 b5bc639 main CI·GHCR 게시·CI Final 성공은 확인했다. 실제 존재하는 전체 SHA 이미지 태그를 사용한다.
+2. Auth dev DB·현재 Flyway 이력·백업/복구·Secret 준비 및 적용 책임을 DB 담당과 확인한다. Secret 값은 Git/댓글/로그에 노출하지 않는다.
+3. 단계에 필요한 운영 값을 승인한 뒤 별도 활성화 Issue·PR에서 새 이미지 태그와 후보 연결을 함께 검토한다. 이 준비 PR은 현재 dev/prod Overlay를 수정하지 않는다.
+4. 실제 활성화 PR의 CI·외부 승인 후 기존 Auth Argo CD Application의 dev 경로로 수동 Sync한다. prod Gateway 삭제·재생성이나 prod 직접 apply는 포함하지 않는다.
+
+**기능 활성화와 Flyway는 별개다.** 새 이미지가 DB에 연결해 기동하면 AUTH_SESSION_ENABLED=false여도 V2가 적용 대상이다. 기능 끄기를 DB 변경 승인 대신 사용하지 않으며 수동 DDL·자동 down migration은 수행하지 않는다.
 
 ## 로컬 준비 검증
 
 1. 기존 base·dev·prod를 렌더링하고 원래 main과 비교한다. 현재 dev/prod 이미지 태그·리소스가 같아야 한다.
-2. 별도 임시 복사본에서만 dev Kustomization의 patches에 이 후보를 연결한다. dev Overlay 옆에 임시 파일로 복사하면 경로 제한을 완화할 필요가 없다.
+2. 별도 임시 복사본에서 1단계는 patch.yaml만, 2단계는 registration-patch.yaml을 추가로 연결한다. dev Overlay 옆에 복사하면 경로 제한을 완화할 필요가 없다.
 3. Deployment·Service·HTTPRoute 3개, namespace·라벨·기존 Probe·포트·HTTPRoute 보존, env/Secret 키·키 파일 경로·0440/readOnly·보조 그룹을 검사한다.
-4. 임시 연결 결과는 새 이미지 확정 전의 **구조 검증용**이며, 실제 동작하는 JWT 배포 구성이 완성됐다는 의미는 아니다.
+4. 임시 연결 결과는 **구조 검증용**이며 실제 기동·브라우저·Gateway 인증 검증은 별도다.
 5. 임시 파일을 정리하고 Auth 구현 PR·다른 작업 폴더·prod 파일이 바뀌지 않았는지 확인한다.
 
 ## 활성화 후 검증할 항목
@@ -69,7 +83,7 @@ prod Auth 배포·prod Argo CD 등록, Gateway GitOps 편입, TLS/CORS 운영 �
 
 - 원래 main과 현재 작업 폴더의 Auth base·dev·prod 렌더링 3개가 모두 동일했다.
 - 임시 복사본에서만 후보를 연결해 Deployment·Service·HTTPRoute 3개를 렌더링했다. Deployment 외 리소스, 이미지·포트·Probe·selector·namespace·라벨 보존을 검사했다.
-- Auth #164 설정 이름에 대응하는 환경 변수 12개, DB/runtime Secret 키, JWT 키 경로 2개·필수 Secret·0440/readOnly·보조 그룹 2000의 구조를 검사했다.
+- 초기 전체 후보의 환경 변수 12개, DB/runtime Secret 키, JWT 키 경로 2개·필수 Secret·0440/readOnly·보조 그룹 2000의 구조를 검사했다. 이후 서버/JWKS 10개와 회원가입 버전 2개로 분리했으며 단계별 결과는 아래 기록한다.
 - Prettier·Git 공백 검사 통과. 실제 비밀값·키·토큰·임시 산출물은 준비 파일에 포함하지 않았다.
 - 실제 Secret 존재·파일 읽기·키 유효성·DB 마이그레이션·클러스터 기동·HTTPS 브라우저·Gateway 연동은 검증하지 않았다. 구조 검증을 실제 배포 성공으로 표시하지 않는다.
 - 서비스 코드는 바꾸지 않아 Auth JUnit 134개와 기존 공통 CI 테스트를 중복 실행하지 않았다. #164의 검증 결과와 이 준비 작업의 결과는 구분한다.
@@ -96,13 +110,13 @@ DB 담당 NamGyuri는 [#164 리뷰](https://github.com/ktcloud-cloudnative-2026/
 
 ### 실제 값 확정이 필요한 항목
 
-| 담당           | 확인할 내용                                                 | 현재 상태                                          |
-| -------------- | ----------------------------------------------------------- | -------------------------------------------------- |
-| Gateway·프론트 | dev 외부 HTTPS 주소, 프론트/API 동일 출처, TLS 종료 위치    | 확인 근거 없음. prod 도메인을 임의 재사용하지 않음 |
-| Auth·Gateway   | dev issuer·audience·kid와 JWKS 연결 주소                    | 기존 설정·논의에서 실제 값을 찾지 못함             |
-| Auth·DB·운영   | Auth dev DB 접속 Secret 이름/키, 준비·주입 책임과 실행 승인 | DB 스키마 리뷰 승인 완료, 제안한 Secret은 없음     |
-| Auth·운영      | 실제 JWT 키 생성·보관·Secret 주입 책임                      | 실제 키 생성·조회·등록하지 않음                    |
-| Auth·프론트    | 실제 이용약관·개인정보 동의 버전                            | 테스트 버전을 실제 값으로 사용하지 않음            |
+| 담당           | 확인할 내용                                                    | 현재 상태                                          |
+| -------------- | -------------------------------------------------------------- | -------------------------------------------------- |
+| Gateway·프론트 | 2단계 dev 외부 HTTPS 주소, 프론트/API 동일 출처, TLS 종료 위치 | 확인 근거 없음. prod 도메인을 임의 재사용하지 않음 |
+| Auth·Gateway   | dev issuer·audience·kid와 JWKS 연결 주소                       | 기존 설정·논의에서 실제 값을 찾지 못함             |
+| Auth·DB·운영   | Auth dev DB 접속 Secret 이름/키, 준비·주입 책임과 실행 승인    | DB 스키마 리뷰 승인 완료, 제안한 Secret은 없음     |
+| Auth·운영      | 실제 JWT 키 생성·보관·Secret 주입 책임                         | 실제 키 생성·조회·등록하지 않음                    |
+| Auth·프론트    | 실제 이용약관·개인정보 동의 버전                               | 테스트 버전을 실제 값으로 사용하지 않음            |
 
 위 값은 추측으로 채우지 않는다. 실제 비밀번호·개인키는 댓글로 수집하지 않고 승인된 비공개 주입 경로로 처리한다. HTTPS/Origin·쿠키 조건을 맞추기 위해 Secure 속성을 끄는 우회도 하지 않는다.
 
@@ -111,3 +125,29 @@ DB 담당 NamGyuri는 [#164 리뷰](https://github.com/ktcloud-cloudnative-2026/
 병합 SHA `b5bc639f4f692a56b124545410b1468dd40b5b49`의 Auth 이미지 `ghcr.io/ktcloud-cloudnative-2026/team02-5xx/auth:sha-b5bc639f4f692a56b124545410b1468dd40b5b49`가 GHCR에 존재함을 확인했다. 플랫폼 linux/amd64, USER=app, OCI revision 라벨이 같은 SHA임을 확인했다. 현재 dev Overlay의 태그는 변경하지 않았다.
 
 전체 main CI의 최종 판정은 [이미지 게시 실행](https://github.com/ktcloud-cloudnative-2026/team02-5xx/actions/runs/44669173529)에서 확인하고, 성공을 실제 활성화의 선행 조건으로 유지한다. 이미지 존재만으로 쿠키·DB·Gateway 연동까지 검증됐다고 표시하지 않는다.
+
+## dev 검증 값 제안 — 승인·담당 확인 전
+
+다음은 조회 결과와 기존 프론트 README를 바탕으로 Auth 담당이 제안하는 값이다. Secret이나 실제 환경에 반영하지 않았고 팀 확정 규격으로 표시하지 않는다. Auth와 Gateway가 같은 값으로 검증해야 하므로 CLAUDE.md 0절 4항에 따라 승인·공유 후 반영한다.
+
+| 항목           | 제안 값               | 근거·범위                                                                                                |
+| -------------- | --------------------- | -------------------------------------------------------------------------------------------------------- |
+| issuer         | http://10.10.22.100   | 확인된 dev Gateway를 발급자 식별자로 사용. JWKS 취득 URI나 prod 발급자 값과 구분                         |
+| audience       | peakorder-api-dev     | dev 토큰의 검증 대상 식별 값. Gateway도 같은 문자열로 검사                                               |
+| kid            | auth-dev-01           | 첫 dev 서명키의 공개 식별자 후보. 실제 키 생성이나 키 교체 정책 결정은 아님                              |
+| allowed Origin | http://127.0.0.1:5173 | 현재 프론트 README의 strictPort 로컬 주소. 서버 검증용 후보이며 HTTPS 브라우저 연동 확정을 대신하지 않음 |
+
+issuer/audience는 [RFC 7519](https://www.rfc-editor.org/rfc/rfc7519.html#section-4.1.1)의 식별 값으로 Auth/Gateway의 정확한 문자열 일치가 필요하다. 이 제안은 dev 전용이며 prod 주소·키·대상과 섞지 않는다.
+
+공개 응답 확인 주소는 http://10.10.22.100/api/v1/auth/jwks다. **Gateway의 JWKS 취득 방식은 아직 확정하지 않는다.** 설치 CRD에는 remoteJWKS.uri의 HTTPS 설명과 localJWKS(inline/valueRef)가 있고, [공식 local JWKS 예제](https://gateway.envoyproxy.io/docs/tasks/security/jwt-authentication/#use-a-local-jwks-to-authenticate-requests)도 확인했다. 원격 HTTP URI가 동작한다고 실제 검증한 것은 아니다. Gateway 담당이 지원 방식·공개키 무결성·갱신 방식을 정하며, 필요한 SecurityPolicy/ConfigMap 등의 권한·배포는 별도 PR로 검토한다. 기존 AppProject 권한을 이 준비 작업에서 넓히지 않는다.
+
+이 후보의 승인·#112 공유가 실제 Secret 생성·DB 적용·Argo CD Sync·prod 변경 승인까지 의미하지 않는다. 개인키·비밀번호는 이 문서나 댓글에 기록하지 않는다.
+
+### 단계 분리 후 로컬 검증 기록 (2026-11-20)
+
+- 원래 main과 현재 작업 폴더의 base·dev·prod 렌더링 3개가 동일함을 재확인했다.
+- 임시 1단계 연결은 서버/JWKS 환경 변수 10개, 2단계 추가 연결은 약관 버전 포함 12개로 중복 없이 합쳐졌다. 각 단계의 Deployment·Service·HTTPRoute 3개 변환을 확인했다.
+- 기존 이미지·포트·Probe·namespace와 Service/HTTPRoute, readOnly·0440·보조 그룹 2000을 보존했다.
+- Prettier·Git 공백 검사 통과. 애플리케이션 소스·스택·공통 CI·실제 Overlay를 수정하지 않아 JUnit 134개를 중복 실행하지 않았다.
+- Gateway 읽기 전용 CRD 조회로 issuer/audiences, remoteJWKS/localJWKS 필드와 설명을 확인했다. HTTP 원격 JWKS 취득·정책 적용·실제 JWT 검증을 실행한 것은 아니다.
+- dev 운영 값은 제안 상태이며 실제 Secret·DB·키·서버·prod 리소스 변경은 없다.

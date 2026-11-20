@@ -50,16 +50,6 @@ spec:
                 secretKeyRef:
                   name: auth-service-runtime
                   key: allowed-origins
-            - name: AUTH_TERMS_VERSION
-              valueFrom:
-                secretKeyRef:
-                  name: auth-service-runtime
-                  key: terms-version
-            - name: AUTH_PRIVACY_VERSION
-              valueFrom:
-                secretKeyRef:
-                  name: auth-service-runtime
-                  key: privacy-version
             - name: AUTH_JWT_PRIVATE_KEY_FILE
               value: /var/run/secrets/auth-jwt/private-key.pem
             - name: AUTH_JWT_PUBLIC_KEY_FILE
