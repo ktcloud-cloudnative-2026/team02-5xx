@@ -65,6 +65,7 @@ DB·RabbitMQ 상태는 Probe에 넣지 않는다. 잠깐 끊겨도 Pod가 재시
 
 - **V2 마이그레이션 조건**: V2 적용 전 `status = 'COOKING'` 전표가 1개 이하여야 한다. dev·prod Cooking DB는 새 DB라 V1~V3이 차례로 적용되므로 해당 없다.
 - **Order보다 먼저 배포되면**: 조리가 끝나도 CookingCompleted를 받을 큐(`order.cooking-completed`, Order가 선언)가 없어 Outbox에 PENDING으로 쌓이고 1초마다 다시 발행을 시도한다. Order가 배포되면 자동으로 발행된다(로컬에서 같은 동작 확인).
+- **Order보다 늦게 배포되면**: Order가 보낸 OrderConfirmed는 받을 큐(`cooking.order-confirmed`, Cooking이 선언)가 없어 되돌아오고, Order는 이를 SENT로 기록하지 않고 다시 발행한다(#52, Order 담당 확인). Cooking이 기동해 큐를 선언하면 다시 발행된 이벤트부터 전달된다. 따라서 두 서비스의 배포 순서와 관계없이 이벤트가 사라지지 않는다.
 - **Order와의 관계**: Order는 Cooking 장애 감지(`/actuator/health`)로 신규 주문·결제를 막으므로, Order를 쓰려면 Cooking이 먼저 떠 있어야 한다.
 
 ## 로컬 확인
