@@ -16,6 +16,9 @@ spec:
         app: order-service
         team: team02
     spec:
+      # 같은 namespace의 Service 정보를 RABBITMQ_PORT=tcp://... 같은 환경 변수로
+      # 자동 주입하지 않게 한다. 앱 설정 이름(RABBITMQ_PORT)과 겹쳐 시작이 실패한다(Payment #160).
+      enableServiceLinks: false
       containers:
         - name: order-service
           image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/order:sha-eeee6a21cdfaeea17cc42aaf3b8829197639eae5
@@ -40,6 +43,8 @@ spec:
                   key: DB_PASSWORD
             - name: RABBITMQ_HOST
               value: rabbitmq
+            - name: RABBITMQ_PORT
+              value: "5672"
             - name: RABBITMQ_USER
               valueFrom:
                 secretKeyRef:

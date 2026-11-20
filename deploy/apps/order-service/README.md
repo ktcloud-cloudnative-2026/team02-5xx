@@ -21,7 +21,7 @@ Order 서비스를 GHCR 이미지와 Argo CD에 연결하는 Kustomize 구성이
 | `RABBITMQ_USER` | `rabbitmq-secret` | `username` | 플랫폼 RabbitMQ와 같은 Secret |
 | `RABBITMQ_PASSWORD` | `rabbitmq-secret` | `password` | |
 
-`RABBITMQ_HOST`는 플랫폼 Service 이름 `rabbitmq`를 쓴다. DB 접속 정보 이름은 Payment(`payment-service-db`)와 같은 방식이며, 팀 공통 Secret 이름 규칙이 정해지면 `base/deployment.yaml`의 `secretKeyRef` 이름만 바꾼다.
+`RABBITMQ_HOST`는 플랫폼 Service 이름 `rabbitmq`, `RABBITMQ_PORT`는 `5672`로 명시하고 `enableServiceLinks: false`를 둔다. `rabbitmq` Service가 있으면 쿠버네티스가 `RABBITMQ_PORT=tcp://<ClusterIP>:5672`를 자동으로 넣어 앱 설정(`${RABBITMQ_PORT:5672}`)의 숫자 변환이 실패하기 때문이다(Payment에서 Pod 재시작 반복으로 확인됨, #160). DB 접속 정보 이름은 Payment(`payment-service-db`)와 같은 방식이며, 팀 공통 Secret 이름 규칙이 정해지면 `base/deployment.yaml`의 `secretKeyRef` 이름만 바꾼다.
 
 ## 다른 서비스 주소
 
