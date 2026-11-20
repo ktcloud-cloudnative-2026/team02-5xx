@@ -60,7 +60,7 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 - `lookup`이 `OK`가 아니면 조리 정보 필드는 모두 생략한다.
 - Cooking 조회가 실패해도 상세 조회는 성공하고 주문 상태는 바뀌지 않는다(`UNAVAILABLE`). Cooking 호출은 연결 1초·응답 2초로 제한하고, 주문을 읽는 DB 트랜잭션은 호출 전에 닫는다.
 - 최상위 `expectedWaitSec`(주문 시점 예상)와 주문 목록(OR-03)은 바뀌지 않는다.
-- Cooking CI-02가 `expectedWaitSec`=조리 시작까지, `expectedReadySec`=조리 완료까지로 바뀌기 전에는 응답에 `expectedReadySec`가 없다. 이 경우 `HttpCookingClient`가 기존 값(완료까지)을 변환해 같은 의미로 내려준다. Cooking 변경이 병합되면 변환 분기(`HttpCookingClient.toStatus`의 TODO)를 삭제한다.
+- Cooking CI-02는 `expectedWaitSec`=조리 시작까지, `expectedReadySec`=조리 완료까지다(Cooking #141 병합). `expectedReadySec`가 없거나 음수인 응답은 계약 위반으로 보고 `UNAVAILABLE`로 처리한다.
 
 ### 결제(OR-02) 동작 규칙
 
