@@ -32,7 +32,18 @@ kubectl create secret generic rabbitmq-secret -n peakorder \
 kubectl apply -f gateway.yaml
 kubectl apply -f rabbitmq.yaml
 kubectl apply -f redis.yaml
+kubectl apply -f network-policies.yaml
 ```
+> `network-policies.yaml`은 `peakorder`에 들어오는 요청을 **기본 차단**하고 서비스별로 필요한 호출만 엽니다(Gateway 우회 차단, #112). 새 서비스를 배포할 때는 이 파일에 허용 규칙을 같이 추가해야 합니다. 허용 명단은 아래 표를 따릅니다.
+>
+> | 받는 쪽 | 허용하는 보내는 쪽 |
+> |---|---|
+> | auth-service, web-frontend, order-service | Gateway(`envoy-gateway-system`), 모니터링(`monitoring`) |
+> | menu-service | Gateway, 모니터링, order-service, cooking-service |
+> | cooking-service | Gateway, 모니터링, order-service |
+> | inventory-service, payment-service | 모니터링, order-service |
+> | rabbitmq (5672) | order-service, payment-service, cooking-service |
+> | redis | 없음 (사용 서비스가 생기면 추가) |
 
 ## 5. 확인
 ```bash
