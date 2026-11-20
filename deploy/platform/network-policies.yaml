@@ -2,7 +2,7 @@
 # - 기본은 전부 차단하고, 서비스마다 필요한 호출만 연다 (#112 A안: Gateway 우회 차단).
 # - 나가는 트래픽(egress)은 막지 않는다. DB(t2-db)·DNS 접속은 그대로다.
 # - 노드에서 오는 kubelet 검사(probe)는 Calico가 항상 허용한다.
-# - 호출 관계 근거: Order → Menu·Inventory·Payment·Cooking, Cooking → Menu,
+# - 호출 관계 근거: Order → Menu·Inventory·Payment·Cooking, Cooking → Menu, Inventory → Menu(IN-05),
 #   Order·Payment·Cooking → RabbitMQ (각 서비스 client·application 설정).
 # - 새 서비스를 추가하면 여기에도 허용 규칙을 추가해야 한다(없으면 막힘).
 
@@ -125,6 +125,9 @@ spec:
         - podSelector:
             matchLabels:
               app: cooking-service
+        - podSelector:
+            matchLabels:
+              app: inventory-service
       ports:
         - port: 8080
 ---

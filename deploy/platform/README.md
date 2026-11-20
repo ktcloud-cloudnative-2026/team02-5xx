@@ -32,18 +32,35 @@ kubectl create secret generic rabbitmq-secret -n peakorder \
 kubectl apply -f gateway.yaml
 kubectl apply -f rabbitmq.yaml
 kubectl apply -f redis.yaml
+```
+
+### NetworkPolicy (`network-policies.yaml`) — dev 전용 직접 적용
+
+`peakorder`에 들어오는 요청을 **기본 차단**하고 서비스별로 필요한 호출만 엽니다(Gateway 우회 차단, #112). namespace 전체 통신에 바로 영향을 주므로 **접속한 클러스터를 반드시 확인**한 뒤 적용합니다.
+
+```bash
+hostname                          # t2-dev-cp 인지 확인
+kubectl config current-context    # dev 클러스터인지 확인
+kubectl apply --dry-run=server -f network-policies.yaml
 kubectl apply -f network-policies.yaml
 ```
-> `network-policies.yaml`은 `peakorder`에 들어오는 요청을 **기본 차단**하고 서비스별로 필요한 호출만 엽니다(Gateway 우회 차단, #112). 새 서비스를 배포할 때는 이 파일에 허용 규칙을 같이 추가해야 합니다. 허용 명단은 아래 표를 따릅니다.
->
-> | 받는 쪽 | 허용하는 보내는 쪽 |
-> |---|---|
-> | auth-service, web-frontend, order-service | Gateway(`envoy-gateway-system`), 모니터링(`monitoring`) |
-> | menu-service | Gateway, 모니터링, order-service, cooking-service |
-> | cooking-service | Gateway, 모니터링, order-service |
-> | inventory-service, payment-service | 모니터링, order-service |
-> | rabbitmq (5672) | order-service, payment-service, cooking-service |
-> | redis | 없음 (사용 서비스가 생기면 추가) |
+
+- **prod에는 이 명령으로 적용하지 않습니다.** prod NetworkPolicy는 CLAUDE.md 8절에 따라 Git PR → Argo CD 경로로 적용합니다(prod Argo CD 구성 후 별도 작업). prod 일회성 예외(#169·PR #171)는 `namespaces.yaml`·`gateway.yaml` 두 파일에만 해당합니다.
+- 새 서비스를 배포할 때는 이 파일에 허용 규칙을 같이 추가해야 합니다. 허용 명단은 아래 표를 따릅니다.
+
+| 받는 쪽 | 허용하는 보내는 쪽 |
+|---|---|
+| auth-service, web-frontend, order-service | Gateway(`envoy-gateway-system`), 모니터링(`monitoring`) |
+| menu-service | Gateway, 모니터링, order-service, cooking-service, inventory-service |
+| cooking-service | Gateway, 모니터링, order-service |
+| inventory-service, payment-service | 모니터링, order-service |
+| rabbitmq (5672) | order-service, payment-service, cooking-service |
+| redis | 없음 (사용 서비스가 생기면 추가) |
+
+**한계**
+- `namespaceSelector`로 허용한 namespace(Gateway·모니터링)는 그 안의 모든 Pod를 신뢰합니다. 같은 `app` 라벨을 단 Pod나 허용된 내부 호출자가 침해된 경우의 사칭은 이 정책만으로 막지 못합니다.
+- Kubernetes NetworkPolicy는 대상 Pod가 실행 중인 **같은 노드에서 오는 트래픽**을 차단하는 수단이 아닙니다([공식 문서](https://kubernetes.io/docs/concepts/services-networking/network-policies/#what-you-cant-do-with-network-policies-at-least-not-yet)). 노드 접근 권한 관리가 함께 필요합니다.
+- 모니터링은 앱 포트 8080만 허용합니다. RabbitMQ 지표(예: 15692)를 수집하려면 metrics 노출과 최소 ingress를 후속 작업으로 추가합니다.
 
 ## 5. 확인
 ```bash
