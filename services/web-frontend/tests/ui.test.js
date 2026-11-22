@@ -54,7 +54,7 @@ test('anonymous session cannot be enabled by persisted data', () => {
 test('cart deep link keeps the menu underneath and renders an overlay only for an injected signed-in session', () => {
   const previous = globalThis.window;
   globalThis.window = { location: { hash: '#cart' } };
-  const snapshot = Object.freeze({ authenticated: true });
+  const snapshot = Object.freeze({ authenticated: true, role: 'CUSTOMER' });
   const storageProvider = () => ({ getItem: () => null });
   try {
     const signed = render(App, {
@@ -78,7 +78,7 @@ test('cart deep link keeps the menu underneath and renders an overlay only for a
 });
 
 test('signed-in UI is an injected test snapshot, not an implementation of authentication', () => {
-  const snapshot = Object.freeze({ authenticated: true });
+  const snapshot = Object.freeze({ authenticated: true, role: 'CUSTOMER' });
   const sessionSource = {
     subscribe: () => () => {},
     getSnapshot: () => snapshot,
@@ -132,12 +132,14 @@ test('menu detail retains radio defaults, inactive options, quantity and new ent
   assert.ok(html.includes('선택 수량'));
 });
 
-test('login modal provides a return path without collecting or pretending to verify credentials', () => {
+test('login modal provides real credential fields and a return path, without pretending to authenticate', () => {
   const html = render(LoginModal, { onClose: () => {} });
   assert.ok(html.includes('로그인이 필요해요'));
   assert.ok(html.includes('선택한 화면으로 돌아가기'));
   assert.ok(html.includes('disabled=""'));
-  assert.ok(!html.includes('type="password"'));
+  assert.ok(html.includes('type="password"'));
+  assert.ok(html.toLowerCase().includes('autocomplete="current-password"'));
+  assert.ok(html.includes('로그인 유지'));
 });
 
 test('existing menu catalog behavior stays intact', () => {

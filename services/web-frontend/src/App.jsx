@@ -11,12 +11,13 @@ import {
   removeItem,
   saveCart,
 } from './cart.js';
-import { anonymousSession, planCartIntent } from './session.js';
+import { canUseCustomerFeatures, planCartIntent } from './session.js';
+import { authSession } from './authSession.js';
 import CartOverlay from './components/CartOverlay.jsx';
 import LoginModal from './components/LoginModal.jsx';
 
 export default function App({
-  sessionSource = anonymousSession,
+  sessionSource = authSession,
   storageProvider = browserStorage,
 }) {
   const session = useSyncExternalStore(
@@ -24,7 +25,17 @@ export default function App({
     sessionSource.getSnapshot,
     sessionSource.getServerSnapshot ?? sessionSource.getSnapshot,
   );
-  const signedIn = session?.authenticated === true;
+  const authenticated = session?.authenticated === true;
+  const signedIn = canUseCustomerFeatures(session);
+  const lastCustomer = useRef(null);
+  const cartAccountMismatch =
+    signedIn &&
+    lastCustomer.current !== null &&
+    session.user?.id !== undefined &&
+    session.user.id !== lastCustomer.current;
+  const [authBusy, setAuthBusy] = useState(false);
+  const [logoutFailed, setLogoutFailed] = useState(false);
+  const previousAuthenticated = useRef(authenticated);
   const [page, setPage] = useState(() =>
     typeof window !== 'undefined' && window.location.hash === '#cart'
       ? 'cart'
@@ -50,6 +61,21 @@ export default function App({
   const selectedMenu = selectedId === null ? null : getMenu(selectedId);
 
   useEffect(() => {
+    // The store owns restoration; StrictMode must not cancel or duplicate rotation.
+    void sessionSource.restore?.();
+  }, [sessionSource]);
+
+  useEffect(() => {
+    if (
+      signedIn &&
+      session.user?.id !== undefined &&
+      lastCustomer.current === null
+    ) {
+      lastCustomer.current = session.user.id;
+    }
+  }, [signedIn, session?.user?.id]);
+
+  useEffect(() => {
     const onHistory = () => {
       const next = window.location.hash === '#cart' ? 'cart' : 'menu';
       if (next === 'cart' && previousPage.current !== 'cart')
@@ -67,18 +93,55 @@ export default function App({
   }, []);
 
   useEffect(() => {
-    if (page === 'cart' && !signedIn && !loginIntent) {
-      setLoginIntent({ type: 'view', id: ++intentNumber.current });
+    const expired =
+      previousAuthenticated.current &&
+      !authenticated &&
+      session?.reason === 'expired';
+    previousAuthenticated.current = authenticated;
+    if (cartAccountMismatch && page === 'cart') {
+      closeCart();
+      setNotice(
+        '계정이 변경되어 기존 장바구니를 사용할 수 없어요. 저장된 항목은 보존했습니다.',
+      );
+    } else if (authenticated && !signedIn && page === 'cart') {
+      closeCart();
+      setNotice('고객 장바구니와 주문은 CUSTOMER 계정만 이용할 수 있어요.');
+    } else if (
+      !authenticated &&
+      session?.phase !== 'restoring' &&
+      session?.phase !== 'authenticating' &&
+      !loginIntent &&
+      (page === 'cart' || expired)
+    ) {
+      setLoginIntent({
+        type: page === 'cart' ? 'view' : 'login',
+        id: ++intentNumber.current,
+      });
     }
-  }, [page, signedIn, loginIntent]);
+  }, [
+    page,
+    authenticated,
+    signedIn,
+    loginIntent,
+    session?.phase,
+    session?.reason,
+    cartAccountMismatch,
+  ]);
 
   useEffect(() => {
-    if (signedIn && loginIntent && handledIntent.current !== loginIntent.id) {
+    if (
+      authenticated &&
+      loginIntent &&
+      handledIntent.current !== loginIntent.id
+    ) {
       handledIntent.current = loginIntent.id;
       setLoginIntent(null);
-      executeIntent(planCartIntent(session, loginIntent).action);
+      const planned = planCartIntent(session, loginIntent);
+      if (planned.forbidden)
+        setNotice('고객 장바구니와 주문은 CUSTOMER 계정만 이용할 수 있어요.');
+      else executeIntent(planned.action);
     }
-  }, [signedIn, loginIntent]);
+  }, [authenticated, signedIn, loginIntent]);
 
   useEffect(() => {
     const pageChanged = previousPage.current !== page;
@@ -135,6 +198,16 @@ export default function App({
 
   function executeIntent(intent) {
     if (!signedIn) return;
+    if (cartAccountMismatch) {
+      setNotice(
+        '계정이 변경되어 기존 장바구니를 사용할 수 없어요. 저장된 항목은 보존했습니다. 계정별 처리 정책 확인이 필요합니다.',
+      );
+      return;
+    }
+    if (intent.type === 'login') {
+      setNotice('로그인했어요.');
+      return;
+    }
     if (intent.type === 'view') {
       navigate('cart');
       return;
@@ -161,7 +234,9 @@ export default function App({
   function requestIntent(intent) {
     setNotice('');
     const planned = planCartIntent(session, intent);
-    if (planned.pending) {
+    if (planned.forbidden) {
+      setNotice('고객 장바구니와 주문은 CUSTOMER 계정만 이용할 수 있어요.');
+    } else if (planned.pending) {
       setLoginIntent({ ...planned.pending, id: ++intentNumber.current });
     } else {
       executeIntent(planned.action);
@@ -177,6 +252,7 @@ export default function App({
 
   function updateCart(key, quantity) {
     if (!signedIn) return requestIntent({ type: 'view' });
+    if (cartAccountMismatch) return;
     try {
       persist(changeQuantity(cart.items, key, quantity, getMenu));
       setNotice('수량을 변경했어요.');
@@ -187,6 +263,7 @@ export default function App({
 
   function deleteCartItem(key) {
     if (!signedIn) return requestIntent({ type: 'view' });
+    if (cartAccountMismatch) return;
     persist(removeItem(cart.items, key, getMenu));
     setNotice('장바구니에서 삭제했어요.');
     requestAnimationFrame(() => document.getElementById('cart-title')?.focus());
@@ -215,6 +292,25 @@ export default function App({
   function closeMenu() {
     setSelectedId(null);
     openerRef.current?.focus();
+  }
+
+  async function signOut() {
+    if (authBusy || !sessionSource.logout) return;
+    setAuthBusy(true);
+    setLoginIntent(null);
+    if (page === 'cart') closeCart();
+    try {
+      await sessionSource.logout();
+      setLogoutFailed(false);
+      setNotice('로그아웃했어요. 장바구니 항목은 이 브라우저에 보존했습니다.');
+    } catch {
+      setLogoutFailed(true);
+      setNotice(
+        '화면의 세션은 종료했지만 서버 로그아웃을 확인하지 못했어요. 다시 시도해 주세요.',
+      );
+    } finally {
+      setAuthBusy(false);
+    }
   }
 
   return (
@@ -263,7 +359,7 @@ export default function App({
         </nav>
       </aside>
       <main className="menu-page">
-        {(page !== 'cart' || !signedIn) && (
+        {(page !== 'cart' || !signedIn || cartAccountMismatch) && (
           <p className="action-notice" role="status" aria-live="polite">
             {notice}
           </p>
@@ -274,6 +370,37 @@ export default function App({
               <strong>메뉴</strong> 카테고리
             </h1>
             <div className="header-actions">
+              {authenticated && (
+                <span className="session-user" aria-label="로그인 사용자">
+                  {session.user?.nickname || session.user?.email || '로그인됨'}
+                </span>
+              )}
+              {authenticated ? (
+                <button
+                  className="text-button"
+                  onClick={signOut}
+                  disabled={authBusy}
+                >
+                  로그아웃
+                </button>
+              ) : (
+                <button
+                  className="text-button"
+                  disabled={authBusy || session?.phase === 'restoring'}
+                  onClick={() => requestIntent({ type: 'login' })}
+                >
+                  {session?.phase === 'restoring' ? '세션 확인 중' : '로그인'}
+                </button>
+              )}
+              {logoutFailed && (
+                <button
+                  className="text-button"
+                  disabled={authBusy}
+                  onClick={signOut}
+                >
+                  로그아웃 다시 시도
+                </button>
+              )}
               <label className="search-field">
                 <svg
                   viewBox="0 0 24 24"
@@ -386,7 +513,7 @@ export default function App({
           </section>
         </>
       </main>
-      {page === 'cart' && signedIn && (
+      {page === 'cart' && signedIn && !cartAccountMismatch && (
         <CartOverlay
           rows={view.rows}
           total={view.total}
@@ -411,7 +538,13 @@ export default function App({
           onViewCart={requestCart}
         />
       )}
-      {loginIntent && !signedIn && <LoginModal onClose={closeLogin} />}
+      {loginIntent && !authenticated && (
+        <LoginModal
+          onClose={closeLogin}
+          onLogin={sessionSource.login}
+          waiting={session?.phase === 'restoring' || authBusy}
+        />
+      )}
     </div>
   );
 }

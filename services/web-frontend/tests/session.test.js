@@ -33,10 +33,13 @@ test('a future injected verified snapshot resumes the exact pending selection', 
     type: 'add',
     selection: { menuId: 1, optionIds: [2], quantity: 3 },
   }).pending;
-  assert.deepEqual(planCartIntent({ authenticated: true }, pending), {
-    action: pending,
-    pending: null,
-  });
+  assert.deepEqual(
+    planCartIntent({ authenticated: true, role: 'CUSTOMER' }, pending),
+    {
+      action: pending,
+      pending: null,
+    },
+  );
 });
 
 test('a role or arbitrary stored token does not represent a connected UI session', () => {
