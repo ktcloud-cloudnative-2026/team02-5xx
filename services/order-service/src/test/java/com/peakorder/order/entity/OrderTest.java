@@ -221,4 +221,45 @@ class OrderTest {
     assertThat(OrderStatus.PAID.isConfirmed()).isTrue();
     assertThat(OrderStatus.COMPLETED.isConfirmed()).isTrue();
   }
+
+  // ---- 수동 확인 필요 판단 (관리자 조회·지표와 같은 기준) ----
+
+  private Order canceledPaidOrder() {
+    Order order = Order.createTemporary(7L, now);
+    order.addItem(1L, "아메리카노", 3000, 1, List.of());
+    order.markConfirmed("261120-0001", 55L, now);
+    order.markCanceled("CUSTOMER_CANCEL", now);
+    return order;
+  }
+
+  @Test
+  void a_canceled_order_with_unfinished_follow_ups_marked_manual_needs_review() {
+    Order order = canceledPaidOrder();
+    assertThat(order.needsManualReview()).isFalse(); // 표시 전
+
+    order.markCancelFollowUpManual("REFUND_NOT_REFUNDABLE", now);
+
+    assertThat(order.needsManualReview()).isTrue();
+  }
+
+  @Test
+  void the_manual_mark_stops_counting_once_both_follow_ups_are_finished() {
+    Order order = canceledPaidOrder();
+    order.markCancelFollowUpManual("REFUND_NOT_REFUNDABLE", now);
+    order.markStockRestored(now);
+    assertThat(order.needsManualReview()).isTrue(); // 환불이 아직 안 끝남
+
+    order.markRefunded(now);
+
+    assertThat(order.needsManualReview()).isFalse();
+  }
+
+  @Test
+  void an_order_that_is_not_canceled_never_needs_manual_review() {
+    Order order = Order.createTemporary(7L, now);
+    order.addItem(1L, "아메리카노", 3000, 1, List.of());
+    order.markConfirmed("261120-0002", 56L, now);
+
+    assertThat(order.needsManualReview()).isFalse();
+  }
 }
