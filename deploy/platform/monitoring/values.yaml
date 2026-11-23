@@ -128,13 +128,15 @@ grafana:
     passwordKey: admin-password
   persistence:
     enabled: false
+  # 11/23 Prometheus 설치 뒤 접속하자 256Mi를 넘어 OOMKilled(재시작 7회, #238).
+  # 데이터 소스·기본 대시보드를 불러올 때 메모리가 늘어남. Grafana 권장 최소 512MB 기준.
   resources:
     requests:
       cpu: 50m
-      memory: 128Mi
+      memory: 256Mi
     limits:
       cpu: 500m
-      memory: 256Mi
+      memory: 512Mi
 
 # --- kube-state-metrics (Kubernetes 객체 상태: 재시작 수, 복제본 등) ---
 kube-state-metrics:

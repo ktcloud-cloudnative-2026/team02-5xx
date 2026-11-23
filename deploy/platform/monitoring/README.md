@@ -53,12 +53,13 @@ dev 노드(11/20): t2-dev-cp CPU 2·약 3.8Gi(실사용 78%), t2-dev-w1·w2 CPU 
 | Prometheus | 100m / 512Mi | 1 / 1Gi | 1 |
 | Alertmanager | 10m / 32Mi | 100m / 128Mi | 1 |
 | Prometheus Operator | 50m / 128Mi | 200m / 256Mi | 1 |
-| Grafana | 50m / 128Mi | 500m / 256Mi | 1 (+ sidecar) |
+| Grafana | 50m / 256Mi | 500m / 512Mi | 1 (+ sidecar) |
 | kube-state-metrics | 20m / 64Mi | 100m / 128Mi | 1 |
 | node-exporter | 20m / 32Mi | 100m / 64Mi | 노드마다 1 (cp 포함) |
 
 - node-exporter는 DaemonSet이라 메모리가 빠듯한 cp에도 뜬다 → 제한을 작게 둔다.
-- 요청 합계 약 1Gi(node-exporter 3개 포함, sidecar·config-reloader 제외). 실제 사용량을 본 뒤 조정한다.
+- 요청 합계 약 1.1Gi(node-exporter 3개 포함, sidecar·config-reloader 제외). 실제 사용량을 본 뒤 조정한다.
+- Grafana는 처음 128Mi / 256Mi였으나, 11/23 Prometheus 설치 뒤 접속하자 데이터 소스·기본 대시보드를 불러오며 256Mi를 넘어 OOMKilled(재시작 7회) → 256Mi / 512Mi로 올림(#238, Grafana 권장 최소 512MB).
 
 ## 렌더링 결과 (103개)
 
