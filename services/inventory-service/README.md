@@ -5,6 +5,7 @@
 - 스택: Java 21, Spring Boot 4.1.2, Gradle, PostgreSQL(Flyway), springdoc-openapi
 - 패키지: `com.peakorder.inventory` 아래 `controller / service / repository / dto / entity` (+ `client`, `config`, `exception`)
 - 담당: 남규리
+- Redis: 사용하지 않는다. 재고 확보 만료는 DB `inventory_reservations.expires_at` 기준 스케줄러(기본 5초 간격)가 처리한다.
 
 ## 실행
 
@@ -56,7 +57,7 @@ export DB_USER=<사용자> DB_PASSWORD=<비밀번호>
 
 - IN-02는 재고 항목 목록을, IN-03~06은 바뀐 재고 항목 `{stockItemId, menuId, stockQty, reservedQty, availableQty, lowStockThreshold, lowStock}`을 돌려준다.
 - IN-01의 `orderable`은 재고 기준만 본다(연결됨 + 주문 가능 수량 1 이상). 메뉴 판매 상태와의 결합은 프론트가 한다. 미연결 메뉴는 오류가 아니라 `false`. 잠금 없이 읽는다. `menuIds`가 없거나 숫자가 아니거나 0 이하이거나 100개를 넘으면 400.
-- IN-05 오류: 없는 메뉴 404 `MENU_NOT_FOUND`, 숨김 메뉴 409 `MENU_NOT_LINKABLE`, 이미 다른 재고에 연결된 메뉴 409 `MENU_ALREADY_LINKED`, 현재 메뉴로 결제 대기(`RESERVED`)이거나 복원될 수 있는 확정(`CONFIRMED`) 주문이 있으면 409 `STOCK_ITEM_IN_USE`, Menu 장애 503 `MENU_SERVICE_UNAVAILABLE`(기존 연결 유지). ON_SALE·PAUSED 메뉴는 연결할 수 있다.
+- IN-05 오류: 없는 메뉴 404 `MENU_NOT_FOUND`, 숨김 메뉴 409 `MENU_NOT_LINKABLE`, 이미 다른 재고에 연결된 메뉴 409 `MENU_ALREADY_LINKED`(동시에 같은 메뉴를 연결해도 409 `MENU_ALREADY_LINKED`), 현재 메뉴로 결제 대기(`RESERVED`)이거나 복원될 수 있는 확정(`CONFIRMED`) 주문이 있으면 409 `STOCK_ITEM_IN_USE`, Menu 장애 503 `MENU_SERVICE_UNAVAILABLE`(기존 연결 유지). ON_SALE·PAUSED 메뉴는 연결할 수 있다.
 - 관리자 API는 `INVENTORY_ADMIN_ENABLED=true`일 때만 등록된다(기본 꺼짐, 꺼져 있으면 404). 공유 dev·prod에서는 JWT 공통 계약(#112)의 `STORE_ADMIN` 인가와 Gateway 격리를 확인하기 전까지 켜지 않는다.
 - IN-02는 삭제되지 않은 재고만 id순으로 잠금 없이 읽는다. `lowStockOnly`(기본 `false`)가 `true`면 부족한 것만.
 - IN-06은 행을 지우지 않고 `deleted_at`을 기록한 뒤 메뉴 연결을 푼다(그 메뉴는 다른 재고에 다시 연결할 수 있다). 연결된 메뉴로 결제 대기(`RESERVED`)이거나 복원될 수 있는 확정(`CONFIRMED`) 주문이 있으면 409 `STOCK_ITEM_IN_USE`, 없거나 이미 삭제된 재고는 404 `INVENTORY_NOT_FOUND`. 삭제된 재고는 IN-01·IN-02·IN-04·IN-05·II-01~04에서 없는 것으로 본다.
@@ -72,7 +73,7 @@ export DB_USER=<사용자> DB_PASSWORD=<비밀번호>
 
 | ID | 이미 처리된 경우 (200) | 오류 |
 |---|---|---|
-| II-01 | 같은 `orderId`면 기존 확보 반환 | 409 `INSUFFICIENT_STOCK`, 409 `STOCK_NOT_LINKED` |
+| II-01 | 같은 `orderId`면 기존 확보 반환(같은 orderId 동시 요청도 같은 확보를 돌려준다) | 409 `INSUFFICIENT_STOCK`, 409 `STOCK_NOT_LINKED` |
 | II-02 | 이미 `CONFIRMED` | 409 `HOLD_NOT_ACTIVE`(만료·해제), 404 `HOLD_NOT_FOUND` |
 | II-03 | 이미 `RELEASED`·`EXPIRED` | 409 `HOLD_NOT_ACTIVE`(확정됨), 404 `HOLD_NOT_FOUND` |
 | II-04 | 이미 `RESTORED` | 409 `RESTORE_NOT_APPLICABLE`(확정된 확보 없음) |
