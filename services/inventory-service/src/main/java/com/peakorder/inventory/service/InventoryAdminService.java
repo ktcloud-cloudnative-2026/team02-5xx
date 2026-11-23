@@ -13,6 +13,7 @@ import com.peakorder.inventory.repository.InventoryRepository;
 import com.peakorder.inventory.repository.InventoryReservationItemRepository;
 import java.util.List;
 import java.util.Objects;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -86,6 +87,16 @@ public class InventoryAdminService {
 
     // 6. 연결한다 (menuId가 null이면 연결 해제)
     inventory.linkMenu(menuId);
+
+    // 7. 5단계 확인은 다른 재고 행을 잠그지 않아 동시 요청을 막지 못한다. 최종 판정은 menu_id UNIQUE가 하므로
+    //    바로 반영해 보고, 위반이면 500 대신 409로 돌려준다. 연결 해제(null)는 UNIQUE와 무관하다.
+    if (menuId != null) {
+      try {
+        inventoryRepository.flush();
+      } catch (DataIntegrityViolationException e) {
+        throw new BusinessException(ErrorCode.MENU_ALREADY_LINKED);
+      }
+    }
     return StockItemResponse.from(inventory);
   }
 
