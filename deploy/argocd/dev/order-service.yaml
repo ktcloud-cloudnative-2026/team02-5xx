@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: order-service-dev
+  namespace: argocd
+  labels:
+    app: order-service
+    team: team02
+spec:
+  project: peakorder-dev
+  source:
+    repoURL: https://github.com/ktcloud-cloudnative-2026/team02-5xx.git
+    targetRevision: main
+    path: deploy/apps/order-service/overlays/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: peakorder
+  # Issue #204(#186): 이후 HPA가 Pod 수를 정할 때 Argo CD가 Git의 replicas(1)로 되돌리지 않게 한다.
+  # 이 Deployment의 /spec/replicas만 무시하며 이미지·환경 변수·자원 제한은 계속 Git과 맞춘다.
+  # ignoreDifferences만으로는 Sync가 replicas를 덮어쓰므로 RespectIgnoreDifferences와 함께 쓴다.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: order-service
+      namespace: peakorder
+      jsonPointers:
+        - /spec/replicas
+  syncPolicy:
+    automated:
+      enabled: true
+      prune: false
+      selfHeal: false
+      allowEmpty: false
+    syncOptions:
+      - RespectIgnoreDifferences=true

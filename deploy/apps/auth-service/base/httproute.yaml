@@ -1,0 +1,30 @@
+# Gateway(peakorder-gateway)에서 Auth로 가는 길 안내.
+# - 외부 API /api/v1/auth/** 만 연다. /internal/**, /admin/** 은 열지 않는다.
+# - 클라이언트가 보낸 신원 헤더(X-User-Id, X-User-Role)는 Gateway에서 지운다.
+#   헤더 이름은 #112에서 확정 전 후보값이며, 확정되면 같이 바꾼다.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: auth-service
+  labels:
+    app: auth-service
+    team: team02
+spec:
+  parentRefs:
+    - name: peakorder-gateway
+      namespace: envoy-gateway-system
+      sectionName: http
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/v1/auth
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            remove:
+              - X-User-Id
+              - X-User-Role
+      backendRefs:
+        - name: auth-service
+          port: 8080

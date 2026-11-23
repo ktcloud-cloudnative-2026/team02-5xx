@@ -1,10 +1,16 @@
-// Auth integration boundary. No cookie/header/storage/query parameter grants a session here.
-// A future Auth integration must publish stable snapshots and notify subscribers.
+// Explicitly injected anonymous source remains available to tests and isolated previews.
 export const anonymousSession = Object.freeze({
   subscribe: () => () => {},
   getSnapshot: () => null,
   getServerSnapshot: () => null,
 });
+
+export function canUseCustomerFeatures(session) {
+  return (
+    session?.authenticated === true &&
+    (session.user?.role ?? session.role) === 'CUSTOMER'
+  );
+}
 
 // Preserve only the UI action and selection; never a token or credential.
 export function planCartIntent(session, intent) {
@@ -20,7 +26,9 @@ export function planCartIntent(session, intent) {
         }
       : {}),
   };
-  return session?.authenticated === true
-    ? { action, pending: null }
-    : { action: null, pending: action };
+  if (['add', 'view'].includes(action.type) || canUseCustomerFeatures(session))
+    return { action, pending: null };
+  if (session?.authenticated === true)
+    return { action: null, pending: null, forbidden: true };
+  return { action: null, pending: action };
 }

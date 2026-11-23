@@ -11,13 +11,15 @@
   "scripts": {
     "test": "node --test tests/*.test.js tests/*.test.mjs",
     "test:ui": "node tests/ui-fixture.mjs",
-    "preview:admin": "node scripts/admin-preview.mjs",
-    "check:admin-boundary": "node scripts/check-admin-boundary.mjs",
+    "test:checkout:ui": "node tests/checkout-preview.mjs",
+    "test:customer:ui": "node tests/customer-http-preview.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "format": "prettier . --write",
-    "format:check": "prettier . --check"
+    "format:check": "prettier . --check",
+    "preview:admin": "node scripts/admin-preview.mjs",
+    "check:admin-boundary": "node scripts/check-admin-boundary.mjs"
   },
   "dependencies": {
     "react": "19.3.1",

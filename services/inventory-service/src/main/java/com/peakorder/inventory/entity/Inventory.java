@@ -36,7 +36,17 @@ public class Inventory {
   @Column(name = "updated_at", nullable = false)
   private OffsetDateTime updatedAt;
 
+  @Column(name = "deleted_at")
+  private OffsetDateTime deletedAt;
+
   protected Inventory() {}
+
+  public Inventory(int stockQty, int lowStockThreshold) {
+    this.stockQty = stockQty;
+    this.reservedQty = 0;
+    this.lowStockThreshold = lowStockThreshold;
+    this.updatedAt = OffsetDateTime.now();
+  }
 
   public Long getId() {
     return id;
@@ -54,8 +64,20 @@ public class Inventory {
     return reservedQty;
   }
 
+  public int getLowStockThreshold() {
+    return lowStockThreshold;
+  }
+
   public int getAvailableQty() {
     return stockQty - reservedQty;
+  }
+
+  public boolean isDeleted() {
+    return deletedAt != null;
+  }
+
+  public boolean isLowStock() {
+    return getAvailableQty() <= lowStockThreshold;
   }
 
   public void reserve(int quantity) {
@@ -80,5 +102,26 @@ public class Inventory {
   public void restore(int quantity) {
     stockQty += quantity;
     updatedAt = OffsetDateTime.now();
+  }
+
+  public void addStock(int quantity) {
+    stockQty += quantity;
+    updatedAt = OffsetDateTime.now();
+  }
+
+  public void linkMenu(Long menuId) {
+    this.menuId = menuId;
+    updatedAt = OffsetDateTime.now();
+  }
+
+  /**
+   * IN-06 논리 삭제. 메뉴 연결도 푼다: menu_id가 UNIQUE라 그 메뉴를 다른 재고에 다시 연결할 수 있고, 메뉴 번호로 재고를 찾는
+   * IN-01·II-01~04에서 자동으로 빠진다.
+   */
+  public void delete() {
+    OffsetDateTime now = OffsetDateTime.now();
+    deletedAt = now;
+    menuId = null;
+    updatedAt = now;
   }
 }

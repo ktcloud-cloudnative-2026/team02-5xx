@@ -162,21 +162,9 @@ class HttpCookingClientTest {
   }
 
   @Test
-  void old_contract_waiting_converts_wait_to_until_start() {
-    // 변경 전 Cooking: expectedWaitSec가 완료까지 시간이고 expectedReadySec가 없다.
+  void cooking_has_no_wait_and_ready_is_the_remaining_time() {
     statusReturns(
-        "{\"orderId\":100,\"status\":\"WAITING\",\"waitingAhead\":2,\"estimatedCookSec\":120,\"expectedWaitSec\":420}");
-
-    var s = client.getStatus(100L).orElseThrow();
-
-    assertThat(s.expectedReadySec()).isEqualTo(420);
-    assertThat(s.expectedWaitSec()).isEqualTo(300);
-  }
-
-  @Test
-  void old_contract_cooking_has_no_wait_and_ready_is_the_remaining_time() {
-    statusReturns(
-        "{\"orderId\":100,\"status\":\"COOKING\",\"waitingAhead\":0,\"estimatedCookSec\":120,\"expectedWaitSec\":45,"
+        "{\"orderId\":100,\"status\":\"COOKING\",\"waitingAhead\":0,\"estimatedCookSec\":120,\"expectedWaitSec\":0,\"expectedReadySec\":45,"
             + "\"startedAt\":\"2026-11-19T10:00:00+09:00\"}");
 
     var s = client.getStatus(100L).orElseThrow();
@@ -187,14 +175,31 @@ class HttpCookingClientTest {
   }
 
   @Test
-  void old_contract_done_and_canceled_are_zero() {
+  void done_and_canceled_are_zero() {
     statusReturns(
-        "{\"orderId\":100,\"status\":\"DONE\",\"waitingAhead\":0,\"estimatedCookSec\":120,\"expectedWaitSec\":0}");
+        "{\"orderId\":100,\"status\":\"DONE\",\"waitingAhead\":0,\"estimatedCookSec\":120,\"expectedWaitSec\":0,\"expectedReadySec\":0}");
 
     var s = client.getStatus(100L).orElseThrow();
 
     assertThat(s.expectedWaitSec()).isZero();
     assertThat(s.expectedReadySec()).isZero();
+  }
+
+  @Test
+  void response_without_expected_ready_sec_is_a_contract_violation() {
+    // 변경 전 Cooking 응답(expectedReadySec 없음)은 더 이상 변환하지 않고 계약 위반으로 본다.
+    statusReturns(
+        "{\"orderId\":100,\"status\":\"WAITING\",\"waitingAhead\":2,\"estimatedCookSec\":120,\"expectedWaitSec\":420}");
+
+    assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
+  }
+
+  @Test
+  void negative_expected_ready_sec_is_a_contract_violation() {
+    statusReturns(
+        "{\"orderId\":100,\"status\":\"WAITING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":0,\"expectedReadySec\":-1}");
+
+    assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
   }
 
   @Test
@@ -231,17 +236,17 @@ class HttpCookingClientTest {
   @Test
   void contract_violating_bodies_are_invalid() {
     statusReturns(
-        "{\"orderId\":100,\"status\":\"SOMETHING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":0}");
+        "{\"orderId\":100,\"status\":\"SOMETHING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":0,\"expectedReadySec\":1}");
     assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
 
     server.reset();
     statusReturns(
-        "{\"orderId\":100,\"status\":\"WAITING\",\"estimatedCookSec\":1,\"expectedWaitSec\":0}");
+        "{\"orderId\":100,\"status\":\"WAITING\",\"estimatedCookSec\":1,\"expectedWaitSec\":0,\"expectedReadySec\":1}");
     assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
 
     server.reset();
     statusReturns(
-        "{\"orderId\":100,\"status\":\"WAITING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":-5}");
+        "{\"orderId\":100,\"status\":\"WAITING\",\"waitingAhead\":0,\"estimatedCookSec\":1,\"expectedWaitSec\":-5,\"expectedReadySec\":1}");
     assertThat(statusErrorOf()).isEqualTo(ErrorCode.UPSTREAM_INVALID_RESPONSE);
   }
 

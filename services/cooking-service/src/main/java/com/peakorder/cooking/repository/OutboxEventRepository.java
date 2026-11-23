@@ -19,4 +19,12 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> 
               + "FOR UPDATE SKIP LOCKED",
       nativeQuery = true)
   List<OutboxEvent> findPendingForUpdate(@Param("limit") int limit);
+
+  /**
+   * 발행 대기(PENDING) 이벤트 수 — 지표 {@code cooking_outbox_pending}(#243). 상태 값을 쿼리에 직접 써야 부분 인덱스 {@code
+   * idx_outbox_events_pending}(WHERE status = 'PENDING')를 쓸 수 있다. 바인드 파라미터로 넘기면 일반 실행 계획에서 부분 인덱스를
+   * 못 쓸 수 있다.
+   */
+  @Query(value = "SELECT count(*) FROM outbox_events WHERE status = 'PENDING'", nativeQuery = true)
+  long countPending();
 }

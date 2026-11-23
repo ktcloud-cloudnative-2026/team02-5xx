@@ -4,4 +4,6 @@ resources:
   - ../../base
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/auth
-    newTag: sha-317b6ee68bf4cba0f356b5ebdd19abfc02c715d0
+    newTag: sha-b5bc639f4f692a56b124545410b1468dd40b5b49
+patches:
+  - path: session-patch.yaml

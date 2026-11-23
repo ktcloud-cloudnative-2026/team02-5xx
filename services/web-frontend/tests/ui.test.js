@@ -15,6 +15,7 @@ let vite;
 let App;
 let Cart;
 let MenuDetail;
+let MenuPhoto;
 let LoginModal;
 before(async () => {
   vite = await createServer({
@@ -27,6 +28,8 @@ before(async () => {
   MenuDetail = (await vite.ssrLoadModule('/src/components/MenuDetail.jsx'))
     .default;
   LoginModal = (await vite.ssrLoadModule('/src/components/LoginModal.jsx'))
+    .default;
+  MenuPhoto = (await vite.ssrLoadModule('/src/components/MenuPhoto.jsx'))
     .default;
 });
 after(async () => vite?.close());
@@ -51,10 +54,10 @@ test('anonymous session cannot be enabled by persisted data', () => {
   assert.ok(html.includes('메뉴 카테고리'));
 });
 
-test('cart deep link keeps the menu underneath and renders an overlay only for an injected signed-in session', () => {
+test('cart deep link keeps the menu underneath and renders the same public overlay for anonymous and signed-in sessions', () => {
   const previous = globalThis.window;
   globalThis.window = { location: { hash: '#cart' } };
-  const snapshot = Object.freeze({ authenticated: true });
+  const snapshot = Object.freeze({ authenticated: true, role: 'CUSTOMER' });
   const storageProvider = () => ({ getItem: () => null });
   try {
     const signed = render(App, {
@@ -69,7 +72,7 @@ test('cart deep link keeps the menu underneath and renders an overlay only for a
     assert.ok(signed.includes('id="menu-list"'));
     assert.ok(signed.includes('aria-labelledby="cart-title"'));
     const anonymous = render(App, { storageProvider });
-    assert.ok(!anonymous.includes('class="cart-modal"'));
+    assert.ok(anonymous.includes('class="cart-modal"'));
     assert.ok(anonymous.includes('id="menu-list"'));
   } finally {
     if (previous === undefined) delete globalThis.window;
@@ -78,7 +81,7 @@ test('cart deep link keeps the menu underneath and renders an overlay only for a
 });
 
 test('signed-in UI is an injected test snapshot, not an implementation of authentication', () => {
-  const snapshot = Object.freeze({ authenticated: true });
+  const snapshot = Object.freeze({ authenticated: true, role: 'CUSTOMER' });
   const sessionSource = {
     subscribe: () => () => {},
     getSnapshot: () => snapshot,
@@ -125,19 +128,21 @@ test('menu detail retains radio defaults, inactive options, quantity and new ent
   const html = render(MenuDetail, { menu: getMenu(1), onClose: () => {} });
   assert.ok(html.includes('메뉴 상세 닫기'));
   assert.ok(html.includes('장바구니에 담기'));
-  assert.ok(html.includes('주문하기'));
+  assert.ok(html.includes('이 메뉴만 바로 주문'));
   assert.ok(html.includes('라지 세트'));
   assert.ok(html.includes('disabled=""'));
   assert.ok(html.includes('checked=""'));
   assert.ok(html.includes('선택 수량'));
 });
 
-test('login modal provides a return path without collecting or pretending to verify credentials', () => {
+test('login modal provides real credential fields and a return path, without pretending to authenticate', () => {
   const html = render(LoginModal, { onClose: () => {} });
   assert.ok(html.includes('로그인이 필요해요'));
   assert.ok(html.includes('선택한 화면으로 돌아가기'));
   assert.ok(html.includes('disabled=""'));
-  assert.ok(!html.includes('type="password"'));
+  assert.ok(html.includes('type="password"'));
+  assert.ok(html.toLowerCase().includes('autocomplete="current-password"'));
+  assert.ok(html.includes('로그인 유지'));
 });
 
 test('existing menu catalog behavior stays intact', () => {
@@ -176,7 +181,18 @@ test('storage corruption and access failures do not abort the real App SSR rende
   for (const storageProvider of providers) {
     const html = render(App, { storageProvider });
     assert.ok(html.includes('메뉴 카테고리'));
-    assert.ok(html.includes('클래식 버거'));
+    assert.ok(html.includes('메뉴를 불러오는 중이에요.'));
     assert.ok(!html.includes('storage denied'));
   }
+});
+
+test('menu images use the default asset when missing and preserve configured paths', () => {
+  const missing = render(MenuPhoto, { imageUrl: null });
+  assert.ok(missing.includes('src="/images/defaults/menu-placeholder.svg"'));
+  const empty = render(MenuPhoto, { imageUrl: '   ' });
+  assert.ok(empty.includes('src="/images/defaults/menu-placeholder.svg"'));
+  const configured = render(MenuPhoto, {
+    imageUrl: '/images/menus/classic-burger.webp',
+  });
+  assert.ok(configured.includes('src="/images/menus/classic-burger.webp"'));
 });

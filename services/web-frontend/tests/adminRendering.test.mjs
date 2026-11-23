@@ -73,7 +73,8 @@ test('actual React SSR renders separate admin page, editor and unchanged custome
     assert.ok(createHtml.includes('class="am-dialog am-drawer"'));
     const customerHtml = renderToStaticMarkup(createElement(customer));
     assert.ok(customerHtml.includes('메뉴'));
-    assert.ok(customerHtml.includes('클래식 버거'));
+    // The product App now loads its public catalog over HTTP after mounting.
+    assert.ok(customerHtml.includes('메뉴를 불러오는 중이에요.'));
     assert.ok(!customerHtml.includes('MOCK PREVIEW'));
     assert.ok(!customerHtml.includes('새 메뉴 등록'));
   } finally {

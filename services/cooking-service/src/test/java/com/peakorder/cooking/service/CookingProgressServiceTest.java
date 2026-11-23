@@ -18,6 +18,7 @@ import com.peakorder.cooking.entity.TicketStatus;
 import com.peakorder.cooking.messaging.CookingCompletedEvent;
 import com.peakorder.cooking.repository.CookingTicketRepository;
 import com.peakorder.cooking.repository.OutboxEventRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -35,21 +36,63 @@ class CookingProgressServiceTest {
   private CookingTicketRepository ticketRepository;
   private OutboxEventRepository outboxEventRepository;
   private final JsonMapper jsonMapper = JsonMapper.builder().build();
+  private SimpleMeterRegistry registry;
   private CookingProgressService service;
 
   @BeforeEach
   void setUp() {
     ticketRepository = mock(CookingTicketRepository.class);
     outboxEventRepository = mock(OutboxEventRepository.class);
+    registry = new SimpleMeterRegistry();
     service =
         new CookingProgressService(
             ticketRepository,
             outboxEventRepository,
             jsonMapper,
-            Clock.fixed(NOW, ClockConfig.ZONE));
+            Clock.fixed(NOW, ClockConfig.ZONE),
+            new CookingMetrics(registry));
     when(ticketRepository.tryAdvisoryXactLock(anyLong())).thenReturn(true);
     when(ticketRepository.findFirstWithLockByStatusOrderByQueuedAtAscIdAsc(any()))
         .thenReturn(Optional.empty());
+  }
+
+  private double count(String name) {
+    return registry.get(name).counter().count();
+  }
+
+  @Test
+  void 대기_전표를_시작하면_시작_지표만_1_오른다() {
+    givenFirst(TicketStatus.WAITING, ticket(1L, 120));
+
+    service.tick();
+
+    assertThat(count("cooking.tickets.started")).isEqualTo(1);
+    assertThat(count("cooking.tickets.completed")).isZero();
+  }
+
+  @Test
+  void 조리_시간이_지나면_완료_지표가_오르고_다음_전표_시작도_센다() {
+    CookingTicket cooking = ticket(1L, 120);
+    cooking.start(NOW.minusSeconds(120));
+    givenFirst(TicketStatus.COOKING, cooking);
+    givenFirst(TicketStatus.WAITING, ticket(2L, 60));
+
+    service.tick();
+
+    assertThat(count("cooking.tickets.completed")).isEqualTo(1);
+    assertThat(count("cooking.tickets.started")).isEqualTo(1);
+  }
+
+  @Test
+  void 아직_조리_중이면_지표가_오르지_않는다() {
+    CookingTicket cooking = ticket(1L, 120);
+    cooking.start(NOW.minusSeconds(60));
+    givenFirst(TicketStatus.COOKING, cooking);
+
+    service.tick();
+
+    assertThat(count("cooking.tickets.completed")).isZero();
+    assertThat(count("cooking.tickets.started")).isZero();
   }
 
   /** 예상 조리 시간 = cookTimeSec (수량 1) */

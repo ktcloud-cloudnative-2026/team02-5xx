@@ -3,6 +3,7 @@ package com.peakorder.inventory.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.beans.BeanUtils;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -91,6 +93,30 @@ class InventoryHoldServiceTest {
 
     assertThat(response.expiresAt()).isEqualTo(existing.getExpiresAt());
     verify(inventoryRepository, never()).findByMenuIdForUpdate(any());
+  }
+
+  @Test
+  void hold_returns_hold_committed_by_concurrent_same_order_request() {
+    // 첫 확인은 비어 있었지만, 잠금을 기다리는 사이 같은 주문의 다른 요청이 확보를 커밋했다
+    Inventory inventory = inventoryOf(10, 0);
+    InventoryReservation committed = activeReservation();
+    ReflectionTestUtils.setField(committed, "id", 100L);
+    when(reservationRepository.findByOrderId(1L))
+        .thenReturn(Optional.empty())
+        .thenReturn(Optional.of(committed));
+    when(inventoryRepository.findByMenuIdForUpdate(10L)).thenReturn(Optional.of(inventory));
+
+    HoldResponse response = service.hold(requestOf(1L, 10L, 3));
+
+    assertThat(response.holdId()).isEqualTo(100L);
+    assertThat(inventory.getReservedQty()).isZero();
+    verify(reservationRepository, never()).save(any());
+    verify(itemRepository, never()).save(any());
+
+    InOrder order = inOrder(reservationRepository, inventoryRepository);
+    order.verify(reservationRepository).findByOrderId(1L);
+    order.verify(inventoryRepository).findByMenuIdForUpdate(10L);
+    order.verify(reservationRepository).findByOrderId(1L);
   }
 
   @Test

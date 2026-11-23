@@ -1,0 +1,17 @@
+# Issue #204: #186의 DB 연결 수 예산에 따라 dev에서 Pod당 DB 연결 풀을 줄인다(Hikari 기본값은 최대 10개).
+# 값은 DB 담당(#186 댓글)이 정했고 Auth(#181)와 같다. HPA로 Pod가 늘어도 DB max_connections 안에 들어오게 하기 위함이다.
+# prod는 이 패치에 포함하지 않는다(dev·prod가 같은 DB 서버라 prod 값은 prod 이슈에서 정한다).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: order-service
+          env:
+            - name: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE
+              value: "4"
+            - name: SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE
+              value: "1"

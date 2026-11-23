@@ -206,3 +206,46 @@ Squash 병합됐으며, 작업 시작 시 #148은 Open이므로 해당 API 연�
   main의 다른 서비스 변경은 그대로 반영하고 bin·백업은 수정·복구·삭제·스테이징하지 않습니다.
 - 이번 단계에서는 병합 커밋·Push·PR Ready 전환·리뷰 요청·승인·병합을 하지 않고
   로컬 병합 진행 상태에서 사용자 승인을 기다립니다.
+
+## 최신 main 통합 및 #251 계약 대조 (2026-11-23)
+
+기준 main은 #240을 포함한 `eac2e88c7da2ed894689d4868713467c975ee3f4`, 기존 #132 HEAD는 `f16b494da4a18770b8bf35b2a88152fc205e5b5e`다.
+`git merge --no-commit --no-ff origin/main`으로 이력을 보존해 통합했다. README와 package.json만 충돌했다.
+고객 HTTP·Auth·Checkout·주문 내역·기본 이미지 기능과 관리자 미리보기 안내/명령을 함께 유지했다.
+`npm test`는 고객 `.test.js`와 관리자 `.test.mjs`를 모두 실행한다.
+제품 App·고객 컴포넌트/공유 스타일·실제 HTTP adapter·Auth·주문 내역·lockfile·Vite 설정은 main과 동일하다.
+관리자 화면·Mock CRUD·디자인·접근성·독립 미리보기를 재구현하지 않았다. main 대비 고유 변경은 기존 18개 경로다.
+
+### #251의 실제 구현과 비교
+
+대조 대상은 리뷰 중인 #251 `48aa1e9cdc4f83f3d313fc5af52646da6a7a70f3`의 Controller·DTO·Service·Repository다.
+백엔드 브랜치를 통합하거나 수정하지 않았다. 원래 Draft의 제안 세부값을 이 비교만으로 새 팀 확정 계약으로 바꾸지 않는다.
+
+| 기능      | 보존한 Mock/UI 의미와 #251 구현의 정합성                                                                                                                             |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ME-03·04  | 세 판매 상태, 카테고리·이름 부분 검색·status·가격 정렬, 숨김 메뉴/비활성 옵션 상세, ID·시각/nullable 필드가 일치한다.                                                |
+| ME-05     | 필수 status, 옵션 0개 허용, 초기 isDefault=false/active=true, 성공 menuId가 일치한다. UI PAUSED 초깃값은 요청에 명시한다.                                            |
+| ME-06     | 변경 필드만 전송, 생략 보존·description/imageUrl null 제거, optionId별 부분 수정과 신규 추가, 생략 옵션/기존 ID 보존이 일치한다. 판매 상태는 이 PATCH에 섞지 않는다. |
+| ME-07     | changeStatus는 별도 동작이다. 향후 HTTP 매핑은 `PATCH /api/v1/admin/menus/{menuId}/status`다. 세 상태 전이/HIDDEN 복귀, 같은 상태 시각 유지가 일치한다.              |
+| Inventory | Menu 상태와 옵션 active만 다루며 재고·품절·재고 연결을 Menu 값으로 추정하지 않는다.                                                                                  |
+
+실제 HTTP 연결 전에 처리할 차이·한계:
+
+- Mock은 비동기 JS 객체 호출이며 HTTP 요청 자체가 없다. #251의 201/200·공통 JSON 오류·401/403·DB 실패와 Mock의 `MockMenuError`/`MOCK_FAILURE`·필드별 UI 오류는 실제 adapter에서 매핑해야 한다. JS 객체 검증은 서버의 원본 JSON 중복 키·후행 JSON 검증을 대신하지 않는다.
+- ID는 Mock/UI의 양의 JS safe integer와 서버 양의 Long 범위가 다르다. Long 전체 ID의 정밀도/직렬화는 후속 HTTP adapter에서 해결해야 한다.
+- Mock은 JS trim/lowercase, 서버는 Java strip/isBlank 및 Locale.ROOT를 사용한다. 일부 Unicode 공백·대소문자 경계가 완전히 동일하다고 주장하지 않는다.
+- 폼의 빈 설명/이미지는 null 제거로 매핑한다. 서버가 허용하는 빈 문자열 저장과는 구분되는 현재 UI 입력 정책이다. 이미지 업로드/외부 이미지 로드는 제공하지 않는다.
+- Mock ID·시각·원자적 복사 교체는 메모리 동작이다. #251의 PostgreSQL 행 잠금·롤백·동시성 및 timestamp 정책을 검증하지 않는다.
+- #112 헤더 계약의 합의와 실제 Gateway 적용은 다르다. #251은 제품에서 기본 403 차단이며, 여기서 HTTP adapter·공개 관리자 라우트·신원 헤더 생성·인증 우회를 추가하지 않았다.
+
+### 이번 통합 검증
+
+- Node 결합 명령에서 고객 **198 PASS**. 관리자 1개 SSR 검사는 과거의 Mock 메뉴 즉시 표시 기대 때문에 처음 실패했다. 현재 HTTP 로딩 상태로 기대값만 수정한 뒤 관리자 **69 PASS**, 실패/생략 0을 확인했다. 합계 **267건**이며 제품 코드의 HTTP 동작을 되돌리지 않았다.
+- 실제 Chromium 관리자 **21 PASS**, 실패/BLOCKED 0. 기존 QA 스크립트를 현재 Worktree로 연결해 목록·검색·필터·정렬·상세·CRUD·옵션·상태 전이·실패/재시도·포커스·Escape·패널 스크롤·1440/390/320px·모바일 touch를 다시 확인했다. 과거의 21 PASS 기록은 위에 그대로 보존한다.
+- 고객 Chromium **21 PASS**: 비회원 장바구니/Checkout 주요 흐름 5건과 주문 내역·상세·취소·Auth/History·Checkout 완료 탐색 16건. 기존 전체 #233 QA를 반복하지 않았다.
+- Vite production build와 `check:admin-boundary` 통과. 관리자 Preview/Mock은 고객 제품 번들에서 제외되며 고객 dist를 미리보기가 덮어쓰지 않는다.
+- 변경된 18개 파일의 Prettier와 main 대비 diff 공백 검사. 다른 main 파일의 기존 Markdown 줄 끝 공백은 이 변경에서 수정하지 않는다.
+- 이번 산출물은 저장소 밖 `%TEMP%\peak-order-132-integration`에 보관한다. 과거 `peak132-fix-*`의 QA 산출물은 덮어쓰지 않았다.
+
+브라우저 고객 흐름은 로컬 HTTP fixture, 관리자는 메모리 Mock 검증이다. 실제 dev 관리자/API/JWT 인증 성공으로 표시하지 않는다.
+이 작업은 기존 #132 브랜치의 Merge Commit·일반 Push까지만 포함하며 Ready 전환·새 PR·리뷰 요청·main 병합·Issue 종료는 수행하지 않는다.

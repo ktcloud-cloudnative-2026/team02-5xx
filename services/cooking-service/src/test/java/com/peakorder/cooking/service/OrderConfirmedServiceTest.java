@@ -17,6 +17,7 @@ import com.peakorder.cooking.messaging.OrderConfirmedEvent.Item;
 import com.peakorder.cooking.messaging.OrderConfirmedEvent.Option;
 import com.peakorder.cooking.repository.CookingTicketRepository;
 import com.peakorder.cooking.repository.ProcessedEventRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -30,13 +31,56 @@ class OrderConfirmedServiceTest {
 
   private ProcessedEventRepository processedEventRepository;
   private CookingTicketRepository ticketRepository;
+  private SimpleMeterRegistry registry;
   private OrderConfirmedService service;
 
   @BeforeEach
   void setUp() {
     processedEventRepository = mock(ProcessedEventRepository.class);
     ticketRepository = mock(CookingTicketRepository.class);
-    service = new OrderConfirmedService(processedEventRepository, ticketRepository);
+    registry = new SimpleMeterRegistry();
+    service =
+        new OrderConfirmedService(
+            processedEventRepository, ticketRepository, new CookingMetrics(registry));
+  }
+
+  private double received(String result) {
+    return registry.get("cooking.order.confirmed.received").tag("result", result).counter().count();
+  }
+
+  @Test
+  void 처음_받은_이벤트는_created로_센다() {
+    OrderConfirmedEvent event = sampleEvent();
+    when(processedEventRepository.insertIfAbsent(event.eventId())).thenReturn(1);
+    when(ticketRepository.findByOrderId(1L)).thenReturn(Optional.empty());
+
+    service.handle(event);
+
+    assertThat(received("created")).isEqualTo(1);
+    assertThat(received("duplicate")).isZero();
+  }
+
+  @Test
+  void 같은_eventId를_다시_받으면_duplicate로_센다() {
+    OrderConfirmedEvent event = sampleEvent();
+    when(processedEventRepository.insertIfAbsent(event.eventId())).thenReturn(0);
+
+    service.handle(event);
+
+    assertThat(received("duplicate")).isEqualTo(1);
+    assertThat(received("created")).isZero();
+  }
+
+  @Test
+  void 다른_eventId로_같은_주문을_받으면_duplicate로_센다() {
+    OrderConfirmedEvent event = sampleEvent();
+    when(processedEventRepository.insertIfAbsent(event.eventId())).thenReturn(1);
+    when(ticketRepository.findByOrderId(1L)).thenReturn(Optional.of(mock(CookingTicket.class)));
+
+    service.handle(event);
+
+    assertThat(received("duplicate")).isEqualTo(1);
+    assertThat(received("created")).isZero();
   }
 
   /** 합의 문서 예시: 아메리카노 2개(120초 + 옵션 30초), 라떼 1개(90초) */

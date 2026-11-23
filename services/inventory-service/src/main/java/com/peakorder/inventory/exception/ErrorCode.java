@@ -10,6 +10,11 @@ public enum ErrorCode {
   HOLD_NOT_ACTIVE(HttpStatus.CONFLICT, "유효하지 않은 재고 확보입니다."),
   HOLD_NOT_FOUND(HttpStatus.NOT_FOUND, "재고 확보를 찾을 수 없습니다."),
   RESTORE_NOT_APPLICABLE(HttpStatus.CONFLICT, "복원할 수 없는 주문입니다."),
+  MENU_NOT_FOUND(HttpStatus.NOT_FOUND, "메뉴를 찾을 수 없습니다."),
+  MENU_NOT_LINKABLE(HttpStatus.CONFLICT, "숨김 처리된 메뉴는 재고와 연결할 수 없습니다."),
+  MENU_ALREADY_LINKED(HttpStatus.CONFLICT, "이미 다른 재고에 연결된 메뉴입니다."),
+  STOCK_ITEM_IN_USE(HttpStatus.CONFLICT, "주문 중인 재고는 변경할 수 없습니다."),
+  MENU_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "메뉴 서비스에 연결할 수 없습니다."),
   INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다.");
 
   private final HttpStatus status;

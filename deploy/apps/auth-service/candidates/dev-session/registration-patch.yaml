@@ -1,0 +1,22 @@
+# 브라우저/회원가입 연동 단계 전용 후보. 현재 Kustomization에 연결하지 않는다.
+# 실제 약관 버전 확인 후 patch.yaml에 추가로 적용한다. 직접 apply하지 않는다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: auth-service
+          env:
+            - name: AUTH_TERMS_VERSION
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-runtime
+                  key: terms-version
+            - name: AUTH_PRIVACY_VERSION
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-runtime
+                  key: privacy-version

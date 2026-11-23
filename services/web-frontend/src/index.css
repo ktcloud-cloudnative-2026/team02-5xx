@@ -256,6 +256,7 @@ h2 {
   width: min(172px, 100%);
   aspect-ratio: 1;
   border-radius: 50%;
+  overflow: hidden;
   background: #ededed;
   color: #666;
   font-size: 12px;
@@ -1199,4 +1200,40 @@ h2 {
   .login-modal .detail-toolbar h2 {
     font-size: 25px;
   }
+}
+/* Server-provided menu images share the existing photo layout. */
+.menu-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.login-form {
+  display: grid;
+  gap: 14px;
+}
+.login-form > label {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+}
+.login-form input:not([type='checkbox']) {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #aaa;
+  border-radius: 8px;
+  font: inherit;
+}
+.login-form > .remember-login {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.login-error {
+  min-height: 1.5em;
+}
+.session-user {
+  max-width: 180px;
+  overflow-wrap: anywhere;
+  font-size: 13px;
 }

@@ -75,6 +75,13 @@ public class CookingDashboardService {
     return ticketRepository.findByStatusOrderByQueuedAtAscIdAsc(TicketStatus.COOKING);
   }
 
+  /**
+   * 지금 주문하면 조리 시작까지 예상 대기(초). CO-01과 같은 계산 — 지표 {@code cooking_expected_wait_seconds}(#243)가 재사용한다.
+   */
+  public long expectedWaitSec() {
+    return expectedWaitSec(cookingTickets(), clock.instant());
+  }
+
   private long expectedWaitSec(List<CookingTicket> cooking, Instant now) {
     return CookingTimes.remainingSec(cooking, now)
         + ticketRepository.sumEstimatedCookSecByStatus(TicketStatus.WAITING);

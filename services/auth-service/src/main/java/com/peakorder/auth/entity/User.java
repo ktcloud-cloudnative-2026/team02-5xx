@@ -61,11 +61,37 @@ public class User {
     this.updatedAt = createdAt;
   }
 
+  public void changeNickname(String nickname, Instant updatedAt) {
+    this.nickname = nickname;
+    this.updatedAt = updatedAt;
+  }
+
+  public void changePasswordHash(String passwordHash, Instant updatedAt) {
+    this.passwordHash = passwordHash;
+    this.updatedAt = updatedAt;
+  }
+
   public Long getId() {
     return id;
   }
 
   public String getEmail() {
     return email;
+  }
+
+  public String getPasswordHash() {
+    return passwordHash;
+  }
+
+  public String getNickname() {
+    return nickname;
+  }
+
+  public UserRole getRole() {
+    return role;
+  }
+
+  public UserStatus getStatus() {
+    return status;
   }
 }
