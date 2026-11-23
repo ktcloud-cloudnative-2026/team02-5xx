@@ -13,6 +13,7 @@ import com.peakorder.inventory.repository.InventoryReservationItemRepository;
 import com.peakorder.inventory.repository.InventoryReservationRepository;
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +44,7 @@ public class InventoryHoldService {
 
   @Transactional
   public HoldResponse hold(HoldRequest request) {
-    // 1. 이미 받은 예약이면 그대로 돌려준다
+    // 1. 이미 받은 예약이면 그대로 돌려준다 (빠른 응답용. 동시 요청은 4단계에서 다시 확인)
     Optional<InventoryReservation> existing =
         reservationRepository.findByOrderId(request.orderId());
     if (existing.isPresent()) {
@@ -56,16 +57,31 @@ public class InventoryHoldService {
       quantities.merge(item.menuId(), item.quantity(), Integer::sum);
     }
 
-    // 3. 메뉴별 재고를 잠그고 확보한다
-    for (Map.Entry<Long, Integer> entry : quantities.entrySet()) {
-      Inventory inventory =
+    // 3. 메뉴별 재고를 모두 잠근다
+    List<Inventory> locked = new ArrayList<>();
+    for (Long menuId : quantities.keySet()) {
+      locked.add(
           inventoryRepository
-              .findByMenuIdForUpdate(entry.getKey())
-              .orElseThrow(() -> new BusinessException(ErrorCode.STOCK_NOT_LINKED));
-      inventory.reserve(entry.getValue());
+              .findByMenuIdForUpdate(menuId)
+              .orElseThrow(() -> new BusinessException(ErrorCode.STOCK_NOT_LINKED)));
     }
 
-    // 4. 예약 장부와 메뉴별 줄을 저장한다
+    // 4. 잠근 뒤 기존 확보를 다시 확인한다. 같은 orderId의 동시 요청은 같은 메뉴를 담아 같은 재고 행
+    //    잠금에서 줄을 서므로, 먼저 끝난 요청이 커밋한 확보가 여기서 보인다(READ COMMITTED).
+    //    다시 확인하지 않으면 order_id UNIQUE 위반으로 500이 된다.
+    Optional<InventoryReservation> committed =
+        reservationRepository.findByOrderId(request.orderId());
+    if (committed.isPresent()) {
+      return HoldResponse.from(committed.get());
+    }
+
+    // 5. 확보한다
+    int index = 0;
+    for (Integer quantity : quantities.values()) {
+      locked.get(index++).reserve(quantity);
+    }
+
+    // 6. 예약 장부와 메뉴별 줄을 저장한다
     InventoryReservation reservation =
         reservationRepository.save(
             new InventoryReservation(request.orderId(), OffsetDateTime.now().plus(holdTtl)));
