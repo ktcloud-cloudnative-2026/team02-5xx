@@ -31,6 +31,10 @@ dependencies {
 	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'                // /actuator/prometheus
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	// 실제 PostgreSQL 통합 테스트(#114). 버전은 Spring Boot BOM이 관리(Testcontainers 2.0.5)
+	testImplementation 'org.springframework.boot:spring-boot-testcontainers'  // @ServiceConnection
+	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'      // @Testcontainers, @Container
+	testImplementation 'org.testcontainers:testcontainers-postgresql'         // PostgreSQLContainer
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
