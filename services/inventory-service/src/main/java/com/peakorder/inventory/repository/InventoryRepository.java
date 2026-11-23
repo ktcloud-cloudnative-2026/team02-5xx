@@ -13,6 +13,9 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
   Optional<Inventory> findByMenuId(Long menuId);
 
+  // IN-02: 삭제되지 않은 재고만 id순
+  List<Inventory> findByDeletedAtIsNullOrderByIdAsc();
+
   List<Inventory> findByMenuIdIn(Collection<Long> menuIds);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)

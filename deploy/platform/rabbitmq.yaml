@@ -15,6 +15,8 @@ spec:
       port: 5672
     - name: management    # 관리 화면 문
       port: 15672
+    - name: prometheus    # 지표(상황판) 문 — Prometheus가 수집
+      port: 15692
 ---
 # 2) StatefulSet: 이름(rabbitmq-0)과 저장 공간이 고정되는 Pod
 apiVersion: apps/v1
@@ -43,6 +45,7 @@ spec:
           ports:
             - containerPort: 5672
             - containerPort: 15672
+            - containerPort: 15692
           env:
             - name: RABBITMQ_DEFAULT_USER
               valueFrom:
