@@ -15,7 +15,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Map;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.CacheControl;
@@ -53,13 +52,7 @@ public class SessionController {
   @Operation(summary = "내 정보 조회")
   public ResponseEntity<ApiResponse<CurrentUserResponse>> me(HttpServletRequest request) {
     try {
-      var authorization = Collections.list(request.getHeaders(HttpHeaders.AUTHORIZATION));
-      if (authorization.size() != 1
-          || !authorization.getFirst().regionMatches(true, 0, "Bearer ", 0, 7))
-        throw new BusinessException(ErrorCode.UNAUTHORIZED);
-      String token = authorization.getFirst().substring(7);
-      if (token.isBlank() || token.contains(" ") || token.contains(","))
-        throw new BusinessException(ErrorCode.UNAUTHORIZED);
+      String token = BearerAuthorization.token(request);
       return ResponseEntity.ok()
           .cacheControl(CacheControl.noStore())
           .body(ApiResponse.ok(service().currentUser(token), "조회되었습니다."));

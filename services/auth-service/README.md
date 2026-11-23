@@ -245,7 +245,7 @@ Java 21·기존 Wrapper로 spotlessCheck/test/build를 실행합니다.
 실제 DB 테스트는 기존 AUTH_DB_TEST_URL/USERNAME/PASSWORD 방식을 사용하며,
 URL은 localhost 또는 127.0.0.1의 **auth_registration_test** DB만 허용합니다.
 허용된 테스트 DB의 데이터를 초기화하므로 전용 일회용 DB만 지정합니다.
-DB 환경 변수가 없으면 실제 PostgreSQL 테스트 16개는 생략되며 DB 검증 성공으로 표시하지 않습니다.
+DB 환경 변수가 없으면 실제 PostgreSQL 테스트 23개는 생략되며 DB 검증 성공으로 표시하지 않습니다.
 
 테스트는 메모리/임시 디렉터리에서 키를 생성하고 실제 로컬 임의 포트 HTTP 서버로 검증합니다.
 JWKS HTTP 응답의 공개키로 발급 토큰을 검증하며, 키 위조·HMAC 전환·만료·잘못된 claim·입력·출처도 검사합니다.
@@ -254,3 +254,20 @@ DB 검증은 동시 회전/로그아웃, 재사용 폐기의 commit, 저장 실�
 아직 실제 HTTPS 브라우저 쿠키·CORS·Gateway JWT/신원 전달·우회 차단·다른 서비스 인가를 검증하지 않았습니다.
 다중 탭 세부 정책·배포 Cookie/Origin·JWKS 운영 주소·키 교체와 만료 Refresh 이력 정리도 후속 확인 대상입니다.
 이 코드 추가는 #112 A안 확정·관리자 차단 해제·배포 승인을 뜻하지 않습니다.
+
+## 회원정보·비밀번호 변경 — Issue #215
+
+이 브랜치의 로컬 구현이며 main/dev 배포 기능으로 표시하지 않는다. 프론트의 핵심 설계 COMMENT를 반영했으며 최종 코드 리뷰·CI·병합은 별도다. [설계 및 검증 기록](../../docs/api/auth-profile-password-proposal.md)을 기준으로 한다.
+
+| API                            | 요청                                             | 결과                                               |
+| ------------------------------ | ------------------------------------------------ | -------------------------------------------------- |
+| PATCH /api/v1/auth/me          | Bearer Access 및 `{nickname}`                    | 200, 기존 AU-02와 동일한 회원정보                  |
+| PATCH /api/v1/auth/me/password | Bearer Access 및 `{currentPassword,newPassword}` | 204, 본인 전체 Refresh 폐기·현재 Refresh 쿠키 삭제 |
+
+두 API는 현재 ACTIVE/CUSTOMER 계정만 허용한다. nickname은 1~50 코드 포인트이고 null·공백만인 값은 거절하며 앞뒤 공백을 변경하지 않는다. AU-02에서 기존 미설정 nickname=null을 반환하는 동작은 유지한다. 이메일·ID·역할·상태·타인 계정 지정 필드는 받지 않는다.
+
+새 비밀번호는 기존 가입 설정(개발 기본 12~64)을 재사용하고 입력 문자를 그대로 해시한다. 현재 비밀번호 불일치는 400 CURRENT_PASSWORD_MISMATCH, 잘못된 Access는 401 UNAUTHORIZED, 권한 부족은 403 FORBIDDEN이다. 실패에는 쿠키를 삭제하지 않는다. 이미 발급된 Access는 기존 만료까지 유효할 수 있으며 전체 Refresh 폐기를 즉시 전역 Access 폐기로 안내하지 않는다.
+
+비밀번호 변경 204 이후 프론트는 JSON 파싱이나 /logout 추가 호출 없이 로컬 인증 상태와 진행 중 세션 요청을 무효화하고 재로그인을 안내한다. 현재 화면/장바구니 보존과 계정 전환 방어는 기존 프론트 정책을 따른다. 프론트 코드는 이 변경에 포함하지 않는다.
+
+로컬 Java 21·Spotless·Gradle test/build 및 JUnit 162개(실제 PostgreSQL 23개) 통과, 실패·오류·생략 0이다. 기존 134개를 유지하고 새 경계/원자성/경합 테스트 28개를 추가했다. GitHub의 DB 환경 변수가 없는 실행에서는 기존 DB 테스트 생략 정책이 적용되며 로컬 DB 검증 결과와 구분한다.
