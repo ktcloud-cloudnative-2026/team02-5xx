@@ -54,10 +54,10 @@ test('anonymous session cannot be enabled by persisted data', () => {
   assert.ok(html.includes('메뉴 카테고리'));
 });
 
-test('cart deep link keeps the menu underneath and renders an overlay only for an injected signed-in session', () => {
+test('cart deep link keeps the menu underneath and renders the same public overlay for anonymous and signed-in sessions', () => {
   const previous = globalThis.window;
   globalThis.window = { location: { hash: '#cart' } };
-  const snapshot = Object.freeze({ authenticated: true });
+  const snapshot = Object.freeze({ authenticated: true, role: 'CUSTOMER' });
   const storageProvider = () => ({ getItem: () => null });
   try {
     const signed = render(App, {
@@ -72,7 +72,7 @@ test('cart deep link keeps the menu underneath and renders an overlay only for a
     assert.ok(signed.includes('id="menu-list"'));
     assert.ok(signed.includes('aria-labelledby="cart-title"'));
     const anonymous = render(App, { storageProvider });
-    assert.ok(!anonymous.includes('class="cart-modal"'));
+    assert.ok(anonymous.includes('class="cart-modal"'));
     assert.ok(anonymous.includes('id="menu-list"'));
   } finally {
     if (previous === undefined) delete globalThis.window;
@@ -81,7 +81,7 @@ test('cart deep link keeps the menu underneath and renders an overlay only for a
 });
 
 test('signed-in UI is an injected test snapshot, not an implementation of authentication', () => {
-  const snapshot = Object.freeze({ authenticated: true });
+  const snapshot = Object.freeze({ authenticated: true, role: 'CUSTOMER' });
   const sessionSource = {
     subscribe: () => () => {},
     getSnapshot: () => snapshot,
@@ -128,19 +128,21 @@ test('menu detail retains radio defaults, inactive options, quantity and new ent
   const html = render(MenuDetail, { menu: getMenu(1), onClose: () => {} });
   assert.ok(html.includes('메뉴 상세 닫기'));
   assert.ok(html.includes('장바구니에 담기'));
-  assert.ok(html.includes('주문하기'));
+  assert.ok(html.includes('이 메뉴만 바로 주문'));
   assert.ok(html.includes('라지 세트'));
   assert.ok(html.includes('disabled=""'));
   assert.ok(html.includes('checked=""'));
   assert.ok(html.includes('선택 수량'));
 });
 
-test('login modal provides a return path without collecting or pretending to verify credentials', () => {
+test('login modal provides real credential fields and a return path, without pretending to authenticate', () => {
   const html = render(LoginModal, { onClose: () => {} });
   assert.ok(html.includes('로그인이 필요해요'));
   assert.ok(html.includes('선택한 화면으로 돌아가기'));
   assert.ok(html.includes('disabled=""'));
-  assert.ok(!html.includes('type="password"'));
+  assert.ok(html.includes('type="password"'));
+  assert.ok(html.toLowerCase().includes('autocomplete="current-password"'));
+  assert.ok(html.includes('로그인 유지'));
 });
 
 test('existing menu catalog behavior stays intact', () => {

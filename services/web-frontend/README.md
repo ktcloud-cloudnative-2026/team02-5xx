@@ -1,12 +1,21 @@
 # 피크오더 웹 프론트엔드
 
+#201 후속 정책에서 브라우저 장바구니 담기·조회·수량 변경·삭제는 비회원에게도 제공합니다.
+주문·결제만 CUSTOMER 인증이 필요하며, 상세의 **이 메뉴만 바로 주문**은 현재 선택만 주문합니다.
+아래 과거 인증 경계 설명보다 [비회원 장바구니 정책과 통합 주의사항](docs/guest-cart-201.md)을 우선합니다.
+
+Issue #201에서 고객 Menu HTTP·Auth 세션·Checkout을 제품 App으로 통합했습니다.
+제품 기본 경로는 CO-02와 OR-01·02·04 HTTP adapter를 사용하며, Checkout 메모리 Mock과 합성 로그인은 제품 번들에서 제외합니다.
+아래 이전 Issue별 설명·QA 수치는 당시 기록입니다. 현재 실행·계약·검증 한계는 [고객 통합 #201](docs/customer-integration-201.md)을 우선 확인합니다.
+
 Issue #77의 고객 메뉴 UI에 Issue #110의 장바구니·localStorage 기능을 추가했습니다.
 기존 카테고리·검색·가격 정렬, 상세 모달·radio 옵션·수량(1~99)·금액 표시를 재사용합니다.
-기본 실행은 비회원이며 장바구니 담기/보기·주문 시도는 현재 화면의 로그인 안내 모달로 연결합니다.
 Issue #145에서 고객 메뉴 ME-01·ME-02 HTTP API를 연결했습니다.
-실제 로그인·JWT·주문·결제·관리자 기능은 구현하지 않았습니다.
-최신 실행·검증 결과와 실서버 미검증 범위는
-[고객 메뉴 API 연동 기록](docs/customer-menu-api-145.md)을 확인합니다.
+Issue #156의 AU-01·02·09·10 인증 세션과 #201의 Checkout HTTP 흐름을 함께 사용합니다.
+Refresh 쿠키는 브라우저가 처리하며, Access Token은 메모리에서 관리합니다.
+기본 실행은 비회원이며 장바구니는 로그인 없이 사용할 수 있습니다. 주문·결제 시도에만 CUSTOMER 로그인을 요청합니다.
+[고객 메뉴 API 연동 기록](docs/customer-menu-api-145.md)과 [Auth 세션 기록](docs/auth-session-156.md)은 각 구현 당시의 계약·검증 근거입니다.
+현재 통합 실행·검증 결과와 실제 Menu/Auth·Order·Cooking·Gateway 연동의 남은 의존성은 [고객 통합 #201](docs/customer-integration-201.md)을 확인합니다.
 
 ## 준비 환경
 
@@ -79,9 +88,10 @@ Preview는 빌드 결과를 로컬에서 확인하는 서버이며 운영 배포
 - `src/App.jsx`: 카테고리·검색·정렬·메뉴 목록
 - `src/components/MenuDetail.jsx`: 상세 모달·옵션·수량·총액
 - `src/components/Cart.jsx`: 장바구니 항목·수량·삭제·합계·빈 상태
-- `src/components/LoginModal.jsx`: 실제 인증이 연결되지 않은 로그인 안내
+- `src/components/LoginModal.jsx`: 이메일·비밀번호·로그인 유지 입력과 실제 HTTP 로그인 요청
 - `src/cart.js`: 항목 검증·병합·금액 계산·저장/복원
-- `src/session.js`: 기본 비회원 인증 소스와 선택 상태를 보존하는 진입 의도
+- `src/session.js`: CUSTOMER 역할 검사와 선택 상태를 보존하는 진입 의도
+- `src/authApi.js`, `src/authSession.js`: AU-01·02·09·10 클라이언트와 외부 세션 Store
 - `src/useDialog.js`: 상세/로그인 모달의 닫기·Escape·포커스 복귀·스크롤 처리
 - `src/data/menuApi.js`: ME-01·ME-02 HTTP 요청·응답 검증
 - `src/cartCatalog.js`: 비동기 상세 조회 전 장바구니 보존과 전체 재검증
@@ -141,11 +151,11 @@ PAUSED는 상세 조회를 허용하고 영양·재료 Mock 값은 표시하지 
   메뉴로 돌아가기와 브라우저 뒤로가기 시 목록 필터를 유지합니다.
 - PAUSED·HIDDEN·없는 메뉴, 비활성/없는 옵션, 잘못된 ID·수량·금액은 담지 않습니다.
   추가 옵션이 없는 메뉴는 빈 optionIds를 사용합니다. 옵션이 있는 메뉴는 활성 옵션 하나를 선택해야 합니다.
-- 기본 세션은 항상 비회원입니다. 장바구니/주문 시도 시 상세를 닫지 않고 로그인 안내를 겹쳐 띄워
+- Refresh로 세션을 복원하지 못하면 비회원입니다. 장바구니/주문 시도 시 상세를 닫지 않고 로그인 안내를 겹쳐 띄워
   선택한 옵션·수량·현재 카테고리/검색/정렬 상태를 유지합니다. 안내를 닫으면 시도한 버튼으로 복귀합니다.
   취소 시 대기 동작을 지워 뒤늦은 중복 실행을 막고, 상세 선택 상태는 유지합니다.
-- 실제 Auth가 없으므로 로그인 안내에는 성공 처리·비밀번호 입력·가짜 토큰 발급이 없습니다.
-  기본 앱에서 query/header/localStorage로 로그인 상태를 바꾸는 기능도 없습니다.
+- 로그인은 실제 AU-01과 AU-02의 성공 응답을 확인해야 세션을 갱신합니다.
+  기본 앱에서 query/header/localStorage로 로그인 상태를 바꾸거나 가짜 토큰을 발급하지 않습니다.
 - 로그인 상태의 UI는 테스트 전용 세션 소스를 주입해 검증할 수 있습니다. 이는 실제 인증 성공이 아닙니다.
   주문 버튼은 현재 주문이 생성되지 않는다는 안내만 표시하며 외부 요청을 하지 않습니다.
 
@@ -224,11 +234,11 @@ Work QA의 BUG-001은 최상위 모달의 Tab/Shift+Tab 경계만 순환시키�
 Escape는 최상위 모달 하나만 종료합니다. 자동 포커스 검사는 DOM 모의 객체 기반이며
 실제 브라우저 결과는 위 Work 보고를 근거로 합니다.
 
-향후 Auth 어댑터는 App의 sessionSource에 `subscribe`, 안정된 `getSnapshot` 및
-`getServerSnapshot`을 제공해야 합니다. 현재 null을 반환하는 anonymousSession을 실제 연결 소스로 대체하고,
-검증된 로그인 이후의 프론트 상태가 `{ authenticated: true }`로 갱신되면 대기하던 동작을 한 번 이어갑니다.
-이 내부 UI snapshot은 JWT claim이나 Gateway 권한 전달 계약이 아닙니다.
-실제 로그인/로그아웃·계정 전환 시 공용 기기의 장바구니 소유/초기화 정책은 Auth 연동 Issue에서 결정합니다.
+Issue #156의 Auth Store는 안정된 `subscribe/getSnapshot/getServerSnapshot`을 제공합니다.
+기존 테스트용 sessionSource 주입도 유지하며, 고객 동작에는 `authenticated`와 CUSTOMER 역할이 모두 필요합니다.
+검증된 로그인 후 대기 동작은 한 번 이어갑니다. 이 내부 UI snapshot은 Gateway의 서버 권한 검증을 대체하지 않습니다.
+장바구니 저장 형식은 유지하고 로그아웃 시 삭제하지 않습니다. 같은 탭의 고객 계정이 바뀌면
+기존 데이터를 보존한 채 사용을 차단하며, 계정별 소유/이관·새 탭 정책은 후속 계약이 필요합니다.
 
 #145는 병합된 #105 계약에 맞춰 로딩/오류·nullable 필드·PAUSED 상세를 연결했습니다.
 계약 Mock HTTP 검증은 통과했으나 실제 Menu Service 프로세스 연동은 미검증입니다.

@@ -120,6 +120,9 @@ export default function Cart({
               표시 금액은 예상 금액이에요.
               <br />
               주문 시 가격과 재고를 다시 확인합니다.
+              <br />
+              장바구니는 이 브라우저에 저장되며, 주문·결제는 고객 로그인 후
+              진행합니다.
             </p>
             <button className="pill-button" onClick={onOrder}>
               주문하기

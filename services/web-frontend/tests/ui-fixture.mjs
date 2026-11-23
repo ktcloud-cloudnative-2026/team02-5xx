@@ -6,12 +6,17 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { menuApiHandler } from './menu-api-server.mjs';
 
-export async function startUiFixture() {
+export async function startUiFixture({
+  entryFile,
+  input = resolve(entryFile ?? 'tests/browser-fixture-entry.jsx'),
+  handleRequest,
+  testControls = true,
+} = {}) {
   const bundle = await build({
     logLevel: 'error',
     build: {
       write: false,
-      rollupOptions: { input: resolve('tests/browser-fixture-entry.jsx') },
+      rollupOptions: { input },
     },
   });
   const files = new Map(
@@ -27,18 +32,23 @@ export async function startUiFixture() {
     .filter((file) => file.fileName.endsWith('.css'))
     .map((file) => `<link rel="stylesheet" href="/${file.fileName}">`)
     .join('');
-  const server = http.createServer((request, response) => {
+  const server = http.createServer(async (request, response) => {
+    if (handleRequest && (await handleRequest(request, response))) return;
     if (menuApiHandler(request, response)) return;
     const url = new URL(request.url, 'http://127.0.0.1');
     if (url.pathname === '/') {
       const html = `<!doctype html>
       <html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="icon" href="data:,"><title>Issue 110 UI test fixture</title>${styles}</head>
-      <body><div id="root"></div><aside style="position:relative;background:white;border:1px solid #666;padding:8px;font:12px sans-serif">
+      <body><div id="root"></div>${
+        testControls
+          ? `<aside style="position:relative;background:white;border:1px solid #666;padding:8px;font:12px sans-serif">
         UI 테스트 전용 · 실제 인증 아님
         <button id="test-sign-in">검증된 세션 모의 주입</button>
         <button id="test-sign-out">비회원으로 전환</button>
         <button id="test-pending">다음 로그인 안내에서 세션 모의 주입</button>
-      </aside><script type="module" src="/${entry.fileName}"></script></body></html>`;
+      </aside>`
+          : ''
+      }<script type="module" src="/${entry.fileName}"></script></body></html>`;
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       response.end(html);
     } else {

@@ -5,6 +5,7 @@ import { describeItem } from '../cart.js';
 import MenuPhoto from './MenuPhoto.jsx';
 
 export default function MenuDetail({
+  adding = false,
   menu,
   onClose,
   onAdd,
@@ -214,17 +215,17 @@ export default function MenuDetail({
                 <div className="detail-actions">
                   <button
                     className="pill-button"
-                    disabled={Boolean(selectionError)}
+                    disabled={Boolean(selectionError) || adding}
                     onClick={() => onAdd(selection)}
                   >
-                    장바구니에 담기
+                    {adding ? '메뉴 확인 중…' : '장바구니에 담기'}
                   </button>
                   <button
                     className="text-button"
                     disabled={Boolean(selectionError)}
                     onClick={() => onOrder(selection)}
                   >
-                    주문하기
+                    이 메뉴만 바로 주문
                   </button>
                   <button className="text-button" onClick={onViewCart}>
                     장바구니 보기

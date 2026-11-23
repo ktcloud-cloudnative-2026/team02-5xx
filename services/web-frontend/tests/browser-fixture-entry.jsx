@@ -19,7 +19,7 @@ function publish(next) {
   listeners.forEach((listener) => listener());
 }
 document.getElementById('test-sign-in').onclick = () =>
-  publish({ authenticated: true });
+  publish({ authenticated: true, role: 'CUSTOMER' });
 document.getElementById('test-sign-out').onclick = () => publish(null);
 document.getElementById('test-pending').onclick = () => {
   resumeOnLogin = true;
@@ -27,7 +27,7 @@ document.getElementById('test-pending').onclick = () => {
 new MutationObserver(() => {
   if (resumeOnLogin && document.querySelector('dialog.login-modal[open]')) {
     resumeOnLogin = false;
-    publish({ authenticated: true });
+    publish({ authenticated: true, role: 'CUSTOMER' });
   }
 }).observe(document.body, { childList: true, subtree: true, attributes: true });
 createRoot(document.getElementById('root')).render(

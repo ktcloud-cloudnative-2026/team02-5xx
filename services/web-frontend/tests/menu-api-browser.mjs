@@ -124,7 +124,9 @@ try {
       await detail
         .getByRole('button', { name: '수량 늘리기', exact: true })
         .click();
-      await detail.getByRole('button', { name: '장바구니에 담기' }).click();
+      await detail
+        .getByRole('button', { name: '이 메뉴만 바로 주문', exact: true })
+        .click();
       await page.locator('dialog.login-modal[open]').waitFor();
       await page.keyboard.press('Escape');
       assert.equal(
@@ -247,7 +249,9 @@ try {
       await page.locator('[data-menu-id="1"]').click();
       const detail = page.locator('dialog.detail-modal[open]');
       await detail.getByRole('radio').first().waitFor();
-      await detail.getByRole('button', { name: '장바구니에 담기' }).click();
+      await detail
+        .getByRole('button', { name: '이 메뉴만 바로 주문', exact: true })
+        .click();
       await page.locator('dialog.login-modal[open]').waitFor();
       await page.screenshot({ path: resolve(output, 'mobile-login.png') });
     },
