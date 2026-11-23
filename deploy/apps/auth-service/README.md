@@ -39,7 +39,7 @@ prod Overlay는 환경별 이미지 버전을 구분하는 초기 구성을 제�
 
 ## dev 세션·JWKS 활성화 — Issue #180
 
-**Draft 검토 대상이며 Secret 준비·외부 승인 전 병합·Sync하지 않는다.**
+**2026-11-23 상태: PR #181 승인·병합 및 dev 수동 Sync 완료. Argo CD Synced·Healthy, 최신 Auth Pod Ready·재시작 0, Flyway V1·V2와 Gateway JWKS 200 확인. 아래 준비 체크리스트는 작성 당시 절차이며 실제 결과와 남은 연동 항목은 [Auth 계약·검증 현황](../../../docs/api/auth-session-contract.md) 및 [PR #181 배포 기록](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/181)을 따른다.**
 
 `overlays/dev/session-patch.yaml`은 [준비 PR #175](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/175)의 서버/JWKS 후보를 재사용한다. dev에만 연결하고 이미지 태그를 게시가 확인된 `sha-b5bc639f4f692a56b124545410b1468dd40b5b49`로 고정한다. base·prod의 초기 이미지, Service·HTTPRoute·Argo CD Application은 변경하지 않는다. #175는 준비 후보 PR이고 이 변경은 실제 dev 연결 PR이다.
 
