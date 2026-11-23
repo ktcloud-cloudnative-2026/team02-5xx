@@ -1200,3 +1200,9 @@ h2 {
     font-size: 25px;
   }
 }
+/* Server-provided menu images share the existing photo layout. */
+.menu-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
