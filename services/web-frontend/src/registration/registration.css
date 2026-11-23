@@ -1,0 +1,58 @@
+.registration-content {
+  padding: 0 32px 32px;
+  display: grid;
+  gap: 20px;
+}
+.registration-form fieldset {
+  margin: 0;
+  border: 1px solid #ddd;
+  border-radius: 16px;
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.registration-form fieldset label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.registration-form p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.registration-form details {
+  margin-top: 10px;
+  overflow-wrap: anywhere;
+}
+.registration-form details p {
+  white-space: pre-wrap;
+}
+.registration-policy-text {
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 12px;
+  margin-top: 12px;
+  background: #f7f7f5;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+}
+.registration-policy-text:focus-visible,
+.registration-form summary:focus-visible {
+  outline: 3px solid #527158;
+  outline-offset: 2px;
+}
+.registration-form summary {
+  cursor: pointer;
+  text-decoration: underline;
+}
+.registration-form input[type='checkbox'] {
+  min-width: 18px;
+  min-height: 18px;
+}
+@media (max-width: 600px) {
+  .registration-content {
+    padding: 0 20px 24px;
+  }
+}

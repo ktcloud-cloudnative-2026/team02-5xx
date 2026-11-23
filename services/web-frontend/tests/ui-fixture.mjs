@@ -1,6 +1,7 @@
 // Local, test-only browser fixture. This file is not imported by index.html or bundled into dist.
 // The injected session is a UI test double, not a login/JWT implementation.
 import http from 'node:http';
+import { readFile } from 'node:fs/promises';
 import { build } from 'vite';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -24,6 +25,15 @@ export async function startUiFixture({
       `/${file.fileName}`,
       file.type === 'chunk' ? file.code : file.source,
     ]),
+  );
+  files.set(
+    '/images/defaults/menu-placeholder.svg',
+    await readFile(
+      new URL(
+        '../public/images/defaults/menu-placeholder.svg',
+        import.meta.url,
+      ),
+    ),
   );
   const entry = bundle.output.find(
     (file) => file.type === 'chunk' && file.isEntry,
@@ -54,9 +64,11 @@ export async function startUiFixture({
     } else {
       const file = files.get(url.pathname);
       response.writeHead(file === undefined ? 404 : 200, {
-        'Content-Type': url.pathname.endsWith('.css')
-          ? 'text/css'
-          : 'text/javascript',
+        'Content-Type': url.pathname.endsWith('.svg')
+          ? 'image/svg+xml'
+          : url.pathname.endsWith('.css')
+            ? 'text/css'
+            : 'text/javascript',
       });
       response.end(file);
     }
