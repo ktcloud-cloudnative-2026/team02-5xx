@@ -1,15 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { calculateTotal, formatPrice, MAX_QUANTITY } from '../menu.js';
 import useDialog from '../useDialog.js';
 import { describeItem } from '../cart.js';
 
 export default function MenuDetail({
+  adding = false,
   menu,
   onClose,
   onAdd,
   onOrder,
   onViewCart,
   feedback,
+  loading = false,
+  failure = '',
+  onRetry,
 }) {
   const { close: closeDetail, ...dialog } = useDialog(onClose);
   const options = menu?.options.filter((option) => option.active) ?? [];
@@ -17,6 +21,12 @@ export default function MenuDetail({
     (options.find((option) => option.isDefault) ?? options[0])?.id ?? null,
   );
   const [quantity, setQuantity] = useState(1);
+  useEffect(() => {
+    const active = menu?.options.filter((option) => option.active) ?? [];
+    setOptionId(
+      (active.find((option) => option.isDefault) ?? active[0])?.id ?? null,
+    );
+  }, [menu]);
   const selectedOption = options.find((option) => option.id === optionId);
   const available = menu?.status === 'ON_SALE';
 
@@ -45,10 +55,19 @@ export default function MenuDetail({
         </button>
       </div>
       <div className="detail-layout">
-        {!available ? (
-          <div className="detail-error" role="alert">
-            <h2 id="detail-title">선택할 수 없는 메뉴예요</h2>
-            <p>메뉴가 없거나 현재 판매 중이 아닙니다.</p>
+        {!menu ? (
+          <div className="detail-error" role={loading ? 'status' : 'alert'}>
+            <h2 id="detail-title">
+              {loading
+                ? '메뉴를 불러오는 중이에요'
+                : '메뉴를 확인하지 못했어요'}
+            </h2>
+            <p>{failure}</p>
+            {!loading && onRetry && (
+              <button className="pill-button" onClick={onRetry}>
+                다시 시도
+              </button>
+            )}
             <button className="pill-button" onClick={closeDetail}>
               목록으로 돌아가기
             </button>
@@ -60,7 +79,11 @@ export default function MenuDetail({
               aria-label={`${menu.name} 이미지 준비 중`}
             >
               <span className="menu-photo" aria-hidden="true">
-                메뉴 사진
+                {menu.imageUrl ? (
+                  <img src={menu.imageUrl} alt="" />
+                ) : (
+                  '메뉴 사진'
+                )}
               </span>
             </div>
             <div className="detail-content">
@@ -71,34 +94,47 @@ export default function MenuDetail({
                 aria-label="메뉴 설명과 영양 정보"
               >
                 <h2 id="detail-title">{menu.name}</h2>
-                <p className="detail-description">{menu.description}</p>
-                <dl className="nutrition">
-                  {[
-                    ['칼로리', menu.nutrition.calories, 'kcal'],
-                    ['탄수화물', menu.nutrition.carbs, 'g'],
-                    ['단백질', menu.nutrition.protein, 'g'],
-                    ['지방', menu.nutrition.fat, 'g'],
-                  ].map(([label, value, unit]) => (
-                    <div key={label}>
-                      <dt>{label}</dt>
-                      <dd>
-                        {value}
-                        <span>{unit}</span>
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
+                <p className="detail-description">
+                  {menu.description || '등록된 설명이 없어요.'}
+                </p>
+                {!available && (
+                  <p role="status">현재 판매 중지된 메뉴입니다.</p>
+                )}
+                {menu.nutrition ? (
+                  <dl className="nutrition">
+                    {[
+                      ['칼로리', menu.nutrition.calories, 'kcal'],
+                      ['탄수화물', menu.nutrition.carbs, 'g'],
+                      ['단백질', menu.nutrition.protein, 'g'],
+                      ['지방', menu.nutrition.fat, 'g'],
+                    ].map(([label, value, unit]) => (
+                      <div key={label}>
+                        <dt>{label}</dt>
+                        <dd>
+                          {value}
+                          <span>{unit}</span>
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : (
+                  <p className="nutrition">영양 정보는 제공되지 않습니다.</p>
+                )}
                 <h3>재료</h3>
-                <ul className="ingredients">
-                  {menu.ingredients.map((ingredient) => (
-                    <li key={ingredient}>{ingredient}</li>
-                  ))}
-                </ul>
+                {menu.ingredients ? (
+                  <ul className="ingredients">
+                    {menu.ingredients.map((ingredient) => (
+                      <li key={ingredient}>{ingredient}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>재료 정보는 제공되지 않습니다.</p>
+                )}
               </div>
               <div className="detail-selection">
                 <fieldset className="options">
                   <legend>옵션</legend>
-                  {options.length ? (
+                  {menu.options.length ? (
                     <div className="option-list">
                       {menu.options.map((option) => (
                         <label
@@ -182,17 +218,17 @@ export default function MenuDetail({
                 <div className="detail-actions">
                   <button
                     className="pill-button"
-                    disabled={Boolean(selectionError)}
+                    disabled={Boolean(selectionError) || adding}
                     onClick={() => onAdd(selection)}
                   >
-                    장바구니에 담기
+                    {adding ? '메뉴 확인 중…' : '장바구니에 담기'}
                   </button>
                   <button
                     className="text-button"
                     disabled={Boolean(selectionError)}
                     onClick={() => onOrder(selection)}
                   >
-                    주문하기
+                    이 메뉴만 바로 주문
                   </button>
                   <button className="text-button" onClick={onViewCart}>
                     장바구니 보기

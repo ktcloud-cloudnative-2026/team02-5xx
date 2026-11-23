@@ -1,65 +1,198 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { getCategories, getMenu, getMenus } from './data/menuRepository.js';
-import MenuDetail from './components/MenuDetail.jsx';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import { menuApi as defaultMenuApi } from './data/menuApi.js';
+import RemoteMenuDetail from './components/RemoteMenuDetail.jsx';
+import { readPendingCart, validateCartCatalog } from './cartCatalog.js';
+import { useMenuRequest } from './useMenuRequests.js';
 import { formatPrice } from './menu.js';
 import {
   addItem,
   browserStorage,
   cartView,
   changeQuantity,
-  loadCart,
   removeItem,
   saveCart,
 } from './cart.js';
-import { anonymousSession, planCartIntent } from './session.js';
+import { canUseCustomerFeatures, planCartIntent } from './session.js';
+import { authSession } from './authSession.js';
 import CartOverlay from './components/CartOverlay.jsx';
 import LoginModal from './components/LoginModal.jsx';
+import CheckoutPage from './components/CheckoutPage.jsx';
+import {
+  createCheckoutFlow,
+  customerKey,
+  prepareCheckout,
+} from './checkout/checkoutFlow.js';
+import { createCheckoutHttpAdapter } from './checkout/checkoutHttpAdapter.js';
+import {
+  captureCartStorage,
+  completePaidCart,
+} from './checkout/checkoutCompletion.js';
 
 export default function App({
-  sessionSource = anonymousSession,
+  sessionSource = authSession,
   storageProvider = browserStorage,
+  menuApi = defaultMenuApi,
+  checkoutAdapter,
 }) {
   const session = useSyncExternalStore(
     sessionSource.subscribe,
     sessionSource.getSnapshot,
     sessionSource.getServerSnapshot ?? sessionSource.getSnapshot,
   );
-  const signedIn = session?.authenticated === true;
+  const authenticated = session?.authenticated === true;
+  const signedIn = canUseCustomerFeatures(session);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [logoutFailed, setLogoutFailed] = useState(false);
+  const previousAuthenticated = useRef(authenticated);
   const [page, setPage] = useState(() =>
     typeof window !== 'undefined' && window.location.hash === '#cart'
       ? 'cart'
       : 'menu',
   );
-  const [cart, setCart] = useState(() => loadCart(storageProvider, getMenu));
+  const [cart, setCart] = useState(() => readPendingCart(storageProvider));
+  const cartRef = useRef(cart);
   const [loginIntent, setLoginIntent] = useState(null);
+  const pendingIntent = useRef(null);
+  const cartOpen = useRef(page === 'cart');
   const [notice, setNotice] = useState('');
+  const [checkout, setCheckout] = useState(null);
+  const checkoutRef = useRef(null);
+  const defaultAdapter = useMemo(
+    () => createCheckoutHttpAdapter({ sessionSource }),
+    [sessionSource],
+  );
   const intentNumber = useRef(0);
   const handledIntent = useRef(null);
   const lastMenuId = useRef(null);
   const previousPage = useRef(page);
-  const previousSignedIn = useRef(signedIn);
   const menuScroll = useRef(0);
   const [categoryId, setCategoryId] = useState('all');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('default');
   const [selectedId, setSelectedId] = useState(null);
-  const [error, setError] = useState('');
   const openerRef = useRef(null);
   const cartOpenerRef = useRef(null);
-  const menus = getMenus({ categoryId, query, sort });
-  const selectedMenu = selectedId === null ? null : getMenu(selectedId);
+  const listKey = JSON.stringify([categoryId, query, sort]);
+  const listing = useMenuRequest(
+    listKey,
+    (signal) => menuApi.list({ categoryId, query, sort }, { signal }),
+    [menuApi, categoryId, query, sort],
+  );
+  const menus = listing.data?.menus ?? [];
+  const categories = useRef([]);
+  if (listing.data) categories.current = listing.data.categories;
+  const details = useRef(new Map());
+  const [, detailChanged] = useState(0);
+  const onDetailLoaded = useCallback((menu) => {
+    details.current.set(menu.id, { menu, checkedAt: performance.now() });
+    detailChanged((value) => value + 1);
+  }, []);
+  const pendingMenuId = loginIntent?.selection?.menuId ?? null;
+  const catalogKey = useMemo(
+    () => ({ items: cart.items, pendingMenuId }),
+    [cart.items, pendingMenuId],
+  );
+  const catalog = useMenuRequest(
+    catalogKey,
+    async (signal) => {
+      const result = await validateCartCatalog(cart.items, menuApi, { signal });
+      // A retry may clear the detail cache. Validate the waiting selection too,
+      // without inserting it into the cart before the pending action executes.
+      if (pendingMenuId !== null && !result.menus.has(pendingMenuId))
+        result.menus.set(
+          pendingMenuId,
+          await menuApi.detail(pendingMenuId, { signal }),
+        );
+      return { ...result, checkedAt: performance.now() };
+    },
+    [cart.items, pendingMenuId, menuApi],
+  );
+  const getMenu = (id) => {
+    const detail = details.current.get(id);
+    if (
+      catalog.data?.menus.has(id) &&
+      (!detail || catalog.data.checkedAt >= detail.checkedAt)
+    )
+      return catalog.data.getMenu(id);
+    return detail?.menu ?? null;
+  };
+  const validatedItems = catalog.data?.items ?? [];
+  let view = null;
+  let cartFailure = catalog.error?.message ?? '';
+  if (catalog.data) {
+    try {
+      view = cartView(validatedItems, getMenu);
+    } catch {
+      cartFailure = '메뉴 정보가 변경됐어요. 장바구니를 다시 확인해 주세요.';
+    }
+  }
+  const cartReady = Boolean(view) && !catalog.loading && !cartFailure;
+
+  useEffect(() => {
+    // The store owns restoration; StrictMode must not cancel or duplicate rotation.
+    void sessionSource.restore?.();
+  }, [sessionSource]);
+
+  useEffect(() => {
+    let previous = sessionSource.getSnapshot();
+    const identity = (value) =>
+      value?.authenticated === true
+        ? JSON.stringify([
+            value.user?.id ?? null,
+            value.user?.role ?? value.role,
+          ])
+        : null;
+    return sessionSource.subscribe(() => {
+      const next = sessionSource.getSnapshot();
+      if (
+        previous?.authenticated === true &&
+        identity(previous) !== identity(next)
+      ) {
+        pendingIntent.current = null;
+        setLoginIntent(null);
+      }
+      previous = next;
+    });
+  }, [sessionSource]);
 
   useEffect(() => {
     const onHistory = () => {
+      if (window.location.hash === '#checkout' && checkoutRef.current) return;
+      const completed =
+        checkoutRef.current?.flow.getSnapshot().stage === 'paid';
+      if (completed || window.location.hash === '#checkout') {
+        window.history.replaceState(
+          { peakOrderPage: 'menu' },
+          '',
+          '#menu-list',
+        );
+        setSelectedId(null);
+      }
+      if (checkoutRef.current) {
+        checkoutRef.current.flow.dispose();
+        checkoutRef.current = null;
+        setCheckout(null);
+      }
       const next = window.location.hash === '#cart' ? 'cart' : 'menu';
       if (next === 'cart' && previousPage.current !== 'cart')
         menuScroll.current = window.scrollY;
+      cartOpen.current = next === 'cart';
       setPage(next);
-      if (next === 'cart') setSelectedId(null);
-      else setLoginIntent(null);
+      if (next !== 'cart') {
+        pendingIntent.current = null;
+        setLoginIntent(null);
+      }
     };
     window.addEventListener('popstate', onHistory);
     window.addEventListener('hashchange', onHistory);
+    if (window.location.hash === '#checkout') onHistory();
     return () => {
       window.removeEventListener('popstate', onHistory);
       window.removeEventListener('hashchange', onHistory);
@@ -67,27 +200,53 @@ export default function App({
   }, []);
 
   useEffect(() => {
-    if (page === 'cart' && !signedIn && !loginIntent) {
-      setLoginIntent({ type: 'view', id: ++intentNumber.current });
+    const wasAuthenticated = previousAuthenticated.current;
+    previousAuthenticated.current = authenticated;
+    if (wasAuthenticated && !authenticated) {
+      pendingIntent.current = null;
+      setLoginIntent(null);
     }
-  }, [page, signedIn, loginIntent]);
+    if (checkoutRef.current) {
+      pendingIntent.current = null;
+      setLoginIntent(null);
+    }
+  }, [authenticated, checkout]);
 
   useEffect(() => {
-    if (signedIn && loginIntent && handledIntent.current !== loginIntent.id) {
-      handledIntent.current = loginIntent.id;
-      setLoginIntent(null);
-      executeIntent(planCartIntent(session, loginIntent).action);
-    }
-  }, [signedIn, loginIntent]);
+    if (
+      !loginIntent ||
+      pendingIntent.current !== loginIntent ||
+      handledIntent.current === loginIntent.id
+    )
+      return;
+    const planned = planCartIntent(session, loginIntent);
+    if (planned.pending) return;
+    if (
+      !planned.forbidden &&
+      ['add', 'order'].includes(loginIntent.type) &&
+      !cartReady
+    )
+      return;
+    handledIntent.current = loginIntent.id;
+    pendingIntent.current = null;
+    setLoginIntent(null);
+    if (planned.forbidden)
+      setNotice('주문·결제는 CUSTOMER 계정만 이용할 수 있어요.');
+    else executeIntent(planned.action);
+  }, [
+    authenticated,
+    signedIn,
+    loginIntent,
+    cartReady,
+    session?.user?.id,
+    session?.user?.role,
+  ]);
 
   useEffect(() => {
     const pageChanged = previousPage.current !== page;
-    const cartBecameAvailable =
-      page === 'cart' && signedIn && !previousSignedIn.current;
     previousPage.current = page;
-    previousSignedIn.current = signedIn;
-    if (!pageChanged && !cartBecameAvailable) return;
-    if (page === 'cart' && signedIn) {
+    if (!pageChanged) return;
+    if (page === 'cart') {
       document.getElementById('cart-title')?.focus({ preventScroll: true });
     } else {
       window.scrollTo(0, menuScroll.current);
@@ -97,7 +256,7 @@ export default function App({
         document.getElementById('menu-list');
       target?.focus({ preventScroll: true });
     }
-  }, [page, signedIn]);
+  }, [page]);
 
   function navigate(nextPage) {
     if (nextPage === 'cart' && page !== 'cart') {
@@ -108,12 +267,15 @@ export default function App({
         '#cart',
       );
     }
+    cartOpen.current = nextPage === 'cart';
     setPage(nextPage);
-    setSelectedId(null);
   }
 
   function closeCart() {
     // Update React first: a pending popstate must not reopen anonymous login.
+    pendingIntent.current = null;
+    setLoginIntent(null);
+    cartOpen.current = false;
     setPage('menu');
     if (window.history.state?.cartOverlay === true) {
       window.history.back();
@@ -130,28 +292,77 @@ export default function App({
 
   function persist(items) {
     const warning = saveCart(items, storageProvider, getMenu);
-    setCart({ items, warning });
+    const next = { items, warning };
+    cartRef.current = next;
+    setCart(next);
   }
 
   function executeIntent(intent) {
-    if (!signedIn) return;
+    if (intent.type === 'order' && !signedIn) return;
+    if (intent.type === 'login') {
+      setNotice('로그인했어요.');
+      return;
+    }
     if (intent.type === 'view') {
+      catalog.retry();
       navigate('cart');
       return;
     }
+    if (!cartReady) {
+      setNotice('장바구니 메뉴 정보를 먼저 확인해 주세요.');
+      return;
+    }
     if (intent.type === 'order') {
-      setNotice(
-        '주문·결제 연결을 준비 중이에요. 현재 주문은 생성되지 않습니다.',
-      );
+      if (checkoutRef.current) return;
+      try {
+        const input = prepareCheckout(
+          intent.selection ? [intent.selection] : validatedItems,
+          getMenu,
+        );
+        const owner = customerKey(sessionSource.getSnapshot());
+        const baseline = captureCartStorage(storageProvider);
+        const next = {
+          source: intent.selection ? 'immediate' : 'cart',
+          flow: createCheckoutFlow({
+            input,
+            adapter: checkoutAdapter ?? defaultAdapter,
+            sessionSource,
+            onPaid: ({ items }) => {
+              const canApply = () =>
+                checkoutRef.current === next &&
+                customerKey(sessionSource.getSnapshot()) === owner;
+              if (!canApply() || next.source !== 'cart') return '';
+              const result = completePaidCart({
+                orderedItems: items,
+                currentItems: cartRef.current.items,
+                storageProvider,
+                baseline,
+                canApply,
+              });
+              if (canApply()) {
+                cartRef.current = result;
+                setCart(result);
+              }
+              return result.warning;
+            },
+          }),
+        };
+        checkoutRef.current = next;
+        setCheckout(next);
+        window.history.pushState({ peakOrderCheckout: true }, '', '#checkout');
+      } catch (failure) {
+        setNotice(failure.message);
+      }
       return;
     }
     try {
-      const result = addItem(cart.items, intent.selection, getMenu);
+      const result = addItem(validatedItems, intent.selection, getMenu);
       persist(result.items);
+      navigate('cart');
       setNotice(
         result.limited
           ? '동일한 메뉴와 옵션은 합쳐서 최대 99개까지 담을 수 있어요.'
-          : '장바구니에 담았어요.',
+          : `장바구니에 담았어요. ${getMenu(intent.selection.menuId).name} ${intent.selection.quantity}개를 추가했습니다.`,
       );
     } catch (failure) {
       setNotice(failure.message);
@@ -159,26 +370,64 @@ export default function App({
   }
 
   function requestIntent(intent) {
+    if (
+      intent.type === 'add' &&
+      (cartOpen.current || pendingIntent.current?.type === 'add')
+    )
+      return;
     setNotice('');
     const planned = planCartIntent(session, intent);
-    if (planned.pending) {
-      setLoginIntent({ ...planned.pending, id: ++intentNumber.current });
-    } else {
-      executeIntent(planned.action);
+    if (planned.forbidden) {
+      setNotice('주문·결제는 CUSTOMER 계정만 이용할 수 있어요.');
+      return;
     }
+    const action = planned.pending ?? planned.action;
+    if (
+      planned.pending ||
+      (['add', 'order'].includes(action.type) && !cartReady)
+    ) {
+      const waiting = { ...action, id: ++intentNumber.current };
+      pendingIntent.current = waiting;
+      setLoginIntent(waiting);
+      if (action.type === 'add')
+        setNotice(
+          '메뉴 정보를 확인 중이에요. 완료되면 한 번만 담고 장바구니를 열게요.',
+        );
+      return;
+    }
+    executeIntent(action);
   }
 
   function closeLogin() {
+    pendingIntent.current = null;
     setLoginIntent(null);
-    if (page === 'cart' && !signedIn) {
-      closeCart();
+  }
+
+  function closeCheckout() {
+    const completed = checkoutRef.current?.flow.getSnapshot().stage === 'paid';
+    checkoutRef.current?.flow.dispose();
+    checkoutRef.current = null;
+    setCheckout(null);
+    if (completed) {
+      cartOpen.current = false;
+      setPage('menu');
+      setSelectedId(null);
+      pendingIntent.current = null;
+      setLoginIntent(null);
+      setNotice(cartRef.current.warning);
+      window.history.replaceState({ peakOrderPage: 'menu' }, '', '#menu-list');
+      requestAnimationFrame(() =>
+        document.getElementById('menu-list')?.focus({ preventScroll: true }),
+      );
+      return;
     }
+    if (window.history.state?.peakOrderCheckout) window.history.back();
   }
 
   function updateCart(key, quantity) {
-    if (!signedIn) return requestIntent({ type: 'view' });
+    if (!cartReady) return;
     try {
-      persist(changeQuantity(cart.items, key, quantity, getMenu));
+      persist(changeQuantity(validatedItems, key, quantity, getMenu));
       setNotice('수량을 변경했어요.');
     } catch (failure) {
       setNotice(failure.message);
@@ -186,35 +435,45 @@ export default function App({
   }
 
   function deleteCartItem(key) {
-    if (!signedIn) return requestIntent({ type: 'view' });
-    persist(removeItem(cart.items, key, getMenu));
+    if (!cartReady) return;
+    persist(removeItem(validatedItems, key, getMenu));
     setNotice('장바구니에서 삭제했어요.');
     requestAnimationFrame(() => document.getElementById('cart-title')?.focus());
   }
 
-  let view;
-  try {
-    view = cartView(cart.items, getMenu);
-  } catch {
-    view = { rows: [], total: 0 };
-  }
-
   function openMenu(id, event) {
-    const menu = getMenu(id);
-    if (!menu || menu.status !== 'ON_SALE') {
-      setError('선택할 수 없는 메뉴입니다. 다른 메뉴를 선택해 주세요.');
-      return;
-    }
+    pendingIntent.current = null;
+    setLoginIntent(null);
     openerRef.current = event.currentTarget;
     lastMenuId.current = id;
-    setError('');
     setNotice('');
     setSelectedId(id);
   }
 
   function closeMenu() {
+    pendingIntent.current = null;
+    setLoginIntent(null);
     setSelectedId(null);
     openerRef.current?.focus();
+  }
+
+  async function signOut() {
+    if (authBusy || !sessionSource.logout) return;
+    setAuthBusy(true);
+    setLoginIntent(null);
+    pendingIntent.current = null;
+    try {
+      await sessionSource.logout();
+      setLogoutFailed(false);
+      setNotice('로그아웃했어요. 장바구니 항목은 이 브라우저에 보존했습니다.');
+    } catch {
+      setLogoutFailed(true);
+      setNotice(
+        '화면의 세션은 종료했지만 서버 로그아웃을 확인하지 못했어요. 다시 시도해 주세요.',
+      );
+    } finally {
+      setAuthBusy(false);
+    }
   }
 
   return (
@@ -228,9 +487,9 @@ export default function App({
         </div>
         <nav aria-label="고객 메뉴">
           <a
-            className={`nav-item ${page !== 'cart' || !signedIn ? 'active' : ''}`}
+            className={`nav-item ${page !== 'cart' ? 'active' : ''}`}
             href="#menu-list"
-            aria-current={page !== 'cart' || !signedIn ? 'page' : undefined}
+            aria-current={page !== 'cart' ? 'page' : undefined}
           >
             <svg
               viewBox="0 0 24 24"
@@ -244,8 +503,8 @@ export default function App({
             메뉴
           </a>
           <button
-            className={`nav-item cart-nav ${page === 'cart' && signedIn ? 'active' : ''}`}
-            aria-current={page === 'cart' && signedIn ? 'page' : undefined}
+            className={`nav-item cart-nav ${page === 'cart' ? 'active' : ''}`}
+            aria-current={page === 'cart' ? 'page' : undefined}
             onClick={requestCart}
           >
             <svg
@@ -258,12 +517,12 @@ export default function App({
               <path d="M3 4h2l3 12h11l2-8H6M10 20h.01M18 20h.01" />
             </svg>
             장바구니
-            {signedIn && cart.items.length > 0 ? ` (${cart.items.length})` : ''}
+            {cart.items.length > 0 ? ` (${cart.items.length})` : ''}
           </button>
         </nav>
       </aside>
       <main className="menu-page">
-        {(page !== 'cart' || !signedIn) && (
+        {page !== 'cart' && (
           <p className="action-notice" role="status" aria-live="polite">
             {notice}
           </p>
@@ -274,6 +533,37 @@ export default function App({
               <strong>메뉴</strong> 카테고리
             </h1>
             <div className="header-actions">
+              {authenticated && (
+                <span className="session-user" aria-label="로그인 사용자">
+                  {session.user?.nickname || session.user?.email || '로그인됨'}
+                </span>
+              )}
+              {authenticated ? (
+                <button
+                  className="text-button"
+                  onClick={signOut}
+                  disabled={authBusy}
+                >
+                  로그아웃
+                </button>
+              ) : (
+                <button
+                  className="text-button"
+                  disabled={authBusy || session?.phase === 'restoring'}
+                  onClick={() => requestIntent({ type: 'login' })}
+                >
+                  {session?.phase === 'restoring' ? '세션 확인 중' : '로그인'}
+                </button>
+              )}
+              {logoutFailed && (
+                <button
+                  className="text-button"
+                  disabled={authBusy}
+                  onClick={signOut}
+                >
+                  로그아웃 다시 시도
+                </button>
+              )}
               <label className="search-field">
                 <svg
                   viewBox="0 0 24 24"
@@ -299,14 +589,12 @@ export default function App({
                 aria-haspopup="dialog"
               >
                 장바구니
-                {signedIn && cart.items.length > 0
-                  ? ` (${cart.items.length})`
-                  : ''}
+                {cart.items.length > 0 ? ` (${cart.items.length})` : ''}
               </button>
             </div>
           </header>
           <div className="categories" role="group" aria-label="메뉴 카테고리">
-            {[{ id: 'all', name: '전체' }, ...getCategories()].map(
+            {[{ id: 'all', name: '전체' }, ...categories.current].map(
               (category) => (
                 <button
                   key={category.id}
@@ -341,20 +629,33 @@ export default function App({
             <p className="sr-only" role="status">
               메뉴 {menus.length}개
             </p>
-            {error && <p role="alert">{error}</p>}
-            {menus.length ? (
+            {listing.loading ? (
+              <p className="empty-state" role="status">
+                메뉴를 불러오는 중이에요.
+              </p>
+            ) : listing.error ? (
+              <div className="empty-state" role="alert">
+                <p>{listing.error.message}</p>
+                <button className="pill-button" onClick={listing.retry}>
+                  다시 시도
+                </button>
+              </div>
+            ) : menus.length ? (
               <div className="menu-grid">
                 {menus.map((menu) => (
                   <button
                     key={menu.id}
                     data-menu-id={menu.id}
                     className="menu-card"
-                    disabled={menu.status !== 'ON_SALE'}
                     onClick={(event) => openMenu(menu.id, event)}
                     aria-label={`${menu.name}, ${formatPrice(menu.basePrice)}${menu.status === 'PAUSED' ? ', 판매 중지' : ', 상세 보기'}`}
                   >
                     <span className="menu-photo" aria-hidden="true">
-                      메뉴 사진
+                      {menu.imageUrl ? (
+                        <img src={menu.imageUrl} alt="" />
+                      ) : (
+                        '메뉴 사진'
+                      )}
                     </span>
                     <span className="menu-name">{menu.name}</span>
                     <span className="menu-price">
@@ -386,11 +687,19 @@ export default function App({
           </section>
         </>
       </main>
-      {page === 'cart' && signedIn && (
+      {page === 'cart' && (
         <CartOverlay
-          rows={view.rows}
-          total={view.total}
-          warning={cart.warning}
+          rows={view?.rows ?? []}
+          total={view?.total}
+          pending={catalog.loading}
+          failure={cartFailure}
+          onRetry={() => {
+            details.current.clear();
+            catalog.retry();
+          }}
+          warning={[cart.warning, catalog.data?.warning]
+            .filter(Boolean)
+            .join(' ')}
           notice={notice}
           onQuantity={updateCart}
           onRemove={deleteCartItem}
@@ -399,19 +708,35 @@ export default function App({
         />
       )}
       {selectedId !== null && (
-        <MenuDetail
+        <RemoteMenuDetail
           key={selectedId}
-          menu={selectedMenu}
+          api={menuApi}
+          menuId={selectedId}
+          onLoaded={onDetailLoaded}
+          adding={loginIntent?.type === 'add'}
           onClose={closeMenu}
-          feedback={[notice, signedIn ? cart.warning : '']
-            .filter(Boolean)
-            .join(' ')}
+          feedback={[notice, cart.warning].filter(Boolean).join(' ')}
           onAdd={(selection) => requestIntent({ type: 'add', selection })}
           onOrder={(selection) => requestIntent({ type: 'order', selection })}
           onViewCart={requestCart}
         />
       )}
-      {loginIntent && !signedIn && <LoginModal onClose={closeLogin} />}
+      {checkout && (
+        <CheckoutPage
+          flow={checkout.flow}
+          source={checkout.source}
+          onClose={closeCheckout}
+        />
+      )}
+      {loginIntent &&
+        ['order', 'login'].includes(loginIntent.type) &&
+        !authenticated && (
+          <LoginModal
+            onClose={closeLogin}
+            onLogin={sessionSource.login}
+            waiting={session?.phase === 'restoring' || authBusy}
+          />
+        )}
     </div>
   );
 }

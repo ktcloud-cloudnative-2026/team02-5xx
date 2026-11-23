@@ -9,6 +9,9 @@ export default function Cart({
   onRemove,
   onBack,
   onOrder,
+  pending = false,
+  failure = '',
+  onRetry,
 }) {
   return (
     <section className="cart-page" aria-labelledby="cart-title">
@@ -33,7 +36,20 @@ export default function Cart({
           {warning}
         </p>
       )}
-      {rows.length ? (
+      {pending || failure ? (
+        <div className="empty-state" role={failure ? 'alert' : 'status'}>
+          <h2>
+            {failure ? '장바구니를 확인하지 못했어요' : '장바구니 메뉴 확인 중'}
+          </h2>
+          <p>{failure || '최신 메뉴와 옵션 가격을 확인하고 있어요.'}</p>
+          <p>확인 전에는 저장된 항목을 변경하거나 금액을 표시하지 않아요.</p>
+          {failure && (
+            <button className="pill-button" onClick={onRetry}>
+              다시 확인
+            </button>
+          )}
+        </div>
+      ) : rows.length ? (
         <div className="cart-layout">
           <ul className="cart-items" aria-label="장바구니 항목">
             {rows.map((row) => (
@@ -104,6 +120,9 @@ export default function Cart({
               표시 금액은 예상 금액이에요.
               <br />
               주문 시 가격과 재고를 다시 확인합니다.
+              <br />
+              장바구니는 이 브라우저에 저장되며, 주문·결제는 고객 로그인 후
+              진행합니다.
             </p>
             <button className="pill-button" onClick={onOrder}>
               주문하기
