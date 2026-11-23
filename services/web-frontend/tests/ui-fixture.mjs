@@ -1,6 +1,7 @@
 // Local, test-only browser fixture. This file is not imported by index.html or bundled into dist.
 // The injected session is a UI test double, not a login/JWT implementation.
 import http from 'node:http';
+import { readFile } from 'node:fs/promises';
 import { build } from 'vite';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -11,6 +12,7 @@ export async function startUiFixture({
   input = resolve(entryFile ?? 'tests/browser-fixture-entry.jsx'),
   handleRequest,
   testControls = true,
+  previewControls,
 } = {}) {
   const bundle = await build({
     logLevel: 'error',
@@ -36,6 +38,13 @@ export async function startUiFixture({
     if (handleRequest && (await handleRequest(request, response))) return;
     if (menuApiHandler(request, response)) return;
     const url = new URL(request.url, 'http://127.0.0.1');
+    if (url.pathname === '/images/defaults/menu-placeholder.svg') {
+      response.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+      response.end(
+        await readFile(resolve('public/images/defaults/menu-placeholder.svg')),
+      );
+      return;
+    }
     if (url.pathname === '/') {
       const html = `<!doctype html>
       <html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="icon" href="data:,"><title>Issue 110 UI test fixture</title>${styles}</head>
@@ -48,7 +57,7 @@ export async function startUiFixture({
         <button id="test-pending">다음 로그인 안내에서 세션 모의 주입</button>
       </aside>`
           : ''
-      }<script type="module" src="/${entry.fileName}"></script></body></html>`;
+      }${typeof previewControls === 'function' ? previewControls() : ''}<script type="module" src="/${entry.fileName}"></script></body></html>`;
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       response.end(html);
     } else {

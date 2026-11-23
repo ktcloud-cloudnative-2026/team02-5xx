@@ -47,7 +47,7 @@ try {
         if (request.url().includes('/api/v1/menus?'))
           requests.push(new URL(request.url()));
       });
-      await page.goto(fixture.url);
+      await page.goto(fixture.url + '#menu-list');
       await page.locator('[data-menu-id="1"]').waitFor();
       assert.equal(requests[0].searchParams.has('categoryId'), false);
       await page.getByRole('button', { name: '버거', exact: true }).click();
@@ -94,7 +94,7 @@ try {
   await scenario(
     'PAUSED detail is readable but not actionable, contract omissions and active radio default',
     async (page) => {
-      await page.goto(fixture.url);
+      await page.goto(fixture.url + '#menu-list');
       await page.locator('[data-menu-id="4"]').click();
       const dialog = page.locator('dialog.detail-modal[open]');
       await dialog.getByText('현재 판매 중지된 메뉴입니다.').waitFor();
@@ -115,7 +115,7 @@ try {
   await scenario(
     'anonymous login nests without losing selected options/quantity; Escape returns to detail',
     async (page) => {
-      await page.goto(fixture.url);
+      await page.goto(fixture.url + '#menu-list');
       await page.locator('[data-menu-id="1"]').click();
       const detail = page.locator('dialog.detail-modal[open]');
       await detail
@@ -165,7 +165,7 @@ try {
         body.data.basePrice = 7000;
         await route.fulfill({ json: body });
       });
-      await page.goto(fixture.url);
+      await page.goto(fixture.url + '#menu-list');
       await page.locator('[data-menu-id="1"]').waitFor();
       await page.locator('#test-sign-in').click();
       await page.locator('.header-cart').click();
@@ -205,6 +205,9 @@ try {
       await page.screenshot({ path: resolve(output, 'verified-cart.png') });
       await page.keyboard.press('Escape');
       await page.waitForFunction(() => location.hash !== '#cart');
+      await page.waitForFunction(() =>
+        document.activeElement?.classList.contains('header-cart'),
+      );
       assert.equal(
         await page
           .locator('.header-cart')
@@ -229,7 +232,7 @@ try {
           ? route.fulfill({ status: 503, json: { success: false } })
           : route.continue(),
       );
-      await page.goto(fixture.url);
+      await page.goto(fixture.url + '#menu-list');
       await page
         .getByRole('button', { name: '다시 시도', exact: true })
         .waitFor();
@@ -245,7 +248,7 @@ try {
     '320px customer view uses real async HTTP data and retains detail/login flow',
     async (page) => {
       await page.setViewportSize({ width: 320, height: 640 });
-      await page.goto(fixture.url);
+      await page.goto(fixture.url + '#menu-list');
       await page.locator('[data-menu-id="1"]').click();
       const detail = page.locator('dialog.detail-modal[open]');
       await detail.getByRole('radio').first().waitFor();
