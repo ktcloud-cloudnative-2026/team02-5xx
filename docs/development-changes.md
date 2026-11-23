@@ -1,18 +1,18 @@
 # Peak Order — 기획 대비 개발 변경사항 정리
 
-> **저장소 배치 권장 경로:** `docs/development-changes.md`  
-> **작성 기준일:** 2026-11-23 (KST)  
+> **작성·현황 확인 기준일:** 2026-11-23 (KST)  
 > **계속 관리:** [Issue #193 — 기획 대비 개발 변경사항](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/193)  
 > **비교 기준:** 2026-11-13 전후 확정된 Notion 요구사항·API·ERD·설계 결정 및 저장소 `docs/api/notion-draft.md`, `docs/erd/notion-draft.md`  
-> **구현 확인 기준:** GitHub `main` [`ca43852`](https://github.com/ktcloud-cloudnative-2026/team02-5xx/tree/ca43852c7f2a87eeebfa7b09896ec4f0a8f84e25) 및 2026-11-23에 확인한 개별 PR 상태  
+> **구현·병합 상태 확인 기준:** GitHub `main` [`0c65ed0`](https://github.com/ktcloud-cloudnative-2026/team02-5xx/tree/0c65ed0369acb9da0dc1e4cef7d7cff8223c4a59) 및 2026-11-23에 확인한 개별 PR 상태  
+> **최초 조사 기준(과거 스냅샷):** `main` [`ca43852`](https://github.com/ktcloud-cloudnative-2026/team02-5xx/tree/ca43852c7f2a87eeebfa7b09896ec4f0a8f84e25). 이후 #143·#148·#183·#185·#190·#210·#220의 병합 상태는 아래에 갱신했다.  
 > **목적:** 초기 설계와 실제 개발 계약의 차이, 변경 이유, 문서 반영 필요 항목을 기록한다. **구현 여부와 실제 dev/prod 배포·통합 검증 여부는 별개**다.
 
 ## 0. 판정 기준 및 범위
 
 | 표기 | 뜻 |
 | --- | --- |
-| **main 반영** | 해당 코드/마이그레이션 또는 매니페스트가 기준 커밋의 `main`에 존재함 |
-| **PR 진행** | 별도 PR에서 개발 중이며, 기준 시점 `main`에는 포함되지 않음 |
+| **main 반영** | 위에 명시된 최신 확인 커밋의 `main`에 해당 코드·문서·매니페스트가 존재함 |
+| **PR 진행** | 2026-11-23 확인 시 별도 PR이 열려 있으며, 최신 확인 시점 `main`에 포함되지 않음 |
 | **설계와 구현 차이** | 현재 코드와 기획·설정의 불일치 또는 미반영 상태. 팀 합의에 따른 최종 변경은 아닐 수 있음 |
 | **실환경 미확인** | 코드·테스트/문서만 확인했으며 dev/prod 종단 간 동작을 단정할 수 없음 |
 
@@ -23,9 +23,9 @@
 ### 1-1. Auth — JWT 세션의 구체적인 전달·보안 계약 (main 반영)
 
 - **기획:** AU-01 로그인/JWT 발급, AU-02 내 정보, AU-09 재발급, AU-10 로그아웃. 토큰 저장·회전·검증키·HTTP 응답 세부는 추가 설계 대상.
-- **구현 상세:** Access Token은 **RS256 JWT(15분)**, Refresh Token 원문은 **쿠키로 전달**하고 DB에는 **SHA-256 해시**만 저장한다. Refresh는 세션 단위 회전·폐기, 기억하기(`rememberMe`)에 따른 만료(기본 1일/기억하기 14일)를 사용한다. `GET /api/v1/auth/jwks` 공개 검증키 조회가 추가됐다. `GET /api/v1/auth/me`는 Bearer Access Token을 요구하며, `POST /auth/logout`은 공통 JSON이 아닌 **204 No Content + 쿠키 삭제**를 반환한다.
+- **구현 상세:** Access Token은 **RS256 JWT(15분)**, Refresh Token 원문은 **쿠키로 전달**하고 DB에는 **SHA-256 해시**만 저장한다. Refresh는 세션 단위 회전·폐기, 기억하기(`rememberMe`)에 따른 만료(기본 1일/기억하기 14일)를 사용한다. `GET /api/v1/auth/jwks` 공개 검증키 조회가 추가됐다. `GET /api/v1/auth/me`는 Bearer Access Token을 요구하며, `POST /api/v1/auth/logout`은 공통 JSON이 아닌 **204 No Content + 쿠키 삭제**를 반환한다.
 - **이유:** 브라우저에서 재발급 토큰을 직접 노출하지 않고, 중복 사용·세션 경쟁·서명 검증을 명확히 처리하기 위해서다.
-- **주의:** `auth.session.enabled` 기본값은 `false`. 기능이 `main`에 있어도 Gateway JWT 인가·실제 HTTPS 쿠키·dev 활성화까지 완료됐다는 뜻이 아니다. AU-05~AU-08(회원정보·비밀번호·복구)은 기준 `main`에서 확인되지 않는다.
+- **주의:** `auth.session.enabled` 기본값은 `false`. 기능이 `main`에 있어도 Gateway JWT 인가·실제 HTTPS 쿠키·dev 활성화까지 완료됐다는 뜻이 아니다. AU-05·06(회원정보·비밀번호 변경)은 [PR #221](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/221)에서 개발돼 미병합이고, AU-07·08(복구)은 구현·병합 여부를 별도 확인해야 한다.
 - **근거:** [PR #164](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/164), [SessionController](https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/main/services/auth-service/src/main/java/com/peakorder/auth/controller/SessionController.java), [Auth 구현 메모](https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/main/docs/api/auth-session-implementation-plan.md).
 
 ### 1-2. Menu — 고객 조회·구매 검증의 상세 계약 (main 반영)
@@ -98,7 +98,7 @@
 | **Cooking V2** | `status='COOKING'` 행을 DB 전체에서 하나만 허용하는 **부분 UNIQUE 인덱스** | 스케줄러 동시 실행과 관계없이 단일 매장 **동시 조리 1건**을 DB에서 최종 보장. |
 | **Cooking V3** | `cooking_tickets.queued_at DEFAULT clock_timestamp()` | 트랜잭션 시작 시각이 아니라 실제 INSERT 실행 시각으로 FIFO 등록 순서를 보정. [#109](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/109) |
 
-실제 SQL: [`services/*/src/main/resources/db/migration`](https://github.com/ktcloud-cloudnative-2026/team02-5xx/tree/main/services) 아래 서비스별 마이그레이션. 기존 [ERD 초안](https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/main/docs/erd/notion-draft.md)은 11/19까지의 Order V1~V5를 설명하나, V6은 **문서 PR #183 미병합** 상태여서 기준 `main` 문서에 아직 완전히 반영되지 않았다.
+실제 SQL: [`services/*/src/main/resources/db/migration`](https://github.com/ktcloud-cloudnative-2026/team02-5xx/tree/main/services) 아래 서비스별 마이그레이션. 과거 11/19 기준 [ERD 초안](https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/main/docs/erd/notion-draft.md)에 빠졌던 Order V6 및 OR-08·09 설명은 [문서 PR #183](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/183) 병합으로 현재 `main`에 반영됐다.
 
 ## 3. 비동기 이벤트 / 조리 처리 변경·구체화
 
@@ -117,22 +117,23 @@
 | 구분 | 기획/정책 | 현재 코드·변경 사항 | 판정 |
 | --- | --- | --- | --- |
 | 장바구니 | 프론트 저장, 로그인 없이 담기 가능 | `localStorage` 키 `peak-order.cart.v1`, 버전 및 `{menuId, optionIds, quantity}` 저장. 결제/주문 시 로그인 모달 정책. [#116](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/116) | **main 반영**. 기획 변경이 아닌 저장 포맷 확정 |
-| 실제 메뉴 HTTP 연동 | 고객 메뉴를 API로 표시 | 현재 `main` 프론트에는 Mock 메뉴 기반 구현이 남아 있고, ME-01/02 HTTP 연동은 [#148](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/148)에서 진행. 로딩·재시도·오래된 응답 차단과 장바구니 데이터 보존 추가 | **PR 진행**, 실백엔드 연동 미검증 |
-| 로그인 프론트 연동 | Auth 로그인 모달/JWT 세션 | 실제 세션 연동은 [#188](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/188) **Draft** | **PR 진행** |
+| 실제 메뉴 HTTP 연동 | 고객 메뉴를 API로 표시 | ME-01/02 HTTP 연동 [#148](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/148)이 병합됐다. 로딩·재시도·오래된 응답 차단과 장바구니 데이터 보존 처리를 포함한다. | **main 반영**, 실제 dev 연동 검증은 별개 |
+| 정적 이미지·기본 메뉴 이미지 | 미리 정한 기본 이미지와 정적 파일 제공 | [#220](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/220)에서 공통 메뉴 이미지 대체 경로, 기본 SVG 및 정적 이미지 경로를 구성했고 main에 병합됐다. | **main 반영**, 브라우저 이미지 실패 전환·실배포 Gateway HTTP 200은 별도 검증 |
+| 로그인·Checkout HTTP 연동 | Auth 로그인 모달/JWT 세션, 결제·주문 API | Auth 세션 [#188](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/188) **Draft**를 포함해 Menu·Auth·Checkout을 통합한 [#233](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/233)이 리뷰 중이다. OR-01 생성 실패 복구 수정 요청이 남아 있다. 후속 고객 주문 내역·상세·취소 [#240](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/240)은 #233 브랜치를 Base로 하는 의존 PR이다. | **PR 진행**, 실제 dev 주문 E2E 미검증 |
 | 관리자 메뉴 UI/API | 관리자 메뉴 CRUD | UI [#132](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/132), ME-03~07 [#117](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/117)·[#119](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/119)·[#123](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/123)·[#127](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/127) 모두 **Draft**, main 미포함. 판매 상태 변경 경로는 원래 `/sales-status`에서 수정 초안 `/status`로 제안됨 | **계약 제안/PR 진행**, 확정으로 기록 금지 |
-| 재고 관리자/고객 조회 | IN-01~06 | IN-01, IN-03~05가 [#143](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/143)에 있으나 미병합. 해당 PR은 IN-04를 **양방향 조정이 아닌 양수 입고만** 지원하고, IN-02/06은 범위 밖. 관리 API는 기본 비활성. 메뉴가 과거 확정 재고 예약에 연결됐으면 재연결 제한 | **PR 진행/기획 대비 차이**, 승인 전 확정 불가 |
+| 재고 관리자/고객 조회 | IN-01~06 | IN-01·IN-03~05의 [#143](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/143)이 **main에 병합**됐다. #143 기준 IN-04는 **양방향 조정이 아닌 양수 입고만** 지원하며, IN-02·06은 이 PR의 범위 밖이다. 관리자 API 기본 비활성·과거 확정 예약 메뉴 재연결 제한 정책을 유지한다. | **main 반영(#143 범위)**, 전체 IN-01~06 및 실환경 검증은 별도 확인 |
 | 인프라 네트워크 보안 | Gateway 단일 공개 진입·내부 서비스 경로 차단 | `peakorder`에 **기본 Ingress 차단 + 필요한 서비스별 Ingress만 허용**하는 NetworkPolicy 추가. Egress는 차단하지 않음. [#166](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/166) | **main 반영**, 실클러스터 적용/검증 별도 |
 | RabbitMQ 환경 변수 | 공통 RabbitMQ 서비스/컨테이너 | K8s Service 환경변수가 앱의 `RABBITMQ_PORT`를 덮는 충돌 발견. Deployment의 `enableServiceLinks: false`로 변경. [#161](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/161) | **main 반영**, 구현 트러블슈팅 |
 | dev Pod/HPA | 초기 설계: replicas 2, CPU 70% HPA | 기준 `main`의 확인된 Order Deployment는 `replicas: 1`, 서비스별 HPA 매니페스트는 저장소 트리에서 확인되지 않음. dev 자원 제약에 따른 1개 운영안을 인프라 초안에서도 언급함 | **설계·현행 매니페스트 차이**, HPA 구현 완료로 표시 금지 |
 | Redis 사용 | Inventory 확보 만료 보조·Cooking 혼잡 캐시 제안 | Redis 매니페스트는 존재. 기준 `main`의 Inventory·Cooking `build.gradle`에는 Redis 스타터가 없고 Inventory는 DB 만료 스케줄러를 구현. 캐시 사용 완료로 쓰지 않음 | **설계 대비 구현 공백**, 정책 변경 여부 확인 필요 |
-| GitOps | Actions→GHCR→Kustomize→Argo CD 자동 배포 목표 | 서비스별 Base/Overlay 및 일부 Argo CD dev Application이 병합됨. Argo CD 문서는 **초기 수동 Sync**, 자동 Sync·prod 승격/전체 이미지 태그 자동화는 후속 결정으로 명시 | **부분 구현**, 전체 자동배포 완료 아님 |
-| 모니터링·로그 | Prometheus/Grafana/Loki/Alloy | 공통 규칙 [#146](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/146) 병합. dev kube-prometheus-stack [#185](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/185), Cooking ECS JSON 로그 [#190](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/190)은 기준일 미병합 | **설계·일부 문서 반영, 나머지 PR 진행** |
+| GitOps | Actions→GHCR→Kustomize→Argo CD 자동 배포 목표 | 서비스별 Base/Overlay 및 일부 dev Application이 반영됐다. dev 자동 Sync 정책 [#210](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/210)은 **main 병합**. Menu·Frontend 신규 dev Application [#211](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/211)은 아직 리뷰 중으로 초기 실제 Sync·Pod·DB 검증 및 공통 정책 정렬이 남는다. | **부분 구현**, 전체 자동배포·실환경 검증 완료 아님 |
+| 모니터링·로그 | Prometheus/Grafana/Loki/Alloy | 공통 규칙 [#146](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/146), dev kube-prometheus-stack [#185](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/185), Cooking ECS JSON 로그 [#190](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/190)이 **main 병합**됐다. | **main 반영**, 실제 수집·대시보드 검증은 별도 |
 
 ## 5. 문서와 실제 `main` 사이 불일치 — 수정 권장
 
-1. **Order API/ERD:** [`docs/api/notion-draft.md`](api/notion-draft.md)는 OR-08·09를 아직 미구현으로 설명하고 구현 기준을 11/19까지로 표시한다. 그러나 [#170](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/170)은 병합돼 `AdminOrderController`와 Order Flyway V6이 `main`에 있다. 이를 고치는 [문서 PR #183](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/183)은 **열려 있으므로** 이 파일에서만 일방적으로 기존 문서를 완료 처리하지 않는다.
+1. **Order API/ERD:** OR-08·09의 구현 [#170](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/170) 이후, 과거 초안의 미구현 표기와 Flyway V6 누락을 보완한 [문서 PR #183](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/183)이 **main에 병합**됐다. 과거 문서 불일치는 해결된 항목이며 실제 dev 관리자 접근 가능 여부는 별도로 검증한다.
 2. **Notion 원본 동기화:** Git의 `docs/api/notion-draft.md`, `docs/erd/notion-draft.md`에는 일부 개발 중 확인된 계약을 보완했지만 Notion 원본은 수정 날짜가 더 과거인 구간이 있다. 변경 이력은 남기되, 팀 승인 없이 초안과 구현 차이를 자동으로 '최종 기획 변경'으로 승격하지 않는다.
-3. **Menu 관리자·Inventory·웹 연동:** 관련 Draft/미병합 PR의 계약(특히 ME-07 `/status`, IN-04 입고만 처리)을 먼저 검토하고 승인받은 뒤 실제 명세/ERD·테스트를 동기화한다.
+3. **Menu 관리자·Inventory·웹 연동:** Menu 관리자 ME-03~07 Draft의 계약(특히 ME-07 `/status`)은 통합·승인이 필요하다. Inventory #143의 IN-04 **입고만 지원** 정책은 병합돼 구현 계약과의 차이를 명세에 구분해 기록한다. 고객 HTTP는 #148 병합, #233·#240 리뷰 진행으로 각각 상태를 나눠 추적한다.
 4. **인증·관리자 노출:** Auth 세션 코드는 `main`에 있지만 서비스 간 신원·권한 검증과 Gateway 연결이 끝나기 전에는 관리자 API의 임시 비활성 정책을 유지한다. 활성 배포/인가 테스트를 통과한 뒤 관련 계약 문서와 매니페스트를 갱신한다.
 5. **통합 배포·운영 검증:** 신규 마이그레이션·외부/내부 API·이벤트·NetworkPolicy·이미지·Argo CD 상태는 별도 dev 실험 결과를 기록한다. 코드 병합, 컨테이너 게시, Argo CD Sync, 종단 간 PASS를 서로 바꿔 쓰지 않는다.
 
