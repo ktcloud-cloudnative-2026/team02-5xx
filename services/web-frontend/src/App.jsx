@@ -7,6 +7,7 @@ import {
 } from 'react';
 import { menuApi as defaultMenuApi } from './data/menuApi.js';
 import RemoteMenuDetail from './components/RemoteMenuDetail.jsx';
+import MenuPhoto from './components/MenuPhoto.jsx';
 import { readPendingCart, validateCartCatalog } from './cartCatalog.js';
 import { useMenuRequest } from './useMenuRequests.js';
 import { formatPrice } from './menu.js';
@@ -402,11 +403,7 @@ export default function App({
                     aria-label={`${menu.name}, ${formatPrice(menu.basePrice)}${menu.status === 'PAUSED' ? ', 판매 중지' : ', 상세 보기'}`}
                   >
                     <span className="menu-photo" aria-hidden="true">
-                      {menu.imageUrl ? (
-                        <img src={menu.imageUrl} alt="" />
-                      ) : (
-                        '메뉴 사진'
-                      )}
+                      <MenuPhoto imageUrl={menu.imageUrl} />
                     </span>
                     <span className="menu-name">{menu.name}</span>
                     <span className="menu-price">
