@@ -25,7 +25,7 @@
 
 ## 적용 전 조건
 
-1. PR #217 관련 변경이 리뷰/CI를 통과하고 `main`에 병합되었는지 확인합니다.
+1. Issue #217 대응 PR이 리뷰/CI를 통과하고 `main`에 병합되었는지 확인합니다.
 2. `t2-db`에서 `menu_dev_user`로 접속할 권한이 있는지 확인합니다.
 3. `flyway_schema_history`에서 V1 성공을 확인합니다.
 4. `categories`, `menus`, `menu_options`의 건수가 모두 0인지 재확인합니다.
