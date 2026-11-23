@@ -39,7 +39,7 @@
 | DB | `서비스_환경` 12개 (예: `inventory_dev`, `inventory_prod`) |
 | 계정 | `서비스_환경_user` 12개 (예: `inventory_dev_user`). 계정마다 자기 DB만 접속 가능 |
 | 접속 허용 | dev DB는 dev 노드(.11~.13)에서만, prod DB는 prod 노드(.21~.23)에서만 (`pg_hba.conf`) |
-| 비밀번호 | 문서·Git·채팅에 기록하지 않음. 전달·Secret 방식은 [미정: GitOps 담당과 협의 중] |
+| 비밀번호 | 문서·Git·채팅에 기록하지 않음. 서비스는 Secret `<서비스>-service-db`의 `DB_URL`·`DB_USER`·`DB_PASSWORD` 키로 받음(Order·Payment·Cooking과 같은 형식. Menu는 `menu-service-db`에 `MENU_DB_*` 키를 쓰는 예외). dev Secret은 비밀번호를 관리하는 DB 담당이 `peakorder` 네임스페이스에 직접 만들고, 이슈에는 이름·키 존재만 남김(#112, 2026-11-23 합의). prod Secret 생성 방식·담당은 [미정: GitOps 담당과 결정] |
 | 백업 | 매일 03:00 `pg_dump`, `/var/backups/postgresql/peakorder`, 7일 보관 |
 
 서비스: auth, menu, inventory, order, payment, cooking
@@ -74,6 +74,58 @@ sudo systemctl restart postgresql
 - dev 파드 → prod DB: `no pg_hba.conf entry`로 차단 확인 (DB가 본 주소는 노드 IP)
 - prod 노드 → 5432 포트 연결 확인 (prod에는 시험용 파드를 만들지 않음)
 
+**설정 점검 기록 (2026-11-23)**
+
+- `pg_hba.conf`는 원본(`pg_hba.conf.bak`) 대비 위 dev·prod 허용 줄만 추가됨.
+- `listen_addresses = 'localhost,10.10.22.10'`은 `ALTER SYSTEM`으로 `/var/lib/postgresql/16/main/postgresql.auto.conf`에 저장되며 실제 적용값 동일.
+- `postgresql.conf`는 설치 시점 그대로. 세 파일 모두 11/13 이후 수정 없음.
+
+### Secret 만들기 (dev)
+
+Menu를 제외한 Auth·Inventory·Order·Payment·Cooking 공통 절차입니다. `<서비스>`만 바꿔 씁니다. Menu는 키 이름이 달라 아래 'Menu' 절차를 따릅니다.
+
+```bash
+hostname                                   # dev인지 확인. prod면 멈춘다
+kubectl -n peakorder get secret --show-labels | grep service-db   # 같은 이름이 있으면 덮어쓰지 않는다
+set +o xtrace   # 명령 추적이 켜져 있으면 끈다(비밀번호가 출력되지 않게)
+read -s -p "<서비스>_dev_user 비밀번호: " DBPW; echo               # 화면·기록에 남지 않게 입력
+kubectl -n peakorder create secret generic <서비스>-service-db \
+  --from-literal=DB_URL=jdbc:postgresql://10.10.22.10:5432/<서비스>_dev \
+  --from-literal=DB_USER=<서비스>_dev_user \
+  --from-file=DB_PASSWORD=<(printf '%s' "$DBPW")
+unset DBPW
+kubectl -n peakorder label secret <서비스>-service-db app=<서비스>-service team=team02
+kubectl -n peakorder describe secret <서비스>-service-db           # 키 3개와 크기만 확인(값은 안 보임)
+```
+
+- 금지: `kubectl get secret -o yaml` 결과를 공유하지 않는다(base64는 암호화가 아님).
+- 비밀번호는 `--from-file`과 프로세스 치환으로 넘겨 kubectl 명령 인수(프로세스 목록)에 남지 않게 한다. `printf`는 셸 내장 명령이라 별도 프로세스 인수가 생기지 않는다.
+- 연결 풀: #186 기준으로 서비스 Deployment에 `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=4`, `SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1`을 권장합니다(t2-db 한 대에 DB 12개, `max_connections` 100).
+
+현황 (2026-11-23)
+
+| Secret | 상태 |
+|---|---|
+| `order-service-db`, `payment-service-db`, `cooking-service-db` | 기존 |
+| `auth-service-db`, `inventory-service-db` | 11/23 DB 담당 생성 |
+| `menu-service-db` | 아직 없음 |
+
+#### Menu (`menu-service-db`, 키 이름이 다름)
+
+```bash
+set +o xtrace
+read -s -p "menu_dev_user 비밀번호: " DBPW; echo
+kubectl -n peakorder create secret generic menu-service-db \
+  --from-literal=MENU_DB_URL=jdbc:postgresql://10.10.22.10:5432/menu_dev \
+  --from-literal=MENU_DB_USERNAME=menu_dev_user \
+  --from-file=MENU_DB_PASSWORD=<(printf '%s' "$DBPW")
+unset DBPW
+kubectl -n peakorder label secret menu-service-db app=menu-service team=team02
+kubectl -n peakorder describe secret menu-service-db
+```
+
+키는 `deploy/apps/menu-service/README.md`의 Secret 표를 따른다. 실제로 만들기 전에 Menu 담당과 키 이름을 확인한다.
+
 ### 접속이 안 될 때
 
 | 오류 | 뜻 | 확인할 것 |
@@ -102,6 +154,13 @@ sudo -u postgres dropdb restore_test
 - 스크립트: `/usr/local/bin/pg-backup-peakorder.sh`
 - 예약: `/etc/cron.d/pg-backup-peakorder` (매일 03:00 KST, postgres 계정)
 - 백업 파일은 t2-db에만 있으므로 VM 자체가 고장 나면 함께 사라집니다.
+
+**시험 기록**
+
+| 날짜 | 내용 |
+|---|---|
+| 2026-11-17 | 백업 파일 12개 생성만 확인 |
+| 2026-11-23 09:28 | `order_dev_2026-11-23.dump`(03:00 백업)를 `restore_test`에 `pg_restore --no-owner` → 오류 없이 표 9개 복원 확인 → `dropdb restore_test` |
 
 ### 비밀번호 바꾸기
 
