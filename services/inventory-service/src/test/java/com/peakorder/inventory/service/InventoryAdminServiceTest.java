@@ -20,6 +20,7 @@ import com.peakorder.inventory.exception.BusinessException;
 import com.peakorder.inventory.exception.ErrorCode;
 import com.peakorder.inventory.repository.InventoryRepository;
 import com.peakorder.inventory.repository.InventoryReservationItemRepository;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,6 +53,29 @@ class InventoryAdminServiceTest {
     Inventory inventory = stockItem(id, 10, 0);
     ReflectionTestUtils.setField(inventory, "menuId", menuId);
     return inventory;
+  }
+
+  // ===== IN-02 목록 =====
+
+  @Test
+  void list_returns_all_not_deleted_items() {
+    when(inventoryRepository.findByDeletedAtIsNullOrderByIdAsc())
+        .thenReturn(List.of(stockItem(1L, 10, 0), stockItem(2L, 2, 0)));
+
+    List<StockItemResponse> response = service.list(false);
+
+    assertThat(response).extracting(StockItemResponse::stockItemId).containsExactly(1L, 2L);
+  }
+
+  @Test
+  void list_returns_only_low_stock_when_requested() {
+    // 기준치 2: 1번 가용 10(충분), 2번 가용 2(부족), 3번 가용 1(부족)
+    when(inventoryRepository.findByDeletedAtIsNullOrderByIdAsc())
+        .thenReturn(List.of(stockItem(1L, 10, 0), stockItem(2L, 2, 0), stockItem(3L, 5, 4)));
+
+    List<StockItemResponse> response = service.list(true);
+
+    assertThat(response).extracting(StockItemResponse::stockItemId).containsExactly(2L, 3L);
   }
 
   // ===== IN-03 등록 =====

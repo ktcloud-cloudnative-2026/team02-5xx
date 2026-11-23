@@ -11,6 +11,7 @@ import com.peakorder.inventory.exception.BusinessException;
 import com.peakorder.inventory.exception.ErrorCode;
 import com.peakorder.inventory.repository.InventoryRepository;
 import com.peakorder.inventory.repository.InventoryReservationItemRepository;
+import java.util.List;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,14 @@ public class InventoryAdminService {
     this.inventoryRepository = inventoryRepository;
     this.itemRepository = itemRepository;
     this.menuClient = menuClient;
+  }
+
+  @Transactional(readOnly = true)
+  public List<StockItemResponse> list(boolean lowStockOnly) {
+    return inventoryRepository.findByDeletedAtIsNullOrderByIdAsc().stream()
+        .filter(inventory -> !lowStockOnly || inventory.isLowStock())
+        .map(StockItemResponse::from)
+        .toList();
   }
 
   @Transactional
