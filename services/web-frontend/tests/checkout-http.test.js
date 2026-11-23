@@ -134,6 +134,8 @@ for (const [status, code] of [
   [409, 'STORE_NOT_ACCEPTING_ORDERS'],
   [409, 'MENU_NOT_AVAILABLE'],
   [400, 'INVALID_REQUEST'],
+  [503, 'MENU_SERVICE_UNAVAILABLE'],
+  [503, 'INVENTORY_SERVICE_UNAVAILABLE'],
 ])
   test(`create maps explicit ${code} without retry`, () =>
     fixture(async ({ adapter, requests, setHandler }) => {
