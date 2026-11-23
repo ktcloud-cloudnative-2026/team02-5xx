@@ -4,4 +4,4 @@ resources:
   - ../../base
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/payment
-    newTag: sha-c2aa8905bfa703356d2abddc672d58e46a6feb99
+    newTag: sha-03161b1b04af8db385d308be8e1066fa9dcaf980
