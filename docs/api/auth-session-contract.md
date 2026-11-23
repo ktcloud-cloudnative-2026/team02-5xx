@@ -1,6 +1,6 @@
 # Auth 인증 연동 계약 및 검증 현황
 
-> Issue #112 · 기준: main `45b30e2` · 확인일: 2026-11-23
+> Issue #112 · 기준: main `24d4fc8` · 확인일: 2026-11-23
 > 기존 Auth 담당 결정과 실제 구현을 정리한 문서다. Gateway·다른 서비스의 계약을 새로 정하거나 기존 API/ERD 원문을 변경하지 않는다.
 
 - [Auth 담당 결정안](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/112#issuecomment-7002438953)
@@ -13,6 +13,7 @@
 | 구분     | 확인 결과                                                                                                      |
 | -------- | -------------------------------------------------------------------------------------------------------------- |
 | 구현     | AU-01·02·03·04·09·10과 공개 JWKS 구현, main 병합                                                               |
+| 추가구현 | AU-05·06은 #221로 main 병합(`24d4fc8`). dev 배포 전                                                            |
 | 로컬     | 동일 Auth 이미지와 임시 PostgreSQL로 실제 동작 검사 24개 통과                                                  |
 | dev      | Argo CD 수동 Sync 완료, Synced·Healthy, 새 Pod Ready·재시작 0                                                  |
 | DB       | 실제 앱 기동 시 Flyway V1·V2 적용 성공                                                                         |
@@ -31,6 +32,8 @@
 | ----------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------- |
 | AU-01 POST /api/v1/auth/login             | JSON email·password 필수, rememberMe 선택(Boolean, 생략 시 false) | 200: accessToken·tokenType·expiresIn·user         |
 | AU-02 GET /api/v1/auth/me                 | Authorization: Bearer Access Token                                | 200: id·email·nickname·role, nickname은 null 가능 |
+| AU-05 PATCH /api/v1/auth/me               | Bearer Access Token, JSON nickname 필수(공백만 불가, 최대 50자)   | 200: AU-02와 같은 id·email·nickname·role          |
+| AU-06 PATCH /api/v1/auth/me/password      | Bearer Access Token, JSON currentPassword·newPassword             | 204: 해당 회원의 모든 활성 Refresh 폐기·쿠키 삭제 |
 | AU-03 POST /api/v1/auth/register          | JSON email·password·agreements                                    | 201: id·email                                     |
 | AU-04 GET /api/v1/auth/email-availability | query email                                                       | 200: email·available                              |
 | AU-09 POST /api/v1/auth/refresh           | Refresh 쿠키, 본문 없음, Access 불필요                            | 200: AU-01과 동일한 data 및 회전된 Refresh 쿠키   |
@@ -48,7 +51,9 @@ AU-01·09의 `data` 구조:
 }
 ```
 
-비밀번호·Refresh 원문·해시·개인키를 JSON 응답에 포함하지 않는다. AU-02는 Auth가 JWT와 현재 계정 상태를 직접 확인하며 임의 신원 헤더만 신뢰하지 않는다.
+비밀번호·Refresh 원문·해시·개인키를 JSON 응답에 포함하지 않는다. AU-02·05·06은 Auth가 JWT와 현재 계정 상태를 직접 확인하며 임의 신원 헤더만 신뢰하지 않는다.
+
+AU-06의 현재 비밀번호 불일치는 400 `CURRENT_PASSWORD_MISMATCH`다. 비밀번호 저장과 전체 Refresh 폐기는 한 트랜잭션이며, 이미 발급된 Access는 남은 만료시간 동안 유효할 수 있으므로 즉시 전체 로그아웃으로 안내하지 않는다. 세부 설계는 [회원정보·비밀번호 변경 제안](auth-profile-password-proposal.md)을 따른다.
 
 AU-03의 agreements는 TERMS·PRIVACY 각각의 type/version/agreed다. 실제 AUTH_TERMS_VERSION·AUTH_PRIVACY_VERSION과 일치하고 둘 다 동의해야 한다. 프론트의 비밀번호 확인·보기는 서버 필드가 아니다. 기존 이메일 정규화와 Argon2id 저장을 유지한다. 자세한 가입 규칙은 [기존 가입 설계](auth-registration-design.md)를 따른다.
 
@@ -79,16 +84,40 @@ issuer는 발급자 식별자다. HTTP JWKS 200은 Envoy remoteJWKS의 HTTP 지�
 
 Gateway 담당은 [기존 보고](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/112#issuecomment-7031158388)에서 한계를 포함한 A안 진행에 동의했다. 헤더 제거·NetworkPolicy 차단은 담당자 검증 기록이고, JWT 검증·claimToHeaders는 Auth 배포 이후 연결할 작업이다. 추가로 A/B 선택 전체를 처음부터 다시 승인받지 않는다.
 
-| 남은 작업                                                | 담당·처리 기준                                                                                          |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| JWT 검증·JWKS 취득/갱신, 확정 신원 헤더·Gateway 401 형식 | Gateway 담당의 구현·검증 결과와 계약을 연결한다. Auth가 다른 담당자 정책을 임의 변경하지 않는다         |
-| 실제 HTTPS origin, 쿠키·CORS·CSRF 브라우저 검증          | Gateway·프론트와 실제 환경에서 확인한다. Secure 쿠키를 임의로 완화하지 않는다                           |
-| 관리자 API                                               | 각 서비스에서 STORE_ADMIN 검사. Gateway JWT 검증·신뢰 경계 연결 전 기존 차단 유지                       |
-| 실제 약관 버전                                           | 기존 이용약관·개인정보 문서의 버전을 프론트와 맞춘 뒤 가입 활성화. 테스트 버전을 운영값으로 넣지 않는다 |
-| 회원가입·로그인·갱신·로그아웃 최종 화면 연동             | 프론트 #156·#201과 협력. 페이지·장바구니 상태 유지                                                      |
+## Gateway 신원 전달 계약 (#112 확정)
+
+Gateway 담당의 [결정 기록](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/112#issuecomment-7094381845)과 Auth의 [확인](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/112#issuecomment-7095075470)으로 확정한 값이다. 실제 Gateway 적용·시험은 후속 구현 Issue에서 추적한다.
+
+| 헤더          | 값                                        |
+| ------------- | ----------------------------------------- |
+| `X-User-Id`   | JWT `sub` 그대로 (회원 ID 숫자의 문자열)  |
+| `X-User-Role` | JWT `role` 그대로 (CUSTOMER, STORE_ADMIN) |
+
+- 클라이언트가 보낸 같은 이름의 헤더는 Gateway가 항상 제거하고, 검증된 JWT의 값만 넣는다.
+- 서비스는 값을 변환·추측하지 않는다. 숫자가 아닌 ID나 두 값 외의 역할은 형식 오류다.
+
+| 응답 | 책임    | 조건                                          |
+| ---- | ------- | --------------------------------------------- |
+| 401  | Gateway | 토큰 없음·만료·서명/issuer/audience 검증 실패 |
+| 401  | 서비스  | 신원 헤더 누락·형식 오류 (Gateway 우회 방어)  |
+| 403  | 서비스  | 역할 부족                                     |
+| 404  | 서비스  | 본인 자원 아님                                |
+
+- Gateway 401 본문은 Envoy 기본 응답이며 공통 JSON이 아니다. 공통 응답 형식의 임시 예외로 두고, 프론트는 상태코드 401만으로 재발급·로그인 흐름을 처리한다. 공통 JSON화는 후속 구현 항목이다.
+- Auth의 JWT 비요구 경로: `POST /login`, `POST /register`, `GET /email-availability`, `GET /jwks`, `POST /refresh`, `POST /logout`. refresh·logout은 Access 없이 Refresh 쿠키로만 호출된다.
+- `/me`, `/me/password`는 Auth가 Bearer 토큰을 직접 검증하므로 Gateway 보호 경로 여부와 관계없이 동작이 같다.
+- 남는 신뢰 경계(허용된 Pod의 헤더 위조, hostNetwork 등)는 NetworkPolicy 기본 차단, Git PR → Argo CD 배포, 관리자 API 기본 차단 유지, `/internal/v1/**` 비노출을 전제로 수용한다.
+
+| 남은 작업                                             | 담당·처리 기준                                                                                          |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Gateway JWT 검증·claimToHeaders·경로 분리 구현과 시험 | Gateway 담당 후속 Issue. Auth가 다른 담당자 정책을 임의 변경하지 않는다                                 |
+| 실제 HTTPS origin, 쿠키·CORS·CSRF 브라우저 검증       | Gateway·프론트와 실제 환경에서 확인한다. Secure 쿠키를 임의로 완화하지 않는다                           |
+| 관리자 API                                            | 각 서비스에서 STORE_ADMIN 검사. Gateway JWT 검증·신뢰 경계 연결 전 기존 차단 유지                       |
+| 실제 약관 버전                                        | 기존 이용약관·개인정보 문서의 버전을 프론트와 맞춘 뒤 가입 활성화. 테스트 버전을 운영값으로 넣지 않는다 |
+| 회원가입·로그인·갱신·로그아웃 최종 화면 연동          | 프론트 #156·#201과 협력. 페이지·장바구니 상태 유지                                                      |
 
 ## Auth 원본 명세 대비 잔여 기능
 
-AU-05 회원정보 수정, AU-06 비밀번호 변경, AU-07·08 비밀번호 재설정은 아직 구현되지 않았다. 화면·요청 필드·본인 확인·재설정 전달 방식은 별도 구현 범위에서 구체화한다. 현재 문서 작업으로 새 메일 발송 도구나 API 정책을 추가하지 않는다.
+AU-05 회원정보 수정과 AU-06 비밀번호 변경은 #221로 main에 병합됐고 dev 배포 전이다. AU-07·08 비밀번호 재설정은 아직 구현되지 않았다. 본인 확인·재설정 전달 방식은 별도 구현 범위에서 구체화한다. 현재 문서 작업으로 새 메일 발송 도구나 API 정책을 추가하지 않는다.
 
-따라서 Auth dev 서버 배포 완료와 Auth 전체 명세 완료는 구분하며, #112도 공통 연동 확인 전에는 종료하지 않는다.
+따라서 Auth dev 서버 배포 완료와 Auth 전체 명세 완료는 구분한다. #112는 위 계약 결정으로 종료하고, Gateway·브라우저 구현과 검증은 후속 Issue로 추적한다.
