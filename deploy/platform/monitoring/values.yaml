@@ -1,0 +1,193 @@
+# kube-prometheus-stack 93.2.2 — dev 모니터링 values (#176)
+# - Argo CD Application(deploy/argocd/dev/monitoring.yaml)이 이 파일로 차트를 렌더링한다.
+# - 기본값에서 바꾼 것만 적는다. 전체 기본값: helm show values prometheus-community/kube-prometheus-stack --version 93.2.2
+# - 비밀값은 여기에 쓰지 않는다. Grafana 관리자 계정은 dev에 직접 만든 Secret을 참조한다.
+
+# 공통 라벨 app·team (CLAUDE.md 8절, docs/observability.md 1절: 공통 인프라는 app에 컴포넌트 이름)
+# - 본 차트 리소스: 차트가 app(kube-prometheus-stack-<구성 요소>)을 붙이므로 team만 더한다.
+# - 서브차트(grafana·kube-state-metrics·node-exporter)는 commonLabels를 받지 않아 각자 설정에 app·team을 넣는다.
+#   이 라벨들은 selector에 들어가지 않는다(selector는 app.kubernetes.io/name·instance).
+# - Operator가 실행 중에 만드는 Prometheus·Alertmanager Pod는 podMetadata로 넣는다.
+# - CRD 10개는 차트 crds/의 고정 파일이라 라벨을 붙일 수 없다 → 공통 라벨 예외 승인(#176, 93.2.2 한정, README "한계").
+commonLabels:
+  team: team02
+
+# --- kubeadm 컨트롤 플레인 구성 요소 ---
+# etcd·scheduler·controller-manager는 kubeadm에서 127.0.0.1에만 열려 있어 수집할 수 없다.
+# 켜 두면 대상이 계속 DOWN으로 보이고 오탐 알림이 나므로 수집과 관련 규칙을 끈다.
+# kube-proxy는 클러스터 구성(Calico)에 따라 달라 1단계에서는 끈다(후속 확인).
+kubeEtcd:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+# CoreDNS: 차트가 kube-system에 Service를 새로 만든다.
+# monitoring-dev AppProject는 monitoring namespace만 허용하므로 1단계에서는 끈다(후속: 기존 kube-dns Service 활용 검토).
+coreDns:
+  enabled: false
+
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeProxy: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    windows: false
+
+# --- Prometheus Operator ---
+# admission webhook을 끄면 webhook 설정·인증서 생성 Job(hook)과 그 권한이 만들어지지 않는다.
+# webhook이 없으면 Operator의 TLS 인증서도 필요 없으므로 함께 끈다.
+# (이태훈 님 조건 2: 렌더링 결과에 webhook·Job이 없는지 확인)
+prometheusOperator:
+  admissionWebhooks:
+    enabled: false
+    patch:
+      enabled: false
+  tls:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# --- Prometheus ---
+prometheus:
+  prometheusSpec:
+    # 차트가 만든 것만이 아니라 다른 namespace(peakorder)의 ServiceMonitor·PodMonitor·규칙도 읽는다.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    # local-path는 볼륨 확장이 안 되므로 처음부터 크기를 정하고, 크기 기준 보관 한도도 둔다.
+    podMetadata:
+      labels:
+        app: prometheus
+        team: team02
+    retention: 7d
+    retentionSize: 8GB
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+# --- Alertmanager ---
+# 알림 채널은 #138 결정 전이라 기본 설정 그대로 두고 화면에서만 확인한다. dev에서는 저장소 없이 시작.
+alertmanager:
+  alertmanagerSpec:
+    podMetadata:
+      labels:
+        app: alertmanager
+        team: team02
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+# --- Grafana ---
+# 외부 노출 없음(port-forward로만 접속). 관리자 계정은 dev에 직접 만든 Secret을 참조한다(Git에 값 없음).
+# 만드는 절차는 README "dev 적용" 2번(비밀번호를 명령 인수·셸 기록에 남기지 않는 방식).
+grafana:
+  extraLabels:
+    app: grafana
+    team: team02
+  # helm test용 Pod(bats 이미지). Argo CD에서는 쓰지 않으므로 만들지 않는다.
+  testFramework:
+    enabled: false
+  # 기본값은 ClusterRole(클러스터 전체 ConfigMap·Secret 읽기). 대시보드는 monitoring에만 두므로 Role로 좁힌다.
+  rbac:
+    namespaced: true
+  # 권한을 Role(monitoring)로 좁혔으므로 대시보드 sidecar의 감시 범위도 맞춘다(기본 ALL이면 403 오류).
+  sidecar:
+    dashboards:
+      searchNamespace: monitoring
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# --- kube-state-metrics (Kubernetes 객체 상태: 재시작 수, 복제본 등) ---
+kube-state-metrics:
+  customLabels:
+    app: kube-state-metrics
+    team: team02
+  # 기본 목록에서 secrets만 뺀다 → 클러스터 전체 Secret list·watch 권한이 생기지 않는다(kube_secret_* 지표는 쓰지 않음).
+  collectors:
+    - certificatesigningrequests
+    - configmaps
+    - cronjobs
+    - daemonsets
+    - deployments
+    - endpointslices
+    - horizontalpodautoscalers
+    - ingresses
+    - jobs
+    - leases
+    - limitranges
+    - mutatingwebhookconfigurations
+    - namespaces
+    - networkpolicies
+    - nodes
+    - persistentvolumeclaims
+    - persistentvolumes
+    - poddisruptionbudgets
+    - pods
+    - replicasets
+    - replicationcontrollers
+    - resourcequotas
+    - services
+    - statefulsets
+    - storageclasses
+    - validatingwebhookconfigurations
+    - volumeattachments
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# --- node-exporter (노드마다 1개, DaemonSet) ---
+# t2-dev-cp 메모리 사용이 78%라 제한을 작게 둔다.
+prometheus-node-exporter:
+  commonLabels:
+    app: node-exporter
+    team: team02
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
