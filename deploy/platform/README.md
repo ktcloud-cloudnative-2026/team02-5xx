@@ -55,12 +55,13 @@ kubectl apply -f network-policies.yaml
 | cooking-service | Gateway, 모니터링, order-service |
 | inventory-service, payment-service | 모니터링, order-service |
 | rabbitmq (5672) | order-service, payment-service, cooking-service |
+| rabbitmq (15692) | 모니터링(`monitoring`) |
 | redis | 없음 (사용 서비스가 생기면 추가) |
 
 **한계**
 - `namespaceSelector`로 허용한 namespace(Gateway·모니터링)는 그 안의 모든 Pod를 신뢰합니다. 같은 `app` 라벨을 단 Pod나 허용된 내부 호출자가 침해된 경우의 사칭은 이 정책만으로 막지 못합니다.
 - Kubernetes NetworkPolicy는 대상 Pod가 실행 중인 **같은 노드에서 오는 트래픽**을 차단하는 수단이 아닙니다([공식 문서](https://kubernetes.io/docs/concepts/services-networking/network-policies/#what-you-cant-do-with-network-policies-at-least-not-yet)). 노드 접근 권한 관리가 함께 필요합니다.
-- 모니터링은 앱 포트 8080만 허용합니다. RabbitMQ 지표(예: 15692)를 수집하려면 metrics 노출과 최소 ingress를 후속 작업으로 추가합니다.
+- 모니터링은 앱 포트 8080과 RabbitMQ 지표 포트 15692만 허용합니다(#197). RabbitMQ 5672에는 모니터링이 접근할 수 없습니다.
 
 ## 5. 확인
 ```bash
