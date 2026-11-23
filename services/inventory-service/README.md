@@ -5,6 +5,7 @@
 - 스택: Java 21, Spring Boot 4.1.2, Gradle, PostgreSQL(Flyway), springdoc-openapi
 - 패키지: `com.peakorder.inventory` 아래 `controller / service / repository / dto / entity` (+ `client`, `config`, `exception`)
 - 담당: 남규리
+- Redis: 사용하지 않는다. 재고 확보 만료는 DB `inventory_reservations.expires_at` 기준 스케줄러(기본 5초 간격)가 처리한다.
 
 ## 실행
 
