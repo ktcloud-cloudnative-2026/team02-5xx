@@ -46,6 +46,7 @@ Cooking의 로컬 기본 포트는 8084(`application.yml`)다. 클러스터에�
 | `MENU_SERVICE_URL` | `http://menu-service:8080` | CO-02가 Menu MI-01을 호출 |
 | `COOKING_ADMIN_ENABLED` | `false` | 관리자 API 비활성. 인증 확정 전 켜지 않는다 |
 | `JAVA_TOOL_OPTIONS` | `-XX:MaxRAMPercentage=60.0` | 메모리 제한 안에서 힙 비율. Order(#158)와 같은 기준 |
+| `LOGGING_STRUCTURED_FORMAT_CONSOLE` | `ecs` | 로그를 한 줄 JSON(ECS)으로 출력. K8s에서만 켜고 로컬은 텍스트 로그 유지(`docs/observability.md` 3-1, #188). `service.name`에 `cooking-service`가 자동으로 들어감 |
 
 ## 자원
 
@@ -78,7 +79,5 @@ kubectl apply --dry-run=server -k deploy/apps/cooking-service/overlays/dev   # d
 
 ## 후속
 
-- Argo CD Application(`deploy/argocd/dev/cooking-service.yaml`)은 `cooking-service-db` Secret을 만든 뒤 별도 PR로 등록한다.
 - 공개 경로(CO-01·02) HTTPRoute는 Gateway 담당과 협의 후 별도 PR.
-- 로그 형식 ECS(`LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`)는 #146 병합 후 추가한다.
 - prod 실제 배포, 복제본 수(HPA), 자원 조정은 팀 협의 후 정한다.
