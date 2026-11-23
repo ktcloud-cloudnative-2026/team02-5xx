@@ -26,6 +26,8 @@ spec:
             - name: http
               containerPort: 8080
           env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=60.0"
             - name: DB_URL
               valueFrom:
                 secretKeyRef:
