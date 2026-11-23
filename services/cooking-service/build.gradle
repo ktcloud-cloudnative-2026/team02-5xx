@@ -46,5 +46,24 @@ spotless {
 }
 
 tasks.named('test') {
-	useJUnitPlatform()
+	useJUnitPlatform {
+		// ./gradlew test -PunitOnly → DB(Docker)가 필요한 통합 테스트(@Tag("integration"))를 빼고 단위 테스트만
+		if (project.hasProperty('unitOnly')) {
+			excludeTags 'integration'
+		}
+	}
+	// CI 로그에서 실제로 실행된 테스트 수를 확인할 수 있게 요약을 남긴다(#114)
+	addTestListener(new TestListener() {
+		void beforeSuite(TestDescriptor suite) {}
+		void beforeTest(TestDescriptor test) {}
+		void afterTest(TestDescriptor test, TestResult result) {}
+		void afterSuite(TestDescriptor desc, TestResult result) {
+			def counts = "전체 ${result.testCount}, 성공 ${result.successfulTestCount}, 실패 ${result.failedTestCount}, 건너뜀 ${result.skippedTestCount}"
+			if (desc.parent == null) {
+				println "테스트 결과: ${result.resultType} — ${counts}"
+			} else if (desc.name == desc.className && desc.className?.endsWith('IntegrationTest')) {
+				println "통합 테스트 ${desc.className.tokenize('.').last()}: ${counts}"
+			}
+		}
+	})
 }

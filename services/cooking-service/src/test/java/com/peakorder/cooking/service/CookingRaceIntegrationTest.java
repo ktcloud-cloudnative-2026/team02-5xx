@@ -12,6 +12,7 @@ import com.peakorder.cooking.repository.OutboxEventRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -20,11 +21,13 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.condition.DisabledIf;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.DockerClientFactory;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -32,18 +35,27 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /**
  * 취소(CI-03)·자동 조리 진행의 동시 실행을 실제 PostgreSQL에서 검증한다 (#114).
  *
- * <p>행 잠금(SELECT … FOR UPDATE)·advisory lock은 DB가 하는 동작이라 모의 테스트로는 확인할 수 없다. Docker가 없으면 건너뛴다. 테스트
- * 설정은 DB 자동 설정을 끄므로 이 클래스에서만 다시 켜고, 스키마는 Flyway V1~V3로 만든다.
+ * <p>행 잠금(SELECT … FOR UPDATE)·advisory lock은 DB가 하는 동작이라 모의 테스트로는 확인할 수 없다. 각 시나리오는 서로 다른 스레드(=다른
+ * DB 연결·트랜잭션)에서 실행한다. 테스트 설정은 DB 자동 설정을 끄므로 이 클래스에서만 다시 켜고, 스키마는 Flyway V1~V3로 만든다.
+ *
+ * <p>Docker가 없을 때: 로컬에서는 건너뛰지만, CI(환경 변수 {@code CI}가 있음)에서는 건너뛰지 않고 컨테이너 기동 실패로 <b>실패</b>한다. 통합
+ * 테스트가 생략된 채 CI가 통과하는 것을 막기 위해서다.
  */
 @Tag("integration")
-@Testcontainers(disabledWithoutDocker = true)
+@Testcontainers
+@DisabledIf("dockerUnavailableOutsideCi")
 @SpringBootTest(
     properties = {"spring.autoconfigure.exclude=", "spring.jpa.hibernate.ddl-auto=validate"})
 class CookingRaceIntegrationTest {
 
-  /** dev·로컬(cooking-db)과 같은 PostgreSQL 버전 */
+  /** dev DB(t2-db)와 같은 PostgreSQL 버전 */
   @Container @ServiceConnection
-  static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16.16");
+  static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16.15");
+
+  /** CI가 아닌 곳(로컬)에서 Docker를 쓸 수 없을 때만 true → 건너뜀. CI에서는 항상 false라 실행된다. */
+  static boolean dockerUnavailableOutsideCi() {
+    return System.getenv("CI") == null && !DockerClientFactory.instance().isDockerAvailable();
+  }
 
   /** 조리가 테스트 중에 끝나지 않도록 넉넉하게 */
   private static final int COOK_TIME_SEC = 600;
@@ -223,6 +235,65 @@ class CookingRaceIntegrationTest {
 
     assertThat(ticketRepository.countByStatus(TicketStatus.COOKING)).isEqualTo(1);
     assertThat(status(a)).isEqualTo(TicketStatus.COOKING);
+  }
+
+  /**
+   * 시나리오 4 (최종 보장): advisory lock을 거치지 않고 두 트랜잭션이 서로 다른 전표(A·B)를 동시에 COOKING으로 바꾸면, V2 부분 UNIQUE
+   * 인덱스(uk_cooking_tickets_single_cooking)가 한쪽을 실패시켜 COOKING은 1건만 남는다.
+   */
+  @RepeatedTest(5)
+  void 잠금을_우회해도_V2_UNIQUE가_COOKING_두건을_막는다() throws Exception {
+    long a = saveWaiting();
+    long b = saveWaiting();
+    TransactionTemplate tx = new TransactionTemplate(transactionManager);
+
+    int succeeded = 0;
+    int uniqueViolations = 0;
+    try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+      CountDownLatch ready = new CountDownLatch(2);
+      CountDownLatch go = new CountDownLatch(1);
+      List<Future<?>> starts =
+          List.of(a, b).stream()
+              .<Future<?>>map(orderId ->
+                  pool.submit(() -> {
+                    ready.countDown();
+                    go.await();
+                    tx.executeWithoutResult(status -> {
+                      ticketRepository
+                          .findWithLockByOrderId(orderId)
+                          .orElseThrow()
+                          .start(Instant.now());
+                      ticketRepository.flush(); // UPDATE를 DB에 보냄
+                      sleep(300); // 두 트랜잭션이 겹치도록 커밋 전에 버틴다
+                    });
+                    return null;
+                  }))
+              .toList();
+      ready.await();
+      go.countDown();
+      for (Future<?> start : starts) {
+        try {
+          start.get(10, TimeUnit.SECONDS);
+          succeeded++;
+        } catch (ExecutionException e) {
+          assertThat(causeMessages(e)).contains("uk_cooking_tickets_single_cooking");
+          uniqueViolations++;
+        }
+      }
+    }
+
+    System.out.printf("[시나리오4] 성공=%d UNIQUE 위반=%d%n", succeeded, uniqueViolations);
+    assertThat(succeeded).isEqualTo(1);
+    assertThat(uniqueViolations).isEqualTo(1);
+    assertThat(ticketRepository.countByStatus(TicketStatus.COOKING)).isEqualTo(1);
+  }
+
+  private static String causeMessages(Throwable error) {
+    StringBuilder messages = new StringBuilder();
+    for (Throwable t = error; t != null; t = t.getCause()) {
+      messages.append(t.getMessage()).append('\n');
+    }
+    return messages.toString();
   }
 
   private long saveWaiting() {
