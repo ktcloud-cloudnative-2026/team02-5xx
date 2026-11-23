@@ -20,7 +20,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: inventory-service
-          image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/inventory:sha-df30b94bd5471a675de7f73be6400ae91b3f52f6
+          image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/inventory:sha-4c73a8d6c8049cfb76ada07eb9a889d7909b0120
           ports:
             - name: http
               containerPort: 8080
