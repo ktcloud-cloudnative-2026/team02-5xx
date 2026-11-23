@@ -62,6 +62,31 @@ class AuthServiceApplicationTests {
         .isEqualTo("AUTHENTICATION_UNAVAILABLE");
   }
 
+  @Test
+  void unconfiguredAccountRoutesRemainUnavailable() throws Exception {
+    for (String path : new String[] {"/me", "/me/password"}) {
+      String body =
+          path.equals("/me")
+              ? "{\"nickname\":\"member\"}"
+              : "{\"currentPassword\":\"current local password\",\"newPassword\":\"changed local password\"}";
+      try (var client = HttpClient.newHttpClient()) {
+        var response =
+            client.send(
+                HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + port + "/api/v1/auth" + path))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer synthetic-access")
+                    .method("PATCH", HttpRequest.BodyPublishers.ofString(body))
+                    .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(503);
+        assertThat(new ObjectMapper().readTree(response.body()).path("errorCode").asString())
+            .isEqualTo("AUTHENTICATION_UNAVAILABLE");
+        assertThat(response.headers().firstValue("set-cookie")).isEmpty();
+      }
+    }
+  }
+
   private HttpResponse<String> get(String path) throws Exception {
     try (var client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build()) {
       var request =
