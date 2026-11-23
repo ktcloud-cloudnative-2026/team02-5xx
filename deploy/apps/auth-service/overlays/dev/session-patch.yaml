@@ -29,6 +29,11 @@ spec:
                 secretKeyRef:
                   name: auth-service-db
                   key: DB_PASSWORD
+            # DB 담당의 dev 연결 수 예산(#112·#186): Pod당 최대 4개, 최소 유휴 1개.
+            - name: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE
+              value: "4"
+            - name: SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE
+              value: "1"
             - name: AUTH_JWT_ISSUER
               valueFrom:
                 secretKeyRef:
