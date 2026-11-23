@@ -243,6 +243,232 @@ class SessionDatabaseTests {
         .isEqualTo(2);
   }
 
+  @Test
+  void profilePatchPersistsOnlyNicknameAndPreservesAccessAndPassword() throws Exception {
+    var loggedIn = login(false);
+    String access = accessOf(loggedIn);
+    String hash =
+        jdbc.queryForObject(
+            "SELECT password_hash FROM users WHERE id=?", String.class, member.getId());
+    var response =
+        patch("/me", access, json.writeValueAsString(java.util.Map.of("nickname", "  DB닉네임😀  ")));
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(json.readTree(response.body()).path("data").path("nickname").asString())
+        .isEqualTo("  DB닉네임😀  ");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT nickname FROM users WHERE id=?", String.class, member.getId()))
+        .isEqualTo("  DB닉네임😀  ");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT password_hash FROM users WHERE id=?", String.class, member.getId()))
+        .isEqualTo(hash);
+    assertThat(active()).isEqualTo(1);
+    assertThat(getMe(access).statusCode()).isEqualTo(200);
+  }
+
+  @Test
+  void passwordChangeRevokesAllOwnSessionsButPreservesOtherUserAndExistingAccess()
+      throws Exception {
+    var first = login(false);
+    var second = login(true);
+    String rotated = cookie(post("/refresh", "", cookie(first)));
+    var other =
+        users.saveAndFlush(
+            new User("other@example.test", passwords.encode(PASSWORD), Instant.now()));
+    var otherLogin =
+        post(
+            "/login",
+            json.writeValueAsString(
+                java.util.Map.of("email", other.getEmail(), "password", PASSWORD)),
+            null);
+    assertThat(otherLogin.statusCode()).isEqualTo(200);
+    String next = " changed local password ";
+    var response = patch("/me/password", accessOf(first), passwordBody(PASSWORD, next));
+    assertThat(response.statusCode()).isEqualTo(204);
+    assertThat(response.body()).isEmpty();
+    assertThat(response.headers().firstValue("set-cookie").orElseThrow())
+        .contains("Max-Age=0", "HttpOnly", "Secure");
+    String hash =
+        jdbc.queryForObject(
+            "SELECT password_hash FROM users WHERE id=?", String.class, member.getId());
+    assertThat(hash).startsWith("$argon2id$");
+    assertThat(passwords.matches(next, hash)).isTrue();
+    assertThat(passwords.matches(PASSWORD, hash)).isFalse();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM refresh_tokens WHERE user_id=? AND NOT revoked",
+                Long.class,
+                member.getId()))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM refresh_tokens WHERE user_id=? AND NOT revoked",
+                Long.class,
+                other.getId()))
+        .isEqualTo(1);
+    assertThat(post("/refresh", "", rotated).statusCode()).isEqualTo(401);
+    assertThat(post("/refresh", "", cookie(second)).statusCode()).isEqualTo(401);
+    assertThat(post("/refresh", "", cookie(otherLogin)).statusCode()).isEqualTo(200);
+    assertThat(post("/login", loginBody(false), null).statusCode()).isEqualTo(401);
+    assertThat(
+            post(
+                    "/login",
+                    json.writeValueAsString(
+                        java.util.Map.of("email", member.getEmail(), "password", next)),
+                    null)
+                .statusCode())
+        .isEqualTo(200);
+    assertThat(getMe(accessOf(first)).statusCode()).isEqualTo(200);
+  }
+
+  @Test
+  void wrongCurrentPasswordDoesNotChangeHashOrRevokeSession() throws Exception {
+    var loggedIn = login(false);
+    String hash =
+        jdbc.queryForObject(
+            "SELECT password_hash FROM users WHERE id=?", String.class, member.getId());
+    var response =
+        patch(
+            "/me/password",
+            accessOf(loggedIn),
+            passwordBody("wrong password", "changed local password"));
+    assertThat(response.statusCode()).isEqualTo(400);
+    assertThat(json.readTree(response.body()).path("errorCode").asString())
+        .isEqualTo("CURRENT_PASSWORD_MISMATCH");
+    assertThat(response.headers().firstValue("set-cookie")).isEmpty();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT password_hash FROM users WHERE id=?", String.class, member.getId()))
+        .isEqualTo(hash);
+    assertThat(active()).isEqualTo(1);
+  }
+
+  @Test
+  void profileAndPasswordUseCurrentDatabaseRoleAndStatus() throws Exception {
+    String access = accessOf(login(false));
+    jdbc.update("UPDATE users SET role='STORE_ADMIN' WHERE id=?", member.getId());
+    assertThat(patch("/me", access, "{\"nickname\":\"member\"}").statusCode()).isEqualTo(403);
+    assertThat(
+            patch("/me/password", access, passwordBody(PASSWORD, "changed local password"))
+                .statusCode())
+        .isEqualTo(403);
+    jdbc.update("UPDATE users SET role='CUSTOMER',status='SUSPENDED' WHERE id=?", member.getId());
+    assertThat(patch("/me", access, "{\"nickname\":\"member\"}").statusCode()).isEqualTo(401);
+    assertThat(
+            patch("/me/password", access, passwordBody(PASSWORD, "changed local password"))
+                .statusCode())
+        .isEqualTo(401);
+    assertThat(active()).isEqualTo(1);
+  }
+
+  @Test
+  void failedGlobalRevocationRollsBackPasswordAndCookie() throws Exception {
+    var loggedIn = login(false);
+    String hash =
+        jdbc.queryForObject(
+            "SELECT password_hash FROM users WHERE id=?", String.class, member.getId());
+    doThrow(new DataIntegrityViolationException("synthetic global revocation failure"))
+        .when(refreshes)
+        .revokeAllForUser(org.mockito.ArgumentMatchers.anyLong());
+    var response =
+        patch("/me/password", accessOf(loggedIn), passwordBody(PASSWORD, "changed local password"));
+    assertThat(response.statusCode()).isEqualTo(500);
+    assertThat(response.headers().firstValue("set-cookie")).isEmpty();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT password_hash FROM users WHERE id=?", String.class, member.getId()))
+        .isEqualTo(hash);
+    assertThat(active()).isEqualTo(1);
+  }
+
+  @Test
+  void refreshRacingPasswordChangeCannotLeaveAnActiveSession() throws Exception {
+    var loggedIn = login(false);
+    String access = accessOf(loggedIn);
+    CountDownLatch gate = new CountDownLatch(1);
+    try (var executor = Executors.newFixedThreadPool(2)) {
+      var rotation =
+          executor.submit(
+              () -> {
+                gate.await();
+                return post("/refresh", "", cookie(loggedIn));
+              });
+      var change =
+          executor.submit(
+              () -> {
+                gate.await();
+                return patch(
+                    "/me/password", access, passwordBody(PASSWORD, "changed local password"));
+              });
+      gate.countDown();
+      var rotated = rotation.get(20, TimeUnit.SECONDS);
+      assertThat(rotated.statusCode()).isIn(200, 401);
+      assertThat(change.get(20, TimeUnit.SECONDS).statusCode()).isEqualTo(204);
+      assertThat(active()).isZero();
+      if (rotated.statusCode() == 200)
+        assertThat(post("/refresh", "", cookie(rotated)).statusCode()).isEqualTo(401);
+    }
+  }
+
+  @Test
+  void competingPasswordChangesHaveOnlyOneSuccess() throws Exception {
+    String access = accessOf(login(false));
+    CountDownLatch gate = new CountDownLatch(1);
+    try (var executor = Executors.newFixedThreadPool(2)) {
+      var one =
+          executor.submit(
+              () -> {
+                gate.await();
+                return patch(
+                    "/me/password", access, passwordBody(PASSWORD, "first changed password"));
+              });
+      var two =
+          executor.submit(
+              () -> {
+                gate.await();
+                return patch(
+                    "/me/password", access, passwordBody(PASSWORD, "second changed password"));
+              });
+      gate.countDown();
+      assertThat(
+              List.of(
+                  one.get(20, TimeUnit.SECONDS).statusCode(),
+                  two.get(20, TimeUnit.SECONDS).statusCode()))
+          .containsExactlyInAnyOrder(204, 400);
+    }
+    String hash =
+        jdbc.queryForObject(
+            "SELECT password_hash FROM users WHERE id=?", String.class, member.getId());
+    assertThat(
+            passwords.matches("first changed password", hash)
+                ^ passwords.matches("second changed password", hash))
+        .isTrue();
+    assertThat(active()).isZero();
+  }
+
+  private String accessOf(HttpResponse<String> response) {
+    return json.readTree(response.body()).path("data").path("accessToken").asString();
+  }
+
+  private String passwordBody(String current, String next) {
+    return json.writeValueAsString(
+        java.util.Map.of("currentPassword", current, "newPassword", next));
+  }
+
+  private HttpResponse<String> patch(String path, String access, String body) throws Exception {
+    try (var client = HttpClient.newHttpClient()) {
+      return client.send(
+          HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/auth" + path))
+              .header("Authorization", "Bearer " + access)
+              .header("Content-Type", "application/json")
+              .timeout(java.time.Duration.ofSeconds(15))
+              .method("PATCH", HttpRequest.BodyPublishers.ofString(body))
+              .build(),
+          HttpResponse.BodyHandlers.ofString());
+    }
+  }
+
   private long active() {
     return jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE NOT revoked", Long.class);
   }

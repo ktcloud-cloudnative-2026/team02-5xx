@@ -21,6 +21,8 @@ const messages = {
     '조리 서비스 문제로 지금은 주문·결제를 진행할 수 없어요.',
   MENU_SERVICE_UNAVAILABLE:
     '메뉴 정보를 확인하지 못했어요. 잠시 후 다시 조회해 주세요.',
+  INVENTORY_SERVICE_UNAVAILABLE:
+    '재고 정보를 확인하지 못했어요. 잠시 후 다시 조회해 주세요.',
   UNAUTHORIZED: '고객 인증이 만료됐어요. 다시 로그인해 주세요.',
   FORBIDDEN: '요청 권한 또는 요청 출처가 허용되지 않았어요.',
 };
@@ -30,6 +32,8 @@ const terminalCreate = {
   MENU_NOT_AVAILABLE: 409,
   OUT_OF_STOCK: 409,
   COOKING_UNAVAILABLE: 503,
+  MENU_SERVICE_UNAVAILABLE: 503,
+  INVENTORY_SERVICE_UNAVAILABLE: 503,
 };
 const terminalPay = {
   PAYMENT_FAILED: 402,

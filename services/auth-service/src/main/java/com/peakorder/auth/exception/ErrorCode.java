@@ -4,6 +4,7 @@ import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
   INVALID_REQUEST(HttpStatus.BAD_REQUEST, "입력값을 확인해 주세요."),
+  CURRENT_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "현재 비밀번호가 일치하지 않습니다."),
   UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
   FORBIDDEN(HttpStatus.FORBIDDEN, "요청이 허용되지 않습니다."),
   AUTHENTICATION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "인증 설정을 확인 중입니다."),

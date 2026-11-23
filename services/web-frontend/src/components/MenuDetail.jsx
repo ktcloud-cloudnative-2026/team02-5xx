@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { calculateTotal, formatPrice, MAX_QUANTITY } from '../menu.js';
 import useDialog from '../useDialog.js';
 import { describeItem } from '../cart.js';
+import MenuPhoto from './MenuPhoto.jsx';
 
 export default function MenuDetail({
   adding = false,
@@ -79,11 +80,7 @@ export default function MenuDetail({
               aria-label={`${menu.name} 이미지 준비 중`}
             >
               <span className="menu-photo" aria-hidden="true">
-                {menu.imageUrl ? (
-                  <img src={menu.imageUrl} alt="" />
-                ) : (
-                  '메뉴 사진'
-                )}
+                <MenuPhoto imageUrl={menu.imageUrl} />
               </span>
             </div>
             <div className="detail-content">

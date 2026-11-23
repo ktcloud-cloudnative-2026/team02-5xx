@@ -307,23 +307,66 @@ test('CREATED lookup stays unknown and only permits explicit same-order recovery
   assert.equal(flow.getSnapshot().recoverable, true);
   flow.dispose();
 });
-test('create transport error or malformed write response stays unknown without automatic retry', async () => {
+test('create transport error or malformed response offers explicit new order without automatic retry', async () => {
   for (const create of [
     async () => {
       throw new Error('network');
     },
     async () => ({ status: 'PAID' }),
+    async () => {
+      throw new CheckoutError('HTTP_ERROR', 'server unavailable');
+    },
   ]) {
-    const { flow } = setup({ create });
+    let calls = 0;
+    const { flow } = setup({
+      create: (...args) => {
+        calls++;
+        return create(...args);
+      },
+    });
     await flow.estimate();
     await flow.create();
-    assert.equal(flow.getSnapshot().stage, 'unknown');
+    assert.equal(flow.getSnapshot().stage, 'failed');
     assert.equal(flow.getSnapshot().order, null);
-    flow.restart();
+    assert.match(flow.getSnapshot().error, /새 임시 주문/);
+    assert.equal(calls, 1);
     await flow.create();
-    assert.equal(flow.getSnapshot().stage, 'unknown');
+    assert.equal(calls, 1); // no automatic create retry
+    flow.restart();
+    await flow.estimate();
+    await flow.create();
+    assert.equal(calls, 2); // explicit new attempt
+    assert.equal(flow.getSnapshot().stage, 'failed');
     flow.dispose();
   }
+});
+test('create timeout allows a fresh temporary order but never retries automatically', async () => {
+  const waiting = deferred();
+  let calls = 0;
+  const { flow } = setup(
+    {
+      create: () => {
+        calls++;
+        return waiting.promise;
+      },
+    },
+    { timeoutMs: 5 },
+  );
+  await flow.estimate();
+  await flow.create();
+  assert.equal(flow.getSnapshot().stage, 'failed');
+  assert.equal(flow.getSnapshot().errorCode, 'TIMEOUT');
+  assert.equal(flow.getSnapshot().order, null);
+  assert.equal(calls, 1);
+  await flow.create();
+  assert.equal(calls, 1);
+  flow.restart();
+  await flow.estimate();
+  await flow.create();
+  assert.equal(calls, 2);
+  flow.dispose();
+  waiting.resolve({ status: 'PAID' });
+  assert.equal(flow.getSnapshot().stage, 'failed');
 });
 test('duplicate create/pay clicks start exactly one operation', async () => {
   const { flow, adapter } = setup();

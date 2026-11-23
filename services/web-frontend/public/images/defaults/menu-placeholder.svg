@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="메뉴 기본 이미지">
+  <rect width="480" height="480" fill="#ededed"/>
+  <circle cx="240" cy="240" r="138" fill="#f7f7f7" stroke="#c2c2c2" stroke-width="12"/>
+  <circle cx="240" cy="240" r="104" fill="none" stroke="#d0d0d0" stroke-width="9"/>
+  <g fill="none" stroke="#999" stroke-width="13" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M84 170v130m-18-130v56a18 18 0 0 0 36 0v-56"/>
+    <path d="M396 300V170c-40 33-40 94 0 96"/>
+  </g>
+</svg>

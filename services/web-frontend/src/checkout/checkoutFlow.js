@@ -261,6 +261,16 @@ export function createCheckoutFlow({
           '아직 확정되지 않았어요. 미결제를 단정할 수 없으므로 같은 주문의 처리를 이어갈 수 있습니다.',
       });
   }
+  const failCreate = (error, uncertain = false) =>
+    emit({
+      stage: 'failed',
+      order: null,
+      recoverable: false,
+      errorCode: error?.code ?? 'UNKNOWN',
+      error: uncertain
+        ? '임시 주문 생성 결과를 확인하지 못했어요. 결제 전 단계이므로 새 임시 주문으로 다시 확인할 수 있어요.'
+        : error?.message || '임시 주문을 만들지 못했어요. 다시 확인해 주세요.',
+    });
   async function submitPayment(recovery = false) {
     if (
       busy ||
@@ -357,17 +367,10 @@ export function createCheckoutFlow({
               );
             emit({ stage: 'ready', order });
           } catch (error) {
-            unknown(error);
+            failCreate(error, true);
           }
         },
-        (error) =>
-          error.definitive === true
-            ? emit({
-                stage: 'failed',
-                error: error.message,
-                errorCode: error.code,
-              })
-            : unknown(error),
+        (error) => failCreate(error, error.definitive !== true),
       );
     },
     pay: () => submitPayment(),

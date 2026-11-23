@@ -15,6 +15,7 @@ let vite;
 let App;
 let Cart;
 let MenuDetail;
+let MenuPhoto;
 let LoginModal;
 before(async () => {
   vite = await createServer({
@@ -27,6 +28,8 @@ before(async () => {
   MenuDetail = (await vite.ssrLoadModule('/src/components/MenuDetail.jsx'))
     .default;
   LoginModal = (await vite.ssrLoadModule('/src/components/LoginModal.jsx'))
+    .default;
+  MenuPhoto = (await vite.ssrLoadModule('/src/components/MenuPhoto.jsx'))
     .default;
 });
 after(async () => vite?.close());
@@ -181,4 +184,15 @@ test('storage corruption and access failures do not abort the real App SSR rende
     assert.ok(html.includes('메뉴를 불러오는 중이에요.'));
     assert.ok(!html.includes('storage denied'));
   }
+});
+
+test('menu images use the default asset when missing and preserve configured paths', () => {
+  const missing = render(MenuPhoto, { imageUrl: null });
+  assert.ok(missing.includes('src="/images/defaults/menu-placeholder.svg"'));
+  const empty = render(MenuPhoto, { imageUrl: '   ' });
+  assert.ok(empty.includes('src="/images/defaults/menu-placeholder.svg"'));
+  const configured = render(MenuPhoto, {
+    imageUrl: '/images/menus/classic-burger.webp',
+  });
+  assert.ok(configured.includes('src="/images/menus/classic-burger.webp"'));
 });
