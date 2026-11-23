@@ -24,6 +24,8 @@ import { authSession } from './authSession.js';
 import CartOverlay from './components/CartOverlay.jsx';
 import LoginModal from './components/LoginModal.jsx';
 import CheckoutPage from './components/CheckoutPage.jsx';
+import OrderHistoryPage from './orders/OrderHistoryPage.jsx';
+import { useOrdersRoute, ordersHref } from './orders/ordersRoute.js';
 import {
   createCheckoutFlow,
   customerKey,
@@ -41,6 +43,7 @@ export default function App({
   menuApi = defaultMenuApi,
   checkoutAdapter,
 }) {
+  const ordersRoute = useOrdersRoute();
   const session = useSyncExternalStore(
     sessionSource.subscribe,
     sessionSource.getSnapshot,
@@ -164,6 +167,7 @@ export default function App({
 
   useEffect(() => {
     const onHistory = () => {
+      if (window.location.hash.startsWith('#orders')) setSelectedId(null);
       if (window.location.hash === '#checkout' && checkoutRef.current) return;
       const completed =
         checkoutRef.current?.flow.getSnapshot().stage === 'paid';
@@ -269,6 +273,7 @@ export default function App({
     }
     cartOpen.current = nextPage === 'cart';
     setPage(nextPage);
+    window.dispatchEvent(new Event('peak-order-route'));
   }
 
   function closeCart() {
@@ -487,9 +492,9 @@ export default function App({
         </div>
         <nav aria-label="고객 메뉴">
           <a
-            className={`nav-item ${page !== 'cart' ? 'active' : ''}`}
+            className={`nav-item ${page !== 'cart' && !ordersRoute ? 'active' : ''}`}
             href="#menu-list"
-            aria-current={page !== 'cart' ? 'page' : undefined}
+            aria-current={page !== 'cart' && !ordersRoute ? 'page' : undefined}
           >
             <svg
               viewBox="0 0 24 24"
@@ -501,6 +506,22 @@ export default function App({
               <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" />
             </svg>
             메뉴
+          </a>
+          <a
+            className={`nav-item ${ordersRoute ? 'active' : ''}`}
+            href="#orders"
+            aria-current={ordersRoute ? 'page' : undefined}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3zM9 8h6M9 12h6" />
+            </svg>
+            주문 내역
           </a>
           <button
             className={`nav-item cart-nav ${page === 'cart' ? 'active' : ''}`}
@@ -521,7 +542,7 @@ export default function App({
           </button>
         </nav>
       </aside>
-      <main className="menu-page">
+      <main className="menu-page" hidden={Boolean(ordersRoute)}>
         {page !== 'cart' && (
           <p className="action-notice" role="status" aria-live="polite">
             {notice}
@@ -687,6 +708,14 @@ export default function App({
           </section>
         </>
       </main>
+      {ordersRoute && (
+        <OrderHistoryPage
+          route={ordersRoute}
+          sessionSource={sessionSource}
+          onLogout={signOut}
+          authBusy={authBusy}
+        />
+      )}
       {page === 'cart' && (
         <CartOverlay
           rows={view?.rows ?? []}
@@ -726,6 +755,17 @@ export default function App({
           flow={checkout.flow}
           source={checkout.source}
           onClose={closeCheckout}
+          onOrders={(id) => {
+            if (checkoutRef.current?.flow.getSnapshot().stage !== 'paid')
+              return;
+            closeCheckout();
+            window.history.replaceState(
+              { peakOrderPage: 'orders' },
+              '',
+              ordersHref(0, id),
+            );
+            window.dispatchEvent(new Event('peak-order-route'));
+          }}
         />
       )}
       {loginIntent &&

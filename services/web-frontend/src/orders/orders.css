@@ -1,0 +1,245 @@
+.orders-page {
+  padding: 40px clamp(20px, 2.5vw, 48px);
+  min-width: 0;
+}
+.orders-heading,
+.order-actions,
+.order-detail-heading,
+.order-status-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.orders-heading {
+  margin-bottom: 16px;
+}
+.orders-page a {
+  color: inherit;
+}
+.order-caption {
+  color: #666;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.order-cards {
+  list-style: none;
+  padding: 0;
+  margin: 32px 0;
+  display: grid;
+  gap: 16px;
+}
+.order-card {
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 28px;
+  padding: 28px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.order-card > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.order-card h2 {
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+.order-card p {
+  margin-top: 8px;
+}
+.order-badge {
+  padding: 10px 16px;
+  border-radius: 24px;
+  background: #2e2e2e;
+  color: white;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.order-detail-link {
+  padding: 14px 20px;
+  border-radius: 25px;
+  background: #f2f3f5;
+  text-decoration: none;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.order-pagination {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  justify-content: center;
+}
+.orders-message {
+  padding: 24px;
+  background: #fff;
+  border-radius: 22px;
+  line-height: 1.7;
+  margin: 16px 0;
+  overflow-wrap: anywhere;
+}
+.orders-message button,
+.orders-message a {
+  margin-top: 12px;
+}
+.orders-page > .orders-message > a {
+  display: block;
+}
+.order-detail-modal,
+.order-confirm {
+  color: #2e2e2e;
+  background: #fff;
+  border: 0;
+  border-radius: 40px;
+  padding: 40px;
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100svh - 40px);
+  overflow: auto;
+}
+.order-detail-modal::backdrop,
+.order-confirm::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+.order-detail-heading h2 {
+  font-size: 30px;
+  overflow-wrap: anywhere;
+}
+.order-status-line {
+  margin: 20px 0;
+}
+.order-estimates {
+  background: #2e2e2e;
+  color: #fff;
+  border-radius: 28px;
+  padding: 24px;
+}
+.order-estimates > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.order-estimates strong {
+  font-size: 24px;
+}
+.order-estimates p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.order-progress {
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  padding: 0;
+  gap: 12px;
+  margin: 28px 0;
+  font-size: 13px;
+}
+.order-progress li {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  color: #666;
+  text-align: center;
+}
+.order-progress span {
+  background: #eee;
+  border-radius: 50%;
+  padding: 10px 14px;
+}
+.order-progress [aria-current='step'] {
+  color: #222;
+  font-weight: 700;
+}
+.order-progress [aria-current='step'] span {
+  background: #2e2e2e;
+  color: #fff;
+}
+.order-lines {
+  background: #f6f6f8;
+  border-radius: 28px;
+  padding: 24px;
+  margin: 24px 0;
+}
+.order-lines h3 {
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+.order-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 0;
+  overflow-wrap: anywhere;
+}
+.order-line > strong {
+  flex-shrink: 0;
+}
+.order-line p {
+  font-size: 14px;
+  line-height: 1.7;
+}
+.order-dates {
+  font-size: 14px;
+  margin: 24px 0;
+}
+.order-dates > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  line-height: 1.8;
+}
+.order-dates dd {
+  margin: 0;
+  text-align: right;
+}
+.order-detail-modal > .order-actions {
+  justify-content: flex-end;
+  margin: 24px 0 12px;
+}
+.order-confirm {
+  width: min(480px, calc(100vw - 32px));
+}
+.order-confirm p {
+  line-height: 1.7;
+  margin: 20px 0;
+}
+@media (max-width: 760px) {
+  .orders-page {
+    padding: 100px 16px 24px;
+  }
+  .sidebar .nav-item {
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+  .order-card {
+    flex-wrap: wrap;
+    padding: 20px;
+    gap: 16px;
+  }
+  .order-card > div:first-child {
+    flex-basis: 100%;
+  }
+  .order-card h2 {
+    font-size: 18px;
+  }
+  .order-detail-modal,
+  .order-confirm {
+    padding: 24px;
+    border-radius: 28px;
+  }
+  .order-detail-heading h2 {
+    font-size: 24px;
+  }
+  .order-dates > div {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .order-detail-modal .pill-button {
+    white-space: normal;
+  }
+}

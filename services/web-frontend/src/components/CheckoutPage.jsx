@@ -12,7 +12,7 @@ import PaymentFailureNotice from './PaymentFailureNotice.jsx';
 import '../checkout/checkout.css';
 import { cancelTopDialog } from '../dialogFocus.js';
 
-export default function CheckoutPage({ flow, source, onClose }) {
+export default function CheckoutPage({ flow, source, onClose, onOrders }) {
   const mock = flow.mode === 'mock';
   const state = useSyncExternalStore(
     flow.subscribe,
@@ -147,6 +147,14 @@ export default function CheckoutPage({ flow, source, onClose }) {
               <button className="pill-button" onClick={onClose}>
                 메뉴로 돌아가기
               </button>
+              {!mock && onOrders && (
+                <button
+                  className="text-button"
+                  onClick={() => onOrders(state.order.orderId)}
+                >
+                  주문 내역에서 확인
+                </button>
+              )}
               {state.completionWarning && (
                 <p role="alert">{state.completionWarning}</p>
               )}
