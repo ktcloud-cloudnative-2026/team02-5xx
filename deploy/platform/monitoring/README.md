@@ -60,7 +60,7 @@ dev 노드(11/20): t2-dev-cp CPU 2·약 3.8Gi(실사용 78%), t2-dev-w1·w2 CPU 
 - node-exporter는 DaemonSet이라 메모리가 빠듯한 cp에도 뜬다 → 제한을 작게 둔다.
 - 요청 합계 약 1Gi(node-exporter 3개 포함, sidecar·config-reloader 제외). 실제 사용량을 본 뒤 조정한다.
 
-## 렌더링 결과 (104개)
+## 렌더링 결과 (105개)
 
 같은 결과를 다시 보려면:
 
@@ -76,8 +76,9 @@ helm template monitoring prometheus-community/kube-prometheus-stack --version 93
 | 클러스터 | CustomResourceDefinition (10), ClusterRole (3), ClusterRoleBinding (3) |
 | `monitoring` | PrometheusRule (31), ConfigMap (27), ServiceMonitor (9), Service (6), ServiceAccount (6), Deployment (3), Secret (2), DaemonSet (1), Prometheus (1), Alertmanager (1), Role (1), RoleBinding (1) |
 
+- 개수는 실제로 적용되는 객체 기준이다. 차트는 추가 ServiceMonitor(`prometheus.additionalServiceMonitors`)를 `kind: List`로 감싸 출력하므로, 출력에서 `kind:`를 셀 때는 List 대신 안의 ServiceMonitor(1)를 센다. Argo CD는 List를 풀어 안의 객체를 하나씩 적용한다.
 - 모든 namespace 리소스는 `monitoring`에 만들어진다. 다른 namespace에 만드는 리소스는 없다.
-- `app`·`team` 라벨은 CRD 10개를 뺀 93개 리소스와 Pod 템플릿(Deployment 3·DaemonSet 1)·Operator가 만들 Pod(`podMetadata`)에 모두 있다.
+- `app`·`team` 라벨은 CRD 10개를 뺀 95개 리소스와 Pod 템플릿(Deployment 3·DaemonSet 1)·Operator가 만들 Pod(`podMetadata`)에 모두 있다.
 - MutatingWebhookConfiguration·ValidatingWebhookConfiguration·Job·Pod(helm hook)는 없다.
 - AppProject 허용 목록은 위 종류와 정확히 같다(빠짐·남음 없음, 스크립트로 대조).
 - Prometheus·Alertmanager의 StatefulSet은 Operator가 실행 중에 만든다(Argo CD가 만드는 리소스가 아니라 AppProject 목록에 없다).
