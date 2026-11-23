@@ -250,7 +250,7 @@ try {
     },
   );
   await check(
-    'unresolved CREATED query blocks repayment and preserves cart',
+    'CREATED lookup preserves cart and offers only explicit same-order recovery',
     async () => {
       await fresh('unknown');
       await enterCart();
@@ -263,6 +263,12 @@ try {
         .getByText('아직 확정되지 않았어요.', { exact: false })
         .waitFor();
       assert.deepEqual(await cart(), original);
+      assert.equal(
+        await page
+          .getByRole('button', { name: '같은 주문 처리 이어가기', exact: true })
+          .isEnabled(),
+        true,
+      );
       assert.equal(
         await page.getByRole('button', { name: /원 모의 결제$/ }).count(),
         0,
@@ -397,6 +403,206 @@ try {
       assert.deepEqual(await cart(), large);
     },
   );
+  await check(
+    'explicit HTTP recovery uses the same expired order once and subtracts only ordered quantity',
+    async () => {
+      await fresh('unknown');
+      await enterCart();
+      await create();
+      await pay();
+      await page
+        .getByRole('button', { name: '주문 상태 확인', exact: true })
+        .waitFor();
+      assert.equal(
+        await page
+          .getByRole('button', { name: '같은 주문 처리 이어가기' })
+          .count(),
+        0,
+      );
+      await page.route('**/api/v1/orders/*', async (route) => {
+        if (route.request().method() !== 'GET') return route.continue();
+        const response = await route.fetch();
+        const json = await response.json();
+        json.data.holdExpiresAt = '2020-01-01T00:00:00Z';
+        await route.fulfill({ response, json });
+      });
+      await page
+        .getByRole('button', { name: '주문 상태 확인', exact: true })
+        .click();
+      const recover = page.getByRole('button', {
+        name: '같은 주문 처리 이어가기',
+        exact: true,
+      });
+      await recover.waitFor();
+      await page.evaluate(() =>
+        localStorage.setItem(
+          'peak-order.cart.v1',
+          JSON.stringify({
+            version: 1,
+            items: [{ menuId: 1, optionIds: [2], quantity: 5 }],
+          }),
+        ),
+      );
+      fixture.checkoutControls.scenario = 'success';
+      await recover.evaluate((button) => {
+        button.click();
+        button.click();
+      });
+      await page.locator('.mock-order-number').waitFor();
+      assert.deepEqual(await cart(), {
+        version: 1,
+        items: [{ menuId: 1, optionIds: [2], quantity: 3 }],
+      });
+      const pays = fixture.requests.filter((r) => r.path.endsWith('/pay'));
+      assert.equal(pays.length, 2);
+      assert.equal(pays[0].path, pays[1].path);
+      assert.ok(
+        pays.every(
+          (r) => r.body === null && !r.hasPaymentKey && !r.hasFakeIdentity,
+        ),
+      );
+      assert.equal(
+        fixture.requests.filter((r) => r.path === '/api/v1/orders').length,
+        1,
+      );
+    },
+  );
+  await check(
+    'immediate-order HTTP recovery keeps the existing cart unchanged',
+    async () => {
+      await fresh('unknown');
+      await login();
+      await page.locator('[data-menu-id="1"]').click();
+      await page
+        .locator('.detail-modal')
+        .getByRole('button', { name: '이 메뉴만 바로 주문', exact: true })
+        .click();
+      await page.getByRole('dialog', { name: '바로 주문할까요?' }).waitFor();
+      await page.getByRole('button', { name: '주문 확인으로 이동 →' }).click();
+      await create();
+      await pay();
+      await page
+        .getByRole('button', { name: '주문 상태 확인', exact: true })
+        .click();
+      fixture.checkoutControls.scenario = 'success';
+      await page
+        .getByRole('button', { name: '같은 주문 처리 이어가기', exact: true })
+        .click();
+      await page.locator('.mock-order-number').waitFor();
+      assert.deepEqual(await cart(), original);
+      const creates = fixture.requests.filter(
+        (r) => r.path === '/api/v1/orders',
+      );
+      assert.equal(creates.length, 1);
+      assert.equal(creates[0].body.items[0].quantity, 1);
+    },
+  );
+  await check(
+    '409 in progress requires another explicit lookup before retry and never creates another order',
+    async () => {
+      await fresh('in-progress');
+      await enterCart();
+      await create();
+      await pay();
+      await page.getByText('안내 코드: ORDER_PAY_IN_PROGRESS').waitFor();
+      assert.equal(
+        await page
+          .getByRole('button', { name: '새 임시 주문으로 다시 확인' })
+          .count(),
+        0,
+      );
+      await page
+        .getByRole('button', { name: '주문 상태 확인', exact: true })
+        .click();
+      await page
+        .getByRole('button', { name: '같은 주문 처리 이어가기', exact: true })
+        .click();
+      await page.getByText('안내 코드: ORDER_PAY_IN_PROGRESS').waitFor();
+      assert.equal(
+        await page
+          .getByRole('button', { name: '같은 주문 처리 이어가기' })
+          .count(),
+        0,
+      );
+      await page.waitForTimeout(150);
+      assert.equal(
+        fixture.requests.filter((r) => r.path.endsWith('/pay')).length,
+        2,
+      );
+      assert.deepEqual(await cart(), original);
+      fixture.checkoutControls.scenario = 'success';
+      await page
+        .getByRole('button', { name: '주문 상태 확인', exact: true })
+        .click();
+      await page
+        .getByRole('button', { name: '같은 주문 처리 이어가기', exact: true })
+        .click();
+      await page.locator('.mock-order-number').waitFor();
+      assert.equal(
+        fixture.requests.filter((r) => r.path === '/api/v1/orders').length,
+        1,
+      );
+      assert.equal(
+        fixture.requests.filter((r) => r.path.endsWith('/pay')).length,
+        3,
+      );
+    },
+  );
+  for (const action of ['logout', 'switch', 'close'])
+    await check(
+      `late recovered HTTP PAID after ${action} cannot change cart`,
+      async () => {
+        await fresh('unknown');
+        await enterCart();
+        await create();
+        await pay();
+        await page
+          .getByRole('button', { name: '주문 상태 확인', exact: true })
+          .click();
+        fixture.checkoutControls.scenario = 'success';
+        let release, received;
+        const gate = new Promise((done) => {
+          release = done;
+        });
+        const arrived = new Promise((done) => {
+          received = done;
+        });
+        await page.route('**/api/v1/orders/*/pay', async (route) => {
+          const response = await route.fetch();
+          received();
+          await gate;
+          await route.fulfill({ response }).catch(() => {});
+        });
+        await page
+          .getByRole('button', { name: '같은 주문 처리 이어가기', exact: true })
+          .click();
+        await arrived;
+        if (action === 'close') {
+          await page
+            .getByRole('button', { name: '주문 확인에서 뒤로가기' })
+            .click();
+          await page
+            .getByRole('button', { name: '안내 확인 후 나가기' })
+            .click();
+        } else
+          await page.evaluate(async (action) => {
+            await window.__integration.session.logout();
+            if (action === 'switch')
+              await window.__integration.session.login({
+                email: 'other@example.test',
+                password: 'fixture-only-password',
+              });
+          }, action);
+        release();
+        await page.waitForTimeout(120);
+        assert.deepEqual(await cart(), original);
+        assert.equal(await page.locator('.mock-order-number').count(), 0);
+        assert.equal(
+          fixture.requests.filter((r) => r.path.endsWith('/pay')).length,
+          2,
+        );
+      },
+    );
   for (const action of ['logout', 'switch', 'close'])
     await check(
       `late HTTP PAID response after ${action} cannot clear cart or resume order`,

@@ -25,6 +25,7 @@ export async function startCustomerHttpFixture({ input } = {}) {
         body,
         hasBearer: !!request.headers.authorization,
         hasFakeIdentity: 'x-user-id' in request.headers,
+        hasPaymentKey: 'idempotency-key' in request.headers,
       });
       const scenario = controls.scenario,
         priceDelta = controls.priceDelta;
@@ -78,16 +79,15 @@ export async function startCustomerHttpFixture({ input } = {}) {
           const options = row.optionIds.map((id) =>
             menu.options.find((o) => o.id === id),
           );
-          const unitPrice =
-            menu.basePrice +
-            options.reduce((sum, o) => sum + o.extraPrice, 0) +
-            priceDelta;
+          const unitPrice = menu.basePrice + priceDelta;
           return {
             menuId: row.menuId,
             menuName: menu.name,
             unitPrice,
             quantity: row.quantity,
-            lineAmount: unitPrice * row.quantity,
+            lineAmount:
+              (unitPrice + options.reduce((sum, o) => sum + o.extraPrice, 0)) *
+              row.quantity,
             options: options.map((o) => ({
               optionId: o.id,
               optionName: o.name,
@@ -115,6 +115,14 @@ export async function startCustomerHttpFixture({ input } = {}) {
         return true;
       }
       if (path.endsWith('/pay')) {
+        if (order.status === 'PAID') {
+          send(200, order);
+          return true;
+        }
+        if (scenario === 'in-progress') {
+          send(409, null, 'ORDER_PAY_IN_PROGRESS');
+          return true;
+        }
         if (scenario === 'declined') {
           orders.set(id, {
             ...order,

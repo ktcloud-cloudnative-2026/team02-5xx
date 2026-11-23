@@ -113,7 +113,7 @@ export function createCheckoutHttpAdapter({
     } catch {
       throw new CheckoutError(
         signal?.aborted ? 'CANCELLED' : 'NETWORK_ERROR',
-        '통신 결과를 확인하지 못했어요. 다시 결제하지 말고 상태를 확인해 주세요.',
+        '통신 결과를 확인하지 못했어요. 먼저 주문 상태를 확인해 주세요.',
       );
     }
     let envelope;

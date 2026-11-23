@@ -1,6 +1,7 @@
 export default function PaymentFailureNotice({
   state,
   onCheck,
+  onRecover,
   onRestart,
   mock = true,
 }) {
@@ -33,8 +34,9 @@ export default function PaymentFailureNotice({
         {unknown && (
           <>
             <p>
-              이 화면에서 새 주문이나 재결제는 실행하지 않습니다. 조회
-              실패·CREATED 상태만으로 미결제를 단정할 수 없어요.
+              먼저 주문 상태를 확인해 주세요. 아직 확정되지 않은 주문의 처리를
+              이어갈 수 있어요. 새 임시 주문은 만들지 않으며, 처리 재개도
+              자동으로 반복하지 않습니다.
             </p>
             {state.order ? (
               <button
@@ -53,6 +55,15 @@ export default function PaymentFailureNotice({
                 임시 주문 식별자를 받지 못해 이 화면에서는 결과를 조회할 수
                 없어요.
               </p>
+            )}
+            {state.recoverable && (
+              <button
+                className="pill-button"
+                disabled={state.checking}
+                onClick={onRecover}
+              >
+                같은 주문 처리 이어가기
+              </button>
             )}
           </>
         )}

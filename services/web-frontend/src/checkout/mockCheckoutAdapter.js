@@ -10,6 +10,7 @@ export function createMockCheckoutAdapter({
   clock = Date.now,
 } = {}) {
   const orders = new Map();
+  const interrupted = new Set();
   let sequence = 0;
   const pause = (signal) =>
     new Promise((resolve, reject) => {
@@ -71,7 +72,7 @@ export function createMockCheckoutAdapter({
         items: input.rows.map((row) => ({
           menuId: row.menuId,
           menuName: row.name,
-          unitPrice: row.unitPrice,
+          unitPrice: resolveMenu(row.menuId).basePrice,
           quantity: row.quantity,
           lineAmount: row.total,
           options: row.optionIds.map((id, i) => ({
@@ -107,11 +108,21 @@ export function createMockCheckoutAdapter({
           { definitive: true },
         );
       }
-      if (scenario === 'unknown')
+      if (
+        scenario === 'unknown' ||
+        (scenario === 'recoverable' && !interrupted.has(id))
+      ) {
+        interrupted.add(id);
+        if (scenario === 'recoverable')
+          orders.set(id, {
+            ...order,
+            holdExpiresAt: new Date(clock() - 1).toISOString(),
+          });
         throw new CheckoutError(
           'PAYMENT_SERVICE_UNAVAILABLE',
           'Mock 결제 결과 불명',
         );
+      }
       const paid = {
         ...order,
         status: 'PAID',

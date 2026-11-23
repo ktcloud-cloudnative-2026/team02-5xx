@@ -1,5 +1,7 @@
 # 고객 주문 확인·결제 Mock UI — #192
 
+이 문서는 #192 작성 당시의 기록이다. 현재 #201은 Order 계약에 맞춰 결과 불명의 OR-04 조회 후 검증된 CREATED 주문에만 사용자 클릭으로 같은 orderId의 OR-02 처리를 이어간다. 화면에서 새 임시 주문이나 결제 키를 만들거나 자동 반복하지 않는다. 아래 과거의 ‘조회만 제공’ 설명보다 [현재 고객 통합 계약](customer-integration-201.md)을 우선한다. Mock도 Order DTO의 기본가 unitPrice와 옵션 추가 금액을 분리하며 `scenario=recoverable`로 같은 주문의 복구를 검증한다.
+
 ## 기준과 선행 작업
 
 - 작업 기준 main: `ca43852c7f2a87eeebfa7b09896ec4f0a8f84e25` (2026-11-23 fetch).

@@ -119,6 +119,7 @@ export default function CheckoutPage({ flow, source, onClose }) {
             mock={mock}
             state={state}
             onCheck={flow.check}
+            onRecover={flow.recover}
             onRestart={() => {
               flow.restart();
               void flow.estimate();

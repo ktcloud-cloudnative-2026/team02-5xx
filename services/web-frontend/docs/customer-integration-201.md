@@ -25,14 +25,15 @@
 
 Order `CreateOrderRequest`와 Cooking DTO에 맞게 항목은 1~20개, 수량은 1~99로 제한한다. HTTP adapter는 옵션 최대 20개·양수 ID·중복 금지를 검증하며, 현재 화면은 기존 단일 radio 옵션 정책을 유지한다. 장바구니 21개 항목은 분할 주문·부분 주문을 새로 만들지 않고 진입 전에 안내하고 보존한다.
 
-Order 응답의 항목·옵션·수량과 요청을 비교하고 unitPrice×quantity=lineAmount, 항목 합=totalAmount, 안전한 정수/서버 int 범위, 상태·결제 후 번호·CREATED 확보 시각을 검사한다. 서버 재계산 금액이 다르면 이를 표시하고 새 금액의 결제 버튼을 사용자가 다시 눌러야 한다. 예상시간 조회만으로 재고 확보·주문·조리 등록을 확정하지 않는다. PAID 이후 조리 등록은 비동기이므로 완료된 것으로 표시하지 않는다.
+Order 응답의 항목·옵션·수량과 요청을 비교하고 `(unitPrice + Σ options.extraPrice) × quantity = lineAmount`, 항목 합=totalAmount, 안전한 정수/서버 int 범위, 상태·결제 후 번호·CREATED 확보 시각을 검사한다. OrderDetailResponse의 unitPrice는 기본가이며, 화면의 cartView가 사용하는 옵션 포함 단가와 구분한다. 옵션이 없거나 여러 개인 응답도 같은 식으로 검증한다. 서버 재계산 금액이 다르면 이를 표시하고 새 금액의 결제 버튼을 사용자가 다시 눌러야 한다. 예상시간 조회만으로 재고 확보·주문·조리 등록을 확정하지 않는다. PAID 이후 조리 등록은 비동기이므로 완료된 것으로 표시하지 않는다.
 
 ## 인증·실패·중복 경계
 
 - Order는 기존 Auth Store의 `request`로 메모리 Access Token의 Bearer를 전달한다. CUSTOMER와 사용자 식별자를 확인한다. Refresh HttpOnly 쿠키는 브라우저가 처리한다. 프런트가 `X-User-Id`를 만들거나 내부 Payment/Inventory API를 호출하지 않는다.
 - 로그인·최초 복원·같은 탭 Refresh single-flight·로그아웃과 403 무갱신을 재사용한다. 안전한 OR-04 GET만 401 후 최대 1회 회전/재시도를 허용한다. OR-01/02 POST의 401은 세션을 무효화하며 자동 재생하지 않는다.
 - 코드와 HTTP 상태가 함께 일치하는 명시적 종료 오류만 실패 확정으로 처리한다. 생성의 INVALID_REQUEST(400), STORE_NOT_ACCEPTING_ORDERS/MENU_NOT_AVAILABLE/OUT_OF_STOCK(409), COOKING_UNAVAILABLE(503); 결제의 PAYMENT_FAILED(402), HOLD_EXPIRED/STOCK_CONFIRM_FAILED/ORDER_NOT_PAYABLE/MENU_NOT_AVAILABLE(409).
-- ORDER_PAY_IN_PROGRESS, 결제 5xx, 깨진/모순된 응답, 네트워크·타임아웃·취소는 실패 확정으로 취급하지 않는다. 결과 불명은 같은 orderId로 조회만 제공한다. 임의 새 주문·재결제는 실행하지 않는다.
+- `409 ORDER_PAY_IN_PROGRESS`, 결제 5xx, 깨진/모순된 응답, 네트워크·타임아웃·취소는 실패 확정으로 취급하지 않는다. 결과 불명은 먼저 같은 orderId로 OR-04 GET을 실행한다. 검증된 CREATED 응답에만 **같은 주문 처리 이어가기**를 제공하며, 사용자의 별도 클릭으로 동일 orderId의 OR-02 POST를 한 번 호출한다. 다시 결과 불명이면 새 GET 확인 전까지 복구를 차단한다. 자동 반복·새 임시 주문 생성·새 결제 키는 없다. 안전한 GET의 401 재시도와 달리 POST의 자동 재시도는 계속 금지한다.
+- 복구 계약은 현재 OrderService.payOrder와 idempotencyKey(`order-{orderId}`), OrderItem의 금액 계산 및 OrderDetailResponse DTO를 대조했다. 서버가 기존 결제·재고 확정을 같은 키로 이어 처리한다. 프런트는 키를 생성하거나 보내지 않는다. 결과 불명 이후에는 holdExpiresAt이 지나도 서버의 기존 결제 복구를 차단하지 않는다. CREATED 조회는 미결제 증거가 아니며 결제 결과는 서버 응답으로만 확정한다. ID를 받지 못한 생성 결과 불명은 이 화면에서 복구하지 않는다.
 - 성공 전후 세션·계정·generation·AbortSignal과 flow identity를 검사한다. 화면 종료·계정 변경 뒤 늦은 응답은 주문 화면을 복원하거나 장바구니를 변경하지 않는다.
 - 성공 확정 후 장바구니 주문만 주문 당시 수량을 한 번 차감한다. 추가된 수량·다른 옵션·비주문 품목은 유지한다. 즉시 주문·실패·결과 불명은 불변이며 조회 후 성공도 동일한 후처리 경로를 사용한다. 저장 키/형식 `peak-order.cart.v1` 유지.
 - 두 경로 모두 완료 후 메뉴로 이동하고 완료 Checkout History entry를 정리한다. 로그인 전 선택·옵션·수량과 기존 메뉴/장바구니 캐시 준비·재시도 정책을 유지한다. 주문 내역·마이페이지·새 Checkout 진입 경로·다중 탭 정책은 추가하지 않았다.
@@ -77,3 +78,13 @@ npm.cmd run test:customer:ui -- unknown-paid
 4. 응답 유실로 생성 ID를 받지 못한 경우, 새로고침·재접속·다중 탭의 미확정 결제 복구 및 계정별 장바구니 소유/이관은 별도 합의 대상이다. 이번 메모리 화면의 안전 가드가 영속 복구·탭 간 원자성을 보장하지 않는다.
 
 Commit·Push·PR 생성·main/기존 브랜치 병합은 하지 않았다. 인증·결제 정합성 변경이므로 후속 제출 시 작성자 외 팀원 1명 승인 필수 대상임을 명시한다.
+
+## Order 계약 최종 대조·보완 — 2026-11-23
+
+로컬 main 통합 Commit `47f20fa`의 실제 [OrderService](../../order-service/src/main/java/com/peakorder/order/service/OrderService.java), [OrderDetailResponse](../../order-service/src/main/java/com/peakorder/order/dto/OrderDetailResponse.java), [OrderItem](../../order-service/src/main/java/com/peakorder/order/entity/OrderItem.java)을 기준으로 대조했다. 추가 fetch의 main 변경은 Inventory 지표 의존성과 Menu dev 시드뿐이며 이번 작업에 병합하지 않았다. 백엔드·인프라·원본 #188/#200 브랜치는 수정하지 않았다.
+
+- 기존 GET 전용 복구를 보완했다. 검증된 CREATED 조회 이후에만 사용자 클릭으로 동일 주문의 OR-02를 한 번 실행한다. busy·generation·세션 경계와 동일한 성공 후처리를 재사용한다. 409 진행 중·재차 결과 불명·잘못된 응답은 새 GET 전까지 복구 버튼을 잠그며 자동 POST·새 임시 주문을 만들지 않는다. 만료된 확보의 복구 판단도 서버에 맡긴다. OR-01/02의 401 자동 재시도 금지는 유지한다.
+- 옵션 포함 단가로 취급하던 Order DTO 검증식과 Mock·HTTP fixture를 기본가와 옵션 금액의 합으로 수정했다. 옵션 없음·1개·여러 개, 옵션 중복 계산·잘못된 금액·int 초과를 검증한다. 프런트 장바구니의 옵션 포함 단가 계산은 그대로 둔다.
+- Node **177 PASS / 0 FAIL**: 기존 168 + 복구·경합·DTO/HTTP 계약 검사 9개. Chromium **98 PASS / 0 FAIL**: 기존 91 + HTTP 복구 6·Mock 복구 1개. Auth 9 / Menu 6 / 통합 1 / 경합 11 / Checkout Mock 32 / 고객 HTTP 23 / 비회원 장바구니 16. Vite build·전체 Prettier(기존 CRLF 허용)·변경 파일 기본 Prettier·diff 검사를 수행했다. 신규 즉시 주문 QA는 기존 예상시간 모달의 확인 단계를 포함해 실행한다.
+
+실제 dev 연동 차단 요인은 위와 같이 유지된다. Controller의 임시 X-User-Id와 검증된 Bearer 사용자 전달 계약이 아직 일치하지 않으며 프런트가 해당 헤더를 위조하지 않는다. 실제 Auth·Gateway·Order·재고·결제 연동 성공이나 서버 멱등성의 실환경 증명은 이번 loopback 회귀 결과에 포함되지 않는다. 이번 보완은 미커밋 상태로 남긴다.

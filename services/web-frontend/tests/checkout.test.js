@@ -5,6 +5,7 @@ import {
   prepareCheckout,
   customerKey,
   validateEstimate,
+  CheckoutError,
 } from '../src/checkout/checkoutFlow.js';
 import { createMockCheckoutAdapter } from '../src/checkout/mockCheckoutAdapter.js';
 import { getMenu } from '../src/data/menuRepository.js';
@@ -287,7 +288,7 @@ test('unknown payment blocks further pay/create; status lookup alone can confirm
   assert.equal(flow.getSnapshot().stage, 'paid');
   flow.dispose();
 });
-test('unresolved status remains unknown including CREATED; never enables repayment', async () => {
+test('CREATED lookup stays unknown and only permits explicit same-order recovery', async () => {
   const { flow } = setup(
     {},
     {
@@ -303,6 +304,7 @@ test('unresolved status remains unknown including CREATED; never enables repayme
   await flow.pay();
   await flow.check();
   assert.equal(flow.getSnapshot().stage, 'unknown');
+  assert.equal(flow.getSnapshot().recoverable, true);
   flow.dispose();
 });
 test('create transport error or malformed write response stays unknown without automatic retry', async () => {
@@ -394,7 +396,7 @@ test('server recalculation is used after create and payment method is never sent
     request = args[0];
     const result = await original(...args);
     result.totalAmount = 20000;
-    result.items[0].unitPrice = 10000;
+    result.items[0].unitPrice = 7500;
     result.items[0].lineAmount = 20000;
     return result;
   };
@@ -471,4 +473,139 @@ test('estimate disposal and abort-ignoring late result cannot resurrect a closed
   wait.resolve({ expectedWaitSec: 0, cookSec: 1, expectedReadySec: 1 });
   await pending;
   assert.equal(flow.getSnapshot(), before);
+});
+
+test('explicit recovery of CREATED uses the same expired order once and completes once', async () => {
+  const adapter = createMockCheckoutAdapter({
+    resolveMenu: getMenu,
+    delay: 0,
+    scenario: 'recoverable',
+  });
+  const ids = [];
+  const originalPay = adapter.pay;
+  adapter.pay = (...args) => {
+    ids.push(args[0]);
+    return originalPay(...args);
+  };
+  let completed = 0;
+  const { flow } = setup({}, { adapter, onPaid: () => completed++ });
+  await flow.estimate();
+  await flow.create();
+  const id = flow.getSnapshot().order.orderId;
+  await flow.recover();
+  assert.deepEqual(ids, []);
+  await flow.pay();
+  await flow.recover();
+  assert.deepEqual(ids, [id]);
+  await flow.check();
+  assert.equal(flow.getSnapshot().recoverable, true);
+  assert.ok(Date.parse(flow.getSnapshot().order.holdExpiresAt) < Date.now());
+  const pending = flow.recover();
+  await flow.recover();
+  await flow.check();
+  await flow.create();
+  await pending;
+  await flow.recover();
+  await flow.check();
+  assert.deepEqual(ids, [id, id]);
+  assert.equal(flow.getSnapshot().stage, 'paid');
+  assert.equal(completed, 1);
+  flow.dispose();
+});
+
+test('409 payment in progress remains unknown; each recovery requires a fresh CREATED lookup', async () => {
+  const { flow, adapter } = setup();
+  let calls = 0;
+  adapter.pay = async () => {
+    calls++;
+    const error = new CheckoutError('ORDER_PAY_IN_PROGRESS', 'in progress');
+    error.status = 409;
+    throw error;
+  };
+  await flow.estimate();
+  await flow.create();
+  await flow.pay();
+  assert.equal(flow.getSnapshot().stage, 'unknown');
+  assert.match(flow.getSnapshot().error, /진행 중/);
+  await flow.recover();
+  assert.equal(calls, 1);
+  await flow.check();
+  await flow.recover();
+  await flow.recover();
+  await flow.pay();
+  await flow.create();
+  flow.restart();
+  assert.equal(calls, 2);
+  assert.equal(flow.getSnapshot().stage, 'unknown');
+  assert.equal(flow.getSnapshot().recoverable, false);
+  await flow.check();
+  await flow.recover();
+  assert.equal(calls, 3);
+  flow.dispose();
+});
+
+for (const action of ['switch', 'logout', 'dispose'])
+  test(`late recovery after ${action} cannot complete or mutate the cart`, async () => {
+    const adapter = createMockCheckoutAdapter({
+      resolveMenu: getMenu,
+      delay: 0,
+      scenario: 'recoverable',
+    });
+    let completed = 0;
+    const { flow, sessionSource } = setup(
+      {},
+      { adapter, onPaid: () => completed++ },
+    );
+    await flow.estimate();
+    await flow.create();
+    await flow.pay();
+    await flow.check();
+    const originalPay = adapter.pay;
+    const wait = deferred();
+    adapter.pay = () => wait.promise;
+    const pending = flow.recover();
+    await Promise.resolve();
+    if (action === 'dispose') flow.dispose();
+    else
+      sessionSource.publish(
+        action === 'logout'
+          ? null
+          : { authenticated: true, user: { id: 2, role: 'CUSTOMER' } },
+      );
+    const before = flow.getSnapshot();
+    wait.resolve(await originalPay(before.order?.orderId ?? 1));
+    await pending;
+    assert.equal(completed, 0);
+    assert.equal(flow.getSnapshot(), before);
+    flow.dispose();
+  });
+
+test('failed or malformed lookup revokes recovery permission without posting', async () => {
+  const { flow, adapter } = setup(
+    {},
+    {
+      adapter: createMockCheckoutAdapter({
+        resolveMenu: getMenu,
+        delay: 0,
+        scenario: 'unknown',
+      }),
+    },
+  );
+  await flow.estimate();
+  await flow.create();
+  await flow.pay();
+  await flow.check();
+  assert.equal(flow.getSnapshot().recoverable, true);
+  adapter.get = async () => {
+    throw new Error('network');
+  };
+  adapter.pay = async () => assert.fail('no payment without validated CREATED');
+  await flow.check();
+  await flow.recover();
+  assert.equal(flow.getSnapshot().recoverable, false);
+  adapter.get = async () => ({ orderId: 999, status: 'CREATED' });
+  await flow.check();
+  await flow.recover();
+  assert.equal(flow.getSnapshot().recoverable, false);
+  flow.dispose();
 });

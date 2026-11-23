@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { createCheckoutHttpAdapter } from '../src/checkout/checkoutHttpAdapter.js';
 import { createAuthSession } from '../src/authSession.js';
 import { createAuthApi } from '../src/authApi.js';
+import { createCheckoutFlow } from '../src/checkout/checkoutFlow.js';
 
 const items = [{ menuId: 1, optionIds: [2], quantity: 2 }];
 const order = {
@@ -16,7 +17,7 @@ const order = {
       menuId: 1,
       menuName: '계약 메뉴',
       quantity: 2,
-      unitPrice: 9000,
+      unitPrice: 6500,
       lineAmount: 18000,
       options: [{ optionId: 2, optionName: '세트', extraPrice: 2500 }],
     },
@@ -122,6 +123,7 @@ test('real HTTP transport uses exact CO-02/OR-01/02/04 paths, DTOs, Bearer and n
     assert.equal(calls[2].raw, '');
     for (const request of calls) {
       assert.equal(request.headers['x-user-id'], undefined);
+      assert.equal(request.headers['idempotency-key'], undefined);
       assert.ok(!request.path.includes('/internal/'));
     }
     for (const request of calls.slice(1))
@@ -253,4 +255,106 @@ test('transport failure and cancellation never retry a write or classify it as u
       adapter.create({ items }, { signal: controller.signal }),
       (error) => !error.definitive,
     );
+  }));
+
+test('Order DTO uses base unitPrice plus every option before multiplying quantity', () =>
+  fixture(async ({ adapter, setHandler }) => {
+    for (const options of [
+      [],
+      order.items[0].options,
+      [
+        ...order.items[0].options,
+        { optionId: 3, optionName: '추가', extraPrice: 500 },
+      ],
+    ]) {
+      const total =
+        (6500 + options.reduce((sum, o) => sum + o.extraPrice, 0)) * 2;
+      const response = {
+        ...order,
+        totalAmount: total,
+        items: [{ ...order.items[0], options, lineAmount: total }],
+      };
+      setHandler((req, res, send) => send(201, response));
+      const result = await adapter.create({
+        items: [{ ...items[0], optionIds: options.map((o) => o.optionId) }],
+      });
+      assert.equal(result.items[0].unitPrice, 6500);
+      assert.equal(result.totalAmount, total);
+    }
+  }));
+
+test('double-counted options, invalid extras and int overflow are rejected as uncertain responses', () =>
+  fixture(async ({ adapter, setHandler }) => {
+    for (const row of [
+      { ...order.items[0], unitPrice: 9000 },
+      {
+        ...order.items[0],
+        options: [{ ...order.items[0].options[0], extraPrice: -1 }],
+      },
+      {
+        ...order.items[0],
+        options: [{ ...order.items[0].options[0], extraPrice: 0.5 }],
+      },
+      { ...order.items[0], unitPrice: 2147483647 },
+      { ...order.items[0], options: null },
+    ]) {
+      setHandler((req, res, send) => send(201, { ...order, items: [row] }));
+      await assert.rejects(
+        adapter.create({ items }),
+        (error) =>
+          error.code === 'UPSTREAM_INVALID_RESPONSE' && !error.definitive,
+      );
+    }
+  }));
+
+test('HTTP recovery posts once to the same id after CREATED GET, with empty body and server-owned payment key', () =>
+  fixture(async ({ adapter, session, requests, setHandler }) => {
+    let pays = 0,
+      completions = 0;
+    setHandler((req, res, send) => {
+      if (req.url === '/api/v1/cooking/estimates')
+        send(200, { expectedWaitSec: 0, cookSec: 1, expectedReadySec: 1 });
+      else if (req.url === '/api/v1/orders') send(201, order);
+      else if (req.method === 'GET')
+        send(200, { ...order, holdExpiresAt: '2020-01-01T00:00:00Z' });
+      else if (++pays === 1) send(503, null, 'PAYMENT_SERVICE_UNAVAILABLE');
+      else
+        send(200, {
+          ...order,
+          status: 'PAID',
+          orderNo: 'RECOVERED-11',
+          holdExpiresAt: undefined,
+        });
+    });
+    const flow = createCheckoutFlow({
+      input: { items },
+      adapter,
+      sessionSource: session,
+      onPaid: () => completions++,
+    });
+    await flow.estimate();
+    await flow.create();
+    await flow.pay();
+    await flow.recover();
+    assert.equal(pays, 1);
+    await flow.check();
+    const recovery = flow.recover();
+    await flow.recover();
+    await recovery;
+    await flow.check();
+    assert.equal(flow.getSnapshot().stage, 'paid');
+    assert.equal(completions, 1);
+    assert.equal(requests.filter((r) => r.path === '/api/v1/orders').length, 1);
+    const payRequests = requests.filter((r) => r.path.endsWith('/pay'));
+    assert.equal(payRequests.length, 2);
+    assert.ok(
+      payRequests.every(
+        (r) =>
+          r.path === '/api/v1/orders/11/pay' &&
+          r.raw === '' &&
+          !r.headers['idempotency-key'] &&
+          !r.headers['x-user-id'],
+      ),
+    );
+    flow.dispose();
   }));

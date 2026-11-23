@@ -355,7 +355,7 @@ try {
     },
   );
   await check(
-    'unknown payment / lookup stays CREATED / no write retry',
+    'unknown payment / CREATED lookup / no automatic write retry',
     async () => {
       await fresh('scenario=unknown');
       await checkout();
@@ -740,6 +740,41 @@ try {
       assert.equal(
         await page.evaluate(() => localStorage.getItem('peak-order.cart.v1')),
         stored,
+      );
+    },
+  );
+  await check(
+    'Mock recovery of the same expired CREATED order completes once',
+    async () => {
+      await fresh('scenario=recoverable');
+      await checkout();
+      await create();
+      await page.getByRole('button', { name: /원 모의 결제$/ }).click();
+      await page.getByRole('button', { name: 'Mock 주문 상태 확인' }).click();
+      const recover = page.getByRole('button', {
+        name: '같은 주문 처리 이어가기',
+        exact: true,
+      });
+      await recover.waitFor();
+      await recover.evaluate((button) => {
+        button.click();
+        button.click();
+      });
+      await page.locator('.mock-order-number').waitFor();
+      assert.equal(await page.evaluate(() => window.__checkoutQA.calls.pay), 2);
+      assert.equal(
+        await page.evaluate(() => window.__checkoutQA.calls.create),
+        1,
+      );
+      assert.equal(
+        await page.evaluate(() => window.__checkoutQA.cartWrites.length),
+        1,
+      );
+      assert.deepEqual(
+        JSON.parse(
+          await page.evaluate(() => localStorage.getItem('peak-order.cart.v1')),
+        ),
+        { version: 1, items: [] },
       );
     },
   );

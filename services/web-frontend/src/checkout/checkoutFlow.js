@@ -80,16 +80,21 @@ export function validateOrder(order, input, expectedId) {
   let sum = 0;
   order.items.forEach((row, i) => {
     const request = input.items[i];
-    const ids = row.options?.map((o) => o.optionId).sort((a, b) => a - b);
+    const options = Array.isArray(row.options) ? row.options : [];
+    const ids = options.map((o) => o?.optionId).sort((a, b) => a - b);
+    const unitWithOptions =
+      row.unitPrice + options.reduce((sum, o) => sum + o?.extraPrice, 0);
     if (
       row.menuId !== request.menuId ||
       row.quantity !== request.quantity ||
       !row.menuName?.trim() ||
       !money(row.unitPrice) ||
       !money(row.lineAmount) ||
-      row.lineAmount !== row.unitPrice * row.quantity ||
+      !Array.isArray(row.options) ||
+      !money(unitWithOptions) ||
+      row.lineAmount !== unitWithOptions * row.quantity ||
       JSON.stringify(ids) !== JSON.stringify(request.optionIds) ||
-      row.options.some((o) => !o.optionName?.trim() || !money(o.extraPrice))
+      options.some((o) => !o?.optionName?.trim() || !money(o.extraPrice))
     )
       throw new CheckoutError(
         'INVALID_RESPONSE',
@@ -208,11 +213,14 @@ export function createCheckoutFlow({
   const unknown = (error) =>
     emit({
       stage: 'unknown',
+      recoverable: false,
       errorCode: error.code ?? 'UNKNOWN',
       error:
-        '처리 결과를 확인할 수 없어요. 중복 결제 방지를 위해 다시 결제하지 말고 결과를 확인해 주세요.',
+        error.code === 'ORDER_PAY_IN_PROGRESS' && error.status === 409
+          ? '같은 주문의 결제 처리가 진행 중이에요. 잠시 후 주문 상태를 확인해 주세요.'
+          : '처리 결과를 확인할 수 없어요. 새 주문을 만들지 말고 주문 상태를 확인해 주세요.',
     });
-  function adopt(order) {
+  function adopt(order, fromCheck = false) {
     if (['PAID', 'WAITING', 'COOKING', 'COMPLETED'].includes(order.status)) {
       let completionWarning = '';
       // Synchronous, once-only local completion after response validation and
@@ -248,9 +256,52 @@ export function createCheckoutFlow({
       emit({
         stage: 'unknown',
         order,
+        recoverable: fromCheck && order.status === 'CREATED',
         error:
-          '아직 확정되지 않았어요. 조회만으로 결제 실패를 단정할 수 없습니다. 다시 결제하지 마세요.',
+          '아직 확정되지 않았어요. 미결제를 단정할 수 없으므로 같은 주문의 처리를 이어갈 수 있습니다.',
       });
+  }
+  async function submitPayment(recovery = false) {
+    if (
+      busy ||
+      !current() ||
+      (recovery
+        ? snapshot.stage !== 'unknown' ||
+          !snapshot.recoverable ||
+          snapshot.order?.status !== 'CREATED'
+        : snapshot.stage !== 'ready')
+    )
+      return;
+    // After an uncertain payment, only the server knows whether payment exists.
+    // Even an expired hold must be reconciled by the same OR-02 operation.
+    if (!recovery && clock() >= Date.parse(snapshot.order.holdExpiresAt)) {
+      emit({
+        stage: 'failed',
+        error: '임시 확보 시간이 지났어요. 새 주문으로 확인해 주세요.',
+        errorCode: 'HOLD_EXPIRED',
+      });
+      return;
+    }
+    const id = snapshot.order.orderId;
+    emit({ stage: 'paying', recoverable: false, error: '', errorCode: '' });
+    await run(
+      (signal) => adapter.pay(id, { signal }),
+      (data) => {
+        try {
+          adopt(validateOrder(data, input, id));
+        } catch (error) {
+          unknown(error);
+        }
+      },
+      (error) =>
+        error.definitive === true
+          ? emit({
+              stage: 'failed',
+              error: error.message,
+              errorCode: error.code,
+            })
+          : unknown(error),
+    );
   }
   return {
     mode: adapter.mode ?? 'mock',
@@ -319,45 +370,17 @@ export function createCheckoutFlow({
             : unknown(error),
       );
     },
-    async pay() {
-      if (snapshot.stage !== 'ready' || busy || !current()) return;
-      if (clock() >= Date.parse(snapshot.order.holdExpiresAt)) {
-        emit({
-          stage: 'failed',
-          error: '임시 확보 시간이 지났어요. 새 주문으로 확인해 주세요.',
-          errorCode: 'HOLD_EXPIRED',
-        });
-        return;
-      }
-      emit({ stage: 'paying', error: '', errorCode: '' });
-      await run(
-        (signal) => adapter.pay(snapshot.order.orderId, { signal }),
-        (data) => {
-          try {
-            adopt(validateOrder(data, input, snapshot.order.orderId));
-          } catch (error) {
-            unknown(error);
-          }
-        },
-        (error) =>
-          error.definitive === true
-            ? emit({
-                stage: 'failed',
-                error: error.message,
-                errorCode: error.code,
-              })
-            : unknown(error),
-      );
-    },
+    pay: () => submitPayment(),
+    recover: () => submitPayment(true),
     async check() {
       if (snapshot.stage !== 'unknown' || !snapshot.order || busy || !current())
         return;
-      emit({ checking: true });
+      emit({ checking: true, recoverable: false });
       await run(
         (signal) => adapter.get(snapshot.order.orderId, { signal }),
         (data) => {
           try {
-            adopt(validateOrder(data, input, snapshot.order.orderId));
+            adopt(validateOrder(data, input, snapshot.order.orderId), true);
           } catch (error) {
             unknown(error);
           }
