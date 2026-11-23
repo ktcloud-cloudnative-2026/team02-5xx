@@ -281,7 +281,7 @@ OR-08 검색 조건 (모두 선택, 함께 쓰면 AND)
 | `page`, `size` | 0부터 시작(음수는 0), 기본 20개, 1~100개로 보정(고객 목록 OR-03과 같은 한도). 정렬은 주문 시각 최신순(같으면 `id` 내림차순)이며 바꿀 수 없음 |
 
 - **기간 기본값:** 기간을 주지 않으면 **최근 31일**, `from`만 주면 `from`부터 31일, `to`만 주면 `to`까지 31일로 채웁니다. 시작이 종료보다 늦거나 31일을 넘으면 `400 INVALID_REQUEST`입니다.
-- **주문번호로 전체 기간 검색:** `orderNo`만 보내고 `from`·`to`를 **모두 비우면** 기간 제한 없이 전체에서 찾습니다(주문번호는 유일). `orderNo`와 함께 `from` 또는 `to`를 보내면 그 기간 안에서만 찾습니다. 화면에서 주문번호를 입력했다면 날짜 필터를 비워서 보내야 합니다.
+- **주문번호로 전체 기간 검색:** `orderNo`만 보내고 `from`·`to` 쿼리 파라미터를 **아예 보내지 않으면**(파라미터 자체를 생략) 기간 제한 없이 전체에서 찾습니다(주문번호는 유일). `orderNo`와 함께 `from` 또는 `to`를 보내면 그 기간 안에서만 찾습니다. 화면에서 주문번호를 입력했다면 `from`·`to`를 요청에서 빼야 합니다. 빈 값(`from=`)을 보냈을 때의 동작은 이 문서가 보장하지 않으니 생략하세요.
 - 임시 주문(`CREATED`·`FAILED`)도 포함하며 `status`로 거를 수 있습니다(고객 목록은 숨김).
 - `userId`만 응답합니다. Order는 이름·연락처를 갖고 있지 않습니다.
 
@@ -295,9 +295,9 @@ OR-08 검색 조건 (모두 선택, 함께 쓰면 AND)
 - 주문 상태 `FAILED`의 환불 필요 여부는 상세의 `failReason`(`*_REFUND_NEEDED`)으로 따로 표시합니다.
 - 모든 시각은 KST(`+09:00`) 오프셋 형식입니다.
 
-예시 (값은 설명용)
+예시 (값은 설명용. 세 예시는 같은 날의 같은 데이터이며, 항목은 `orderedAt` 최신순(같으면 `id` 내림차순)으로 나옵니다)
 
-`GET /api/v1/admin/orders?from=2026-11-20&to=2026-11-20&manualReviewRequired=true` → 수동 확인 주문만. 두 번째 줄은 키 생략을 보이기 위한 임시 주문 예입니다(`manualReviewRequired=false`로 보내면 이 조건 없이 모든 주문이 나옵니다).
+예시 1. `GET /api/v1/admin/orders?from=2026-11-20&to=2026-11-20&manualReviewRequired=true` → **수동 확인이 필요한 주문만** 나옵니다(여기서는 주문 44, 41 두 건).
 
 ```json
 {
@@ -305,15 +305,55 @@ OR-08 검색 조건 (모두 선택, 함께 쓰면 AND)
   "data": {
     "items": [
       {
+        "orderId": 44,
+        "orderNo": "261120-0005",
+        "userId": 12,
+        "status": "CANCELED",
+        "totalAmount": 9000,
+        "orderedAt": "2026-11-20T10:40:12+09:00",
+        "canceledAt": "2026-11-20T10:42:30+09:00",
+        "itemCount": 1,
+        "representativeMenuName": "불고기버거",
+        "manualReviewRequired": true
+      },
+      {
         "orderId": 41,
         "orderNo": "261120-0003",
         "userId": 7,
         "status": "CANCELED",
-        "totalAmount": 18500,
+        "totalAmount": 26500,
         "orderedAt": "2026-11-20T10:15:30+09:00",
         "canceledAt": "2026-11-20T10:18:02+09:00",
         "itemCount": 2,
         "representativeMenuName": "치즈버거",
+        "manualReviewRequired": true
+      }
+    ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 2
+  },
+  "message": "OK"
+}
+```
+
+예시 2. `GET /api/v1/admin/orders?from=2026-11-20&to=2026-11-20` (`manualReviewRequired`를 생략하거나 `false`로 보내도 같은 결과) → **일반 조회**로 그날의 모든 주문이 나옵니다(주문 44, 42, 41 세 건). 두 번째 줄의 주문 42는 임시 주문(`CREATED`)이라 `orderNo`·`canceledAt` 키가 **생략**된 모습을 보여 줍니다.
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "orderId": 44,
+        "orderNo": "261120-0005",
+        "userId": 12,
+        "status": "CANCELED",
+        "totalAmount": 9000,
+        "orderedAt": "2026-11-20T10:40:12+09:00",
+        "canceledAt": "2026-11-20T10:42:30+09:00",
+        "itemCount": 1,
+        "representativeMenuName": "불고기버거",
         "manualReviewRequired": true
       },
       {
@@ -325,19 +365,31 @@ OR-08 검색 조건 (모두 선택, 함께 쓰면 AND)
         "itemCount": 1,
         "representativeMenuName": "감자튀김",
         "manualReviewRequired": false
+      },
+      {
+        "orderId": 41,
+        "orderNo": "261120-0003",
+        "userId": 7,
+        "status": "CANCELED",
+        "totalAmount": 26500,
+        "orderedAt": "2026-11-20T10:15:30+09:00",
+        "canceledAt": "2026-11-20T10:18:02+09:00",
+        "itemCount": 2,
+        "representativeMenuName": "치즈버거",
+        "manualReviewRequired": true
       }
     ],
     "page": 0,
     "size": 20,
-    "totalElements": 2
+    "totalElements": 3
   },
   "message": "OK"
 }
 ```
 
-`GET /api/v1/admin/orders?orderNo=261120-0003` → 주문번호만 보냈으므로 전체 기간에서 찾습니다.
+예시 3. `GET /api/v1/admin/orders?orderNo=261120-0003` → `orderNo`만 보내고 `from`·`to`를 생략했으므로 전체 기간에서 찾습니다. 응답 모양은 예시 1의 주문 41 한 줄과 같고 `totalElements`는 1입니다.
 
-`GET /api/v1/admin/orders/41` → 상세(환불이 안 끝난 취소 주문 예). 환불 시각(`refundedAt`)이 없고 사유가 있습니다.
+예시 4. `GET /api/v1/admin/orders/41` → 상세(환불이 안 끝난 취소 주문 예). 목록(예시 1·2)의 주문 41과 같은 주문이며 `itemCount` 2와 `items` 2개가 일치합니다. 환불 시각(`refundedAt`)이 없고 사유가 있습니다.
 
 ```json
 {
@@ -347,7 +399,7 @@ OR-08 검색 조건 (모두 선택, 함께 쓰면 AND)
     "orderNo": "261120-0003",
     "userId": 7,
     "status": "CANCELED",
-    "totalAmount": 18500,
+    "totalAmount": 26500,
     "orderedAt": "2026-11-20T10:15:30+09:00",
     "paidAt": "2026-11-20T10:16:05+09:00",
     "canceledAt": "2026-11-20T10:18:02+09:00",
@@ -363,9 +415,19 @@ OR-08 검색 조건 (모두 선택, 함께 쓰면 AND)
         "menuName": "치즈버거",
         "unitPrice": 8500,
         "quantity": 2,
-        "lineAmount": 18500,
+        "lineAmount": 20000,
         "options": [
           { "optionId": 10, "optionName": "치즈 추가", "extraPrice": 1500 }
+        ]
+      },
+      {
+        "menuId": 5,
+        "menuName": "감자튀김",
+        "unitPrice": 6000,
+        "quantity": 1,
+        "lineAmount": 6500,
+        "options": [
+          { "optionId": 21, "optionName": "소스 추가", "extraPrice": 500 }
         ]
       }
     ]
@@ -373,6 +435,8 @@ OR-08 검색 조건 (모두 선택, 함께 쓰면 AND)
   "message": "OK"
 }
 ```
+
+값 계산 규칙: `lineAmount` = (`unitPrice` + 옵션 `extraPrice` 합계) × `quantity`, `totalAmount` = 항목 `lineAmount`의 합입니다(위 예: (8500+1500)×2 + (6000+500)×1 = 26500). 목록의 `itemCount`는 수량 합계가 아니라 항목(`items`) 수이고, `representativeMenuName`은 첫 항목의 메뉴 이름입니다.
 
 수동 확인 이유(`manualReviewReason`) 값: `REFUND_NOT_REFUNDABLE`(환불 영구 실패), `RESTORE_NOT_APPLICABLE`(재고 복원 영구 실패), `RETRY_LIMIT_EXCEEDED`(재시도 상한 도달). 인덱스(V6)와 적용 시 주의는 ERD 문서를 참고합니다.
 

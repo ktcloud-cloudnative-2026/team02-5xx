@@ -265,7 +265,7 @@ erDiagram
     }
 ```
 
-주문 표의 제약·인덱스(Flyway V1~V3 기준): `orders.status`는 위 7개 값만 허용하고(CHECK), `outbox_events.status`는 PENDING·SENT만 허용합니다(CHECK). 금액·수량은 0 이상(수량은 1 이상)이어야 합니다. 도식에 없는 인덱스로 `orders (user_id, ordered_at DESC)`, `orders (status)`, 항목·옵션·상태 이력의 주문 FK 열, 미발송 outbox용 부분 인덱스(`status = 'PENDING'`)를 두었습니다. V6(PR #170)에서 `orders (ordered_at DESC, id DESC)` 인덱스(`idx_orders_ordered_at`)를 추가했습니다. 사용자 조건 없이 기간으로 거르고 최신순으로 보는 관리자 주문 목록(OR-08)용이며, 기존 `orders (user_id, ordered_at DESC)`로는 대신할 수 없습니다. 일반 `CREATE INDEX`라 생성 중 `orders` 쓰기가 대기할 수 있어, 주문 데이터가 쌓인 환경에 적용하기 전에 건수와 적용 시점을 DB 담당과 확인합니다.
+주문 표의 제약·인덱스(Flyway V1~V6 기준): `orders.status`는 위 7개 값만 허용하고(CHECK), `outbox_events.status`는 PENDING·SENT만 허용합니다(CHECK). 금액·수량은 0 이상(수량은 1 이상)이어야 합니다. 도식에 없는 인덱스로 `orders (user_id, ordered_at DESC)`, `orders (status)`, 항목·옵션·상태 이력의 주문 FK 열, 미발송 outbox용 부분 인덱스(`status = 'PENDING'`)를 두었습니다. V4·V5에서는 취소 후속 처리 대상을 찾는 인덱스(`idx_orders_cancel_requested`, `idx_orders_cancel_follow_up`, `idx_orders_cancel_follow_up_manual`)를 추가했습니다. V6(PR #170)에서 `orders (ordered_at DESC, id DESC)` 인덱스(`idx_orders_ordered_at`)를 추가했습니다. 사용자 조건 없이 기간으로 거르고 최신순으로 보는 관리자 주문 목록(OR-08)용이며, 기존 `orders (user_id, ordered_at DESC)`로는 대신할 수 없습니다. 일반 `CREATE INDEX`라 생성 중 `orders` 쓰기가 대기할 수 있어, 주문 데이터가 쌓인 환경에 적용하기 전에 건수와 적용 시점을 DB 담당과 확인합니다.
 
 ### 3-5. 결제 (payment\_svc)
 
