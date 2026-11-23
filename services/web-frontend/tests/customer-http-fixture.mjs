@@ -2,7 +2,7 @@
 import { startAuthFixture } from './auth-http-fixture.mjs';
 import { menus } from '../src/data/mockMenus.js';
 
-export async function startCustomerHttpFixture({ input } = {}) {
+export async function startCustomerHttpFixture({ input, handleRequest } = {}) {
   const controls = { scenario: 'success', delay: 0, priceDelta: 0 };
   const requests = [];
   const orders = new Map();
@@ -10,6 +10,8 @@ export async function startCustomerHttpFixture({ input } = {}) {
   const fixture = await startAuthFixture({
     ...(input ? { input } : {}),
     async handleRequest(request, response, user) {
+      if (handleRequest && (await handleRequest(request, response, user)))
+        return true;
       const path = request.url.split('?')[0];
       if (
         !path.startsWith('/api/v1/orders') &&
@@ -98,6 +100,7 @@ export async function startCustomerHttpFixture({ input } = {}) {
         const order = {
           orderId: ++sequence,
           status: 'CREATED',
+          orderedAt: new Date().toISOString(),
           items,
           totalAmount: items.reduce((sum, row) => sum + row.lineAmount, 0),
           holdExpiresAt: new Date(
@@ -150,5 +153,5 @@ export async function startCustomerHttpFixture({ input } = {}) {
       return true;
     },
   });
-  return { ...fixture, checkoutControls: controls, requests };
+  return { ...fixture, checkoutControls: controls, requests, orders };
 }
