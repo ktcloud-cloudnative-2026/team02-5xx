@@ -57,7 +57,7 @@ DB·RabbitMQ 상태는 Probe에 넣지 않는다. 잠깐 끊겨도 Pod가 재시
 
 ### Pod 수와 Argo CD
 
-`order-service-dev` Application은 이 Deployment의 `/spec/replicas`만 비교에서 제외하고(`ignoreDifferences`), Sync 때도 그 값을 보존한다(`RespectIgnoreDifferences=true`, 자동 동기화는 켜지 않음). 이후 HPA가 Pod 수를 정하거나 2 Pod 시험을 위해 수동으로 늘려도 Sync가 Git의 `replicas: 1`로 되돌리지 않게 하기 위해서다(#186, 이태훈 제안). 이미지·환경 변수·자원 제한은 계속 Git과 맞춘다. Application 파일은 Argo CD가 관리하지 않아, 바꾸면 dev에서 `kubectl apply -f deploy/argocd/dev/order-service.yaml`로 다시 적용해야 반영된다.
+`order-service-dev` Application은 이 Deployment의 `/spec/replicas`만 비교에서 제외하고(`ignoreDifferences`), Sync 때도 그 값을 보존한다(`RespectIgnoreDifferences=true`. 자동 동기화(`automated`, prune·selfHeal 끔)는 #210 설정을 그대로 유지). 이후 HPA가 Pod 수를 정하거나 2 Pod 시험을 위해 수동으로 늘려도 Sync가 Git의 `replicas: 1`로 되돌리지 않게 하기 위해서다(#186, 이태훈 제안). 이미지·환경 변수·자원 제한은 계속 Git과 맞춘다. Application 파일은 Argo CD가 관리하지 않아, 바꾸면 dev에서 `kubectl apply -f deploy/argocd/dev/order-service.yaml`로 다시 적용해야 반영된다.
 
 ## 로컬 확인
 

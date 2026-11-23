@@ -9,7 +9,7 @@
 - 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
 - Order 도식 갱신: 2026-11-18. Order Flyway V1~V3(PR #28·#29·#46)에 맞춰 3-4 도식·설명을 고쳤습니다. Notion 원본의 같은 부분도 맞춰 수정해야 합니다.
 - 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
-- 구현 기준(현재, 2026-11-19): main `b4724aa`에는 Order Flyway V1~V5와 주문 생성·조회·결제·취소 API(OR-01~05, PR #28·#29·#46·#61), 관리자 영업·주문 접수 상태 API(OR-06·07, PR #133), 취소 후속 처리 재시도 상한·수동 확인 표시(V5, PR #135), 주문 상세의 Cooking 조리 상태(PR #142), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100)와 고객 메뉴 목록·상세 ME-01·ME-02(PR #105), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62)·자동 조리 진행과 CookingCompleted 발행(PR #78)·전표 등록 시각 DB 기록(PR #109)·표시용 문자열 길이 초과 처리(PR #113), Inventory 초기 구성(PR #70)과 내부 API(PR #115), Payment 내부 API(PR #71), Cooking CI-02 예상 시간 변경(PR #141)이 병합되어 있습니다. 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
+- 구현 기준(현재, 2026-11-20): main `b57c266`에는 Order Flyway V1~V6와 주문 생성·조회·결제·취소 API(OR-01~05, PR #28·#29·#46·#61), 관리자 영업·주문 접수 상태 API(OR-06·07, PR #133), 취소 후속 처리 재시도 상한·수동 확인 표시(V5, PR #135), 주문 상세의 Cooking 조리 상태(PR #142), 관리자 주문 목록·검색·상세(OR-08·09, V6 인덱스, PR #170), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100)와 고객 메뉴 목록·상세 ME-01·ME-02(PR #105), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62)·자동 조리 진행과 CookingCompleted 발행(PR #78)·전표 등록 시각 DB 기록(PR #109)·표시용 문자열 길이 초과 처리(PR #113), Inventory 초기 구성(PR #70)과 내부 API(PR #115), Payment 내부 API(PR #71), Cooking CI-02 예상 시간 변경(PR #141)이 병합되어 있습니다. 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
 
 ---
 
@@ -265,7 +265,7 @@ erDiagram
     }
 ```
 
-주문 표의 제약·인덱스(Flyway V1~V3 기준): `orders.status`는 위 7개 값만 허용하고(CHECK), `outbox_events.status`는 PENDING·SENT만 허용합니다(CHECK). 금액·수량은 0 이상(수량은 1 이상)이어야 합니다. 도식에 없는 인덱스로 `orders (user_id, ordered_at DESC)`, `orders (status)`, 항목·옵션·상태 이력의 주문 FK 열, 미발송 outbox용 부분 인덱스(`status = 'PENDING'`)를 두었습니다.
+주문 표의 제약·인덱스(Flyway V1~V6 기준): `orders.status`는 위 7개 값만 허용하고(CHECK), `outbox_events.status`는 PENDING·SENT만 허용합니다(CHECK). 금액·수량은 0 이상(수량은 1 이상)이어야 합니다. 도식에 없는 인덱스로 `orders (user_id, ordered_at DESC)`, `orders (status)`, 항목·옵션·상태 이력의 주문 FK 열, 미발송 outbox용 부분 인덱스(`status = 'PENDING'`)를 두었습니다. V4·V5에서는 취소 후속 처리 대상을 찾는 인덱스(`idx_orders_cancel_requested`, `idx_orders_cancel_follow_up`, `idx_orders_cancel_follow_up_manual`)를 추가했습니다. V6(PR #170)에서 `orders (ordered_at DESC, id DESC)` 인덱스(`idx_orders_ordered_at`)를 추가했습니다. 사용자 조건 없이 기간으로 거르고 최신순으로 보는 관리자 주문 목록(OR-08)용이며, 기존 `orders (user_id, ordered_at DESC)`로는 대신할 수 없습니다. 일반 `CREATE INDEX`라 생성 중 `orders` 쓰기가 대기할 수 있어, 주문 데이터가 쌓인 환경에 적용하기 전에 건수와 적용 시점을 DB 담당과 확인합니다.
 
 ### 3-5. 결제 (payment\_svc)
 
@@ -494,6 +494,7 @@ erDiagram
 | Order 결제·주문번호 | 결제·재고 확정 후 orderNo 발급 | [PR #46](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/46)의 V3(main 병합, 2026-11-18)에 orders.payment_id·payment_requested_at·pay_lock_until·pay_lock_token와 order_no_counters(order_date PK, last_seq > 0) 추가. **도식에 반영함(2026-11-18).** 취소 후속 처리용 컬럼(`cancel_requested_at`·`stock_restored_at`·`refunded_at`, V4)은 아래 "Order 취소 후속 처리" 행을 참고 |
 | Order 취소 후속 처리 | 취소 확정 후 재고 복원·환불, 중복 처리 방지 | [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)의 V4(main 병합, 2026-11-19)에 orders.cancel_requested_at·stock_restored_at·refunded_at와, 취소 후속 처리가 남은 주문·응답을 모른 취소 요청을 찾는 부분 인덱스 2개 추가. **도식에 반영함(2026-11-19).** 복원·환불이 끝나지 않은 주문은 두 시각 중 NULL인 단계가 재시도 대상 |
 | Order 취소 후속 처리 재시도 상한 | 영구 실패·장기 장애 시 무한 재시도 방지, 수동 확인 표시 | [PR #135](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/135)의 V5(main 병합, 2026-11-19)에 orders.cancel_follow_up_attempts(NOT NULL, 기본 0)·cancel_follow_up_next_attempt_at·cancel_follow_up_manual_at·cancel_follow_up_manual_reason와, 수동 확인 주문을 세고 찾는 부분 인덱스 추가. **도식에 반영함(2026-11-19).** NULL 허용·기본값 컬럼 추가라 기존 데이터에 영향이 없고(Inventory·DB 담당 남규리 확인), 수동 확인 주문 수는 지표 `order_cancel_follow_up_manual_required`로 노출됩니다 |
+| Order 관리자 주문 조회 | 기간 검색·최신순 목록(OR-08) | [PR #170](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/170)의 V6(main 병합, 2026-11-20)에 인덱스 `idx_orders_ordered_at (ordered_at DESC, id DESC)` 하나만 추가. 컬럼·제약·데이터 변경이 없어 **도식 변경 없음**(인덱스는 도식에 표시하지 않고 3-4 설명에 적음). DB 담당(남규리)이 정렬 조건과 컬럼·방향 일치를 확인했고, dev DB(`order_dev`)에는 2026-11-20에 적용했습니다. 일반 `CREATE INDEX`의 쓰기 대기 가능성 때문에 prod 적용 전 건수·시점 확인이 필요합니다 |
 | Order 상태 | CREATED, PAID, WAITING, COOKING, COMPLETED, CANCELED, FAILED | Order PR의 CHECK와 enum은 도식과 일치. 현재 이벤트 처리는 PAID→COMPLETED이며 WAITING·COOKING 반영 방식은 미확정 |
 | Cooking 상태·관계 | WAITING→COOKING→DONE, WAITING→CANCELED. order_id UNIQUE, 전표-항목 FK | [PR #62](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/62)의 V1에 상태 CHECK, quantity > 0, cook_time_sec·estimated_cook_sec >= 0, (status, queued_at, id) INDEX 존재. CI-03은 행 잠금으로 취소 경합 제어 |
 | Cooking 혼잡도 | congestion_thresholds로 기준값 관리 | V1에는 id, busy_wait_sec(>0), updated_at 존재. 도식의 선택 이력 표 congestion_snapshots는 PR에서 제외. 확정된 필수 표 누락으로 간주하지 않음 |
@@ -538,6 +539,7 @@ erDiagram
 | 2026-11-18 | 김민규 | 3-4 주문: `orders`에 `hold_id`·`hold_expires_at`·`payment_id` 추가, `order_no_counters` 표 추가, `store_operations` 단일 행(id=1)·초기값 설명, CHECK·인덱스 설명, OR-07/08을 OR-06/07로 정정<br>4항: 조리 시간 저장 문장 정리(Order는 저장하지 않음)와 위 항목의 설계 이유 추가 | Order 서비스 Flyway V1~V3 구현(PR #28·#29·#46)과 ERD를 맞추기 위해 |
 | 2026-11-19 | 김민규 | 3-4 주문: `orders`에 `cancel_requested_at`·`stock_restored_at`·`refunded_at`(V4) 추가, "최신 계약과 Flyway 비교" 표와 구현 기준(main `df38c7f`) 갱신 | Order 취소 API(PR #61)와 V4가 main에 병합되어 도식·설명을 맞춤 |
 | 2026-11-19 | 김민규 | 3-4 주문: `orders`에 취소 후속 처리 재시도 컬럼 4개(`cancel_follow_up_attempts`·`cancel_follow_up_next_attempt_at`·`cancel_follow_up_manual_at`·`cancel_follow_up_manual_reason`, V5) 추가, "최신 계약과 Flyway 비교" 표와 구현 기준(main `6167671`) 갱신 | 재시도 상한 구현(PR #135)이 main에 병합되어 도식·설명을 맞춤 |
+| 2026-11-20 | 김민규 | 3-4 주문: V6 인덱스(`idx_orders_ordered_at`) 설명, "최신 계약과 Flyway 비교" 표와 구현 기준(main `b57c266`) 갱신 | 관리자 주문 조회(PR #170)가 main에 병합되어 문서를 맞춤 |
 
 ## 이벤트 저장·중복 방지 흐름
 

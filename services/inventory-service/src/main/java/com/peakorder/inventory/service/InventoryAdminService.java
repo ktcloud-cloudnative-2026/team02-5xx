@@ -11,6 +11,7 @@ import com.peakorder.inventory.exception.BusinessException;
 import com.peakorder.inventory.exception.ErrorCode;
 import com.peakorder.inventory.repository.InventoryRepository;
 import com.peakorder.inventory.repository.InventoryReservationItemRepository;
+import java.util.List;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,14 @@ public class InventoryAdminService {
     this.inventoryRepository = inventoryRepository;
     this.itemRepository = itemRepository;
     this.menuClient = menuClient;
+  }
+
+  @Transactional(readOnly = true)
+  public List<StockItemResponse> list(boolean lowStockOnly) {
+    return inventoryRepository.findByDeletedAtIsNullOrderByIdAsc().stream()
+        .filter(inventory -> !lowStockOnly || inventory.isLowStock())
+        .map(StockItemResponse::from)
+        .toList();
   }
 
   @Transactional
@@ -80,6 +89,23 @@ public class InventoryAdminService {
     return StockItemResponse.from(inventory);
   }
 
+  @Transactional
+  public StockItemResponse delete(Long stockItemId) {
+    // 1. 재고를 잠그고 찾는다. 없거나 이미 삭제됐으면 404
+    Inventory inventory = lockStockItem(stockItemId);
+
+    // 2. 메뉴 연결 변경과 같은 이유로, 끝나지 않은 주문(RESERVED·CONFIRMED)이 남은 메뉴의 재고는 지울 수 없다.
+    //    II-04는 메뉴 번호로 재고를 찾으므로 삭제(연결 해제) 후에는 복원할 곳이 없어진다.
+    if (inventory.getMenuId() != null
+        && itemRepository.existsHoldOrConfirmedForMenu(inventory.getMenuId())) {
+      throw new BusinessException(ErrorCode.STOCK_ITEM_IN_USE);
+    }
+
+    // 3. 삭제 시각을 남기고 메뉴 연결을 푼다
+    inventory.delete();
+    return StockItemResponse.from(inventory);
+  }
+
   private void checkLinkable(Long menuId) {
     MenuExistence menu = menuClient.checkExistence(menuId);
     if (!menu.exists()) {
@@ -90,9 +116,11 @@ public class InventoryAdminService {
     }
   }
 
+  // 삭제된 재고는 없는 것으로 본다 (IN-04·IN-05·IN-06 모두 404)
   private Inventory lockStockItem(Long stockItemId) {
     return inventoryRepository
         .findByIdForUpdate(stockItemId)
+        .filter(inventory -> !inventory.isDeleted())
         .orElseThrow(() -> new BusinessException(ErrorCode.INVENTORY_NOT_FOUND));
   }
 }
