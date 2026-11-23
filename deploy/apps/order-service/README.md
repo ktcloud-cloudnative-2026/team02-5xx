@@ -44,6 +44,7 @@ Inventory·Cooking은 아직 배포 구성이 없다. 해당 서비스가 없으
 ## 자원·검사
 
 - 복제본 1개로 시작한다. 요청 CPU `100m`·메모리 `384Mi`, 제한 CPU `1`·메모리 `768Mi`이며 `MaxRAMPercentage=60`으로 힙을 제한한다. 실제 사용량을 본 뒤 팀 협의로 조정한다.
+- DB 연결 풀(dev): `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=4`, `SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1`을 `overlays/dev/hikari-patch.yaml`로 지정한다(이슈 #204, 공통 기준 #186). Hikari 기본값은 Pod당 최대 10개라 Pod가 늘면 DB 서버 `max_connections`(일반 연결 97)를 넘길 수 있어서 DB 담당이 정한 값이며 Auth(#181)와 같다. 이 패치는 dev에만 있고 prod에는 없다(dev·prod가 같은 DB 서버라 prod 값은 prod 이슈에서 정한다). 적용 후에는 `/actuator/prometheus`의 `hikaricp_connections_max`가 4인지 확인한다.
 - 시작: `/actuator/health/liveness` (5초 간격, 최대 2분 대기 — Flyway 마이그레이션 시간 고려)
 - 준비: `/actuator/health/readiness`
 - 생존: `/actuator/health/liveness`
@@ -54,6 +55,10 @@ DB·RabbitMQ 상태는 Probe에 넣지 않는다. 잠깐 끊겨도 Pod가 재시
 
 스케줄러(outbox 발행, 취소 후속 처리)는 DB 행 잠금(`SKIP LOCKED`)과 처리 독점 토큰으로 여러 Pod가 동시에 돌아도 같은 건을 한 번만 처리한다. 다만 수동 확인 지표 `order_cancel_follow_up_manual_required`는 Pod마다 같은 DB를 세므로 알림에서 합계가 아니라 `max`로 묶는다.
 
+### Pod 수와 Argo CD
+
+`order-service-dev` Application은 이 Deployment의 `/spec/replicas`만 비교에서 제외하고(`ignoreDifferences`), Sync 때도 그 값을 보존한다(`RespectIgnoreDifferences=true`, 자동 동기화는 켜지 않음). 이후 HPA가 Pod 수를 정하거나 2 Pod 시험을 위해 수동으로 늘려도 Sync가 Git의 `replicas: 1`로 되돌리지 않게 하기 위해서다(#186, 이태훈 제안). 이미지·환경 변수·자원 제한은 계속 Git과 맞춘다. Application 파일은 Argo CD가 관리하지 않아, 바꾸면 dev에서 `kubectl apply -f deploy/argocd/dev/order-service.yaml`로 다시 적용해야 반영된다.
+
 ## 로컬 확인
 
 ```bash
@@ -63,5 +68,4 @@ kubectl apply --dry-run=server -k deploy/apps/order-service/overlays/dev
 
 ## 후속
 
-- Argo CD Application(`deploy/argocd/dev/order-service.yaml`)은 클러스터에 Secret을 만든 뒤 별도 PR로 Argo CD 담당 리뷰를 받는다.
-- Inventory·Cooking 배포 구성과 포트 정리, Gateway 라우트(인증 이후), HPA·prod 복제본 수는 팀 협의 후 정한다.
+- HPA(dev min 1·max 3·CPU 70% 제안)는 Argo CD dev 프로젝트의 HPA 허용(#186, 정진혁)이 병합된 뒤 추가한다. prod 복제본 수와 DB 풀 값, Gateway 라우트(인증 이후)는 팀 협의 후 정한다.
