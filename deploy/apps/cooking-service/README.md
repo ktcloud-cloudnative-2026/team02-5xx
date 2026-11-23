@@ -46,7 +46,8 @@ Cooking의 로컬 기본 포트는 8084(`application.yml`)다. 클러스터에�
 | `MENU_SERVICE_URL` | `http://menu-service:8080` | CO-02가 Menu MI-01을 호출 |
 | `COOKING_ADMIN_ENABLED` | `false` | 관리자 API 비활성. 인증 확정 전 켜지 않는다 |
 | `JAVA_TOOL_OPTIONS` | `-XX:MaxRAMPercentage=60.0` | 메모리 제한 안에서 힙 비율. Order(#158)와 같은 기준 |
-| `LOGGING_STRUCTURED_FORMAT_CONSOLE` | `ecs` | 로그를 한 줄 JSON(ECS)으로 출력. K8s에서만 켜고 로컬은 텍스트 로그 유지(`docs/observability.md` 3-1, #188). `service.name`에 `cooking-service`가 자동으로 들어감 |
+| `LOGGING_STRUCTURED_FORMAT_CONSOLE` | `ecs` | 로그를 한 줄 JSON(ECS)으로 출력. K8s에서만 켜고 로컬은 텍스트 로그 유지(`docs/observability.md` 3-1, #189). `service.name`에 `cooking-service`가 자동으로 들어감 |
+| `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` / `SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE` | `4` / `1` | DB 연결 풀. t2-db 한 대에 DB 12개(max_connections 100)라 서비스마다 최대 4개, 한가할 때 1개만 유지(#186 예산: 6개 서비스 × 최대 3 Pod × 4 = 72, #222). 기본값은 Pod당 10개 |
 
 ## 자원
 
