@@ -9,6 +9,7 @@ import com.peakorder.inventory.service.InventoryAdminService;
 import jakarta.validation.Valid;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -51,5 +52,10 @@ public class InventoryAdminController {
   public ApiResponse<StockItemResponse> linkMenu(
       @PathVariable Long stockItemId, @Valid @RequestBody MenuLinkRequest request) {
     return ApiResponse.ok(adminService.linkMenu(stockItemId, request));
+  }
+
+  @DeleteMapping("/{stockItemId}")
+  public ApiResponse<StockItemResponse> delete(@PathVariable Long stockItemId) {
+    return ApiResponse.ok(adminService.delete(stockItemId));
   }
 }

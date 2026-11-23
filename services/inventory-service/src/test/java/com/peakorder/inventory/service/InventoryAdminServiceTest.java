@@ -191,4 +191,80 @@ class InventoryAdminServiceTest {
     order.verify(inventoryRepository).findByIdForUpdate(1L);
     order.verify(itemRepository).existsHoldOrConfirmedForMenu(5L);
   }
+
+  // ===== IN-06 논리 삭제 =====
+
+  private Inventory deletedStockItem(long id) {
+    Inventory inventory = stockItem(id, 10, 0);
+    inventory.delete();
+    return inventory;
+  }
+
+  @Test
+  void delete_marks_deleted_and_unlinks_menu() {
+    Inventory inventory = linkedStockItem(1L, 5L);
+    when(inventoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(inventory));
+    when(itemRepository.existsHoldOrConfirmedForMenu(5L)).thenReturn(false);
+
+    StockItemResponse response = service.delete(1L);
+
+    assertThat(inventory.isDeleted()).isTrue();
+    assertThat(inventory.getMenuId()).isNull();
+    assertThat(response.menuId()).isNull();
+  }
+
+  @Test
+  void delete_throws_not_found_when_no_item() {
+    when(inventoryRepository.findByIdForUpdate(99L)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.delete(99L))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVENTORY_NOT_FOUND);
+  }
+
+  @Test
+  void delete_throws_not_found_when_already_deleted() {
+    when(inventoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(deletedStockItem(1L)));
+
+    assertThatThrownBy(() -> service.delete(1L))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVENTORY_NOT_FOUND);
+  }
+
+  @Test
+  void delete_rejects_when_hold_or_confirmed_order_remains() {
+    Inventory inventory = linkedStockItem(1L, 5L);
+    when(inventoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(inventory));
+    when(itemRepository.existsHoldOrConfirmedForMenu(5L)).thenReturn(true);
+
+    assertThatThrownBy(() -> service.delete(1L))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.STOCK_ITEM_IN_USE);
+    assertThat(inventory.isDeleted()).isFalse();
+    assertThat(inventory.getMenuId()).isEqualTo(5L);
+  }
+
+  @Test
+  void restock_throws_not_found_when_deleted() {
+    when(inventoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(deletedStockItem(1L)));
+
+    assertThatThrownBy(() -> service.restock(1L, new StockRestockRequest(10)))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVENTORY_NOT_FOUND);
+  }
+
+  @Test
+  void linkMenu_throws_not_found_when_deleted() {
+    when(menuClient.checkExistence(10L)).thenReturn(new MenuExistence(10L, true, "ON_SALE"));
+    when(inventoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(deletedStockItem(1L)));
+
+    assertThatThrownBy(() -> service.linkMenu(1L, new MenuLinkRequest(10L)))
+        .isInstanceOf(BusinessException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVENTORY_NOT_FOUND);
+  }
 }
