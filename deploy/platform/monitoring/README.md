@@ -94,7 +94,8 @@ helm template monitoring prometheus-community/kube-prometheus-stack --version 93
 - ClusterRoleBinding·RoleBinding은 모두 같은 이름의 Role ↔ 같은 이름의 ServiceAccount 1:1이다.
 - **Operator의 클러스터 범위 Secret 권한(`get,list,watch,create,update,delete`)은 현재 그대로 남아 있다.** Prometheus·Alertmanager 설정 Secret을 만들고 ServiceMonitor가 참조하는 인증 Secret을 읽기 위한 차트 기본 동작이다.
   - AppProject의 `monitoring` 대상·종류 제한은 이 ClusterRole의 접근 범위를 줄이지 않는다.
-  - `prometheusOperator.namespaces`(예: `monitoring,peakorder`)는 Operator의 **감시 범위만** 줄이고 ClusterRole은 그대로다(렌더링으로 확인). 권한 자체를 줄이려면 차트 RBAC 대신 namespace별 Role을 직접 관리해야 한다 → 이 범위로 둘지 플랫폼 담당 확인 필요.
+  - `prometheusOperator.namespaces`(예: `monitoring,peakorder`)는 Operator의 **감시 범위만** 줄이고 ClusterRole은 그대로다(렌더링으로 확인). 권한 자체를 줄이려면 차트 RBAC 대신 namespace별 Role을 직접 관리해야 한다.
+  - **플랫폼 담당 확인(11/23): dev에서는 차트 기본값 유지에 동의** — [정진혁 님 #185 승인](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/185#pullrequestreview-6015497000). monitoring·peakorder로 좁히는 작업은 고도화 단계 별도 이슈. dev 범위의 판단이며 prod 승인은 아니다.
 - 전체 rules는 렌더링 결과에서 확인할 수 있다(`kind: ClusterRole` 검색).
 
 ### 기본 수집 대상 (ServiceMonitor 8개)
@@ -143,7 +144,7 @@ kubectl -n monitoring port-forward --address 127.0.0.1 svc/monitoring-grafana 30
 
 ## 한계
 
-- **CRD 10개(`*.monitoring.coreos.com`)는 차트 `crds/`의 고정 파일이라 `app`·`team` 라벨을 붙일 수 없다.** CLAUDE.md 8절 공통 라벨의 예외로 #176에서 팀 승인을 요청했다(승인 기록 후 병합). CRD는 클러스터 공용 리소스 정의라 특정 팀 리소스가 아니다.
+- **CRD 10개(`*.monitoring.coreos.com`)는 차트 `crds/`의 고정 파일이라 `app`·`team` 라벨을 붙일 수 없다.** CLAUDE.md 8절 공통 라벨의 **예외로 승인됐다** — [예외 승인 기록(이은제 님, #176, 11/23)](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/176#issuecomment-7088798001). 범위는 차트 93.2.2의 이 CRD 10개에 한정하며, 차트 버전을 바꾸거나 CRD가 추가·변경되면 다시 확인한다. 다른 리소스·Pod에는 `app`·`team` 규칙을 그대로 적용한다. (CRD는 클러스터 공용 리소스 종류 정의라 특정 팀 리소스가 아니다.)
 - `local-path` 저장소는 Pod가 처음 뜬 노드에 고정되고 확장할 수 없다. 그 노드에 문제가 생기면 지표가 사라질 수 있다(dev 한정 감수).
 - 알림 채널(#138 결정 요청)이 정해지기 전까지 Alertmanager는 기본 설정이며, 알림은 화면에서만 확인한다.
 - etcd·scheduler·controller-manager·kube-proxy·CoreDNS는 수집하지 않는다.

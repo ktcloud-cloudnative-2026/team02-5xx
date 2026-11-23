@@ -8,7 +8,7 @@
 # - 서브차트(grafana·kube-state-metrics·node-exporter)는 commonLabels를 받지 않아 각자 설정에 app·team을 넣는다.
 #   이 라벨들은 selector에 들어가지 않는다(selector는 app.kubernetes.io/name·instance).
 # - Operator가 실행 중에 만드는 Prometheus·Alertmanager Pod는 podMetadata로 넣는다.
-# - CRD 10개는 차트 crds/의 고정 파일이라 라벨을 붙일 수 없다 → #176에서 팀 예외 승인 요청.
+# - CRD 10개는 차트 crds/의 고정 파일이라 라벨을 붙일 수 없다 → 공통 라벨 예외 승인(#176, 93.2.2 한정, README "한계").
 commonLabels:
   team: team02
 
