@@ -30,10 +30,13 @@ public class CookingCancelService {
 
   private final CookingTicketRepository ticketRepository;
   private final Clock clock;
+  private final CookingMetrics metrics;
 
-  public CookingCancelService(CookingTicketRepository ticketRepository, Clock clock) {
+  public CookingCancelService(
+      CookingTicketRepository ticketRepository, Clock clock, CookingMetrics metrics) {
     this.ticketRepository = ticketRepository;
     this.clock = clock;
+    this.metrics = metrics;
   }
 
   @Transactional
@@ -47,6 +50,7 @@ public class CookingCancelService {
       case WAITING -> {
         ticket.cancel(clock.instant());
         log.info("조리 대기 주문을 취소했습니다 orderId={}", orderId);
+        metrics.ticketCanceled(); // 멱등 재요청(이미 CANCELED)은 세지 않는다
       }
       case CANCELED -> log.info("이미 취소된 주문의 취소 재요청입니다 orderId={}", orderId);
       case COOKING -> throw new BusinessException(ErrorCode.COOKING_ALREADY_STARTED);

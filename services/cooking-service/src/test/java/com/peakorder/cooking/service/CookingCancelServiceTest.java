@@ -13,6 +13,7 @@ import com.peakorder.cooking.entity.TicketStatus;
 import com.peakorder.cooking.exception.BusinessException;
 import com.peakorder.cooking.exception.ErrorCode;
 import com.peakorder.cooking.repository.CookingTicketRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -25,12 +26,50 @@ class CookingCancelServiceTest {
   private static final Instant NOW = Instant.parse("2026-11-16T01:00:00Z");
 
   private CookingTicketRepository repository;
+  private SimpleMeterRegistry registry;
   private CookingCancelService service;
 
   @BeforeEach
   void setUp() {
     repository = mock(CookingTicketRepository.class);
-    service = new CookingCancelService(repository, Clock.fixed(NOW, ClockConfig.ZONE));
+    registry = new SimpleMeterRegistry();
+    service =
+        new CookingCancelService(
+            repository, Clock.fixed(NOW, ClockConfig.ZONE), new CookingMetrics(registry));
+  }
+
+  private double canceledCount() {
+    return registry.get("cooking.tickets.canceled").counter().count();
+  }
+
+  @Test
+  void WAITING을_취소하면_취소_지표가_1_오른다() {
+    when(repository.findWithLockByOrderId(1L)).thenReturn(Optional.of(waitingTicket()));
+
+    service.cancel(1L);
+
+    assertThat(canceledCount()).isEqualTo(1);
+  }
+
+  @Test
+  void 이미_취소된_전표의_재요청은_취소_지표에_세지_않는다() {
+    CookingTicket ticket = waitingTicket();
+    ticket.cancel(NOW.minusSeconds(10));
+    when(repository.findWithLockByOrderId(1L)).thenReturn(Optional.of(ticket));
+
+    service.cancel(1L);
+
+    assertThat(canceledCount()).isZero();
+  }
+
+  @Test
+  void 조리_중이라_취소에_실패하면_취소_지표에_세지_않는다() {
+    CookingTicket ticket = waitingTicket();
+    ticket.start(NOW.minusSeconds(10));
+    when(repository.findWithLockByOrderId(1L)).thenReturn(Optional.of(ticket));
+
+    assertThatThrownBy(() -> service.cancel(1L)).isInstanceOf(BusinessException.class);
+    assertThat(canceledCount()).isZero();
   }
 
   private static CookingTicket waitingTicket() {

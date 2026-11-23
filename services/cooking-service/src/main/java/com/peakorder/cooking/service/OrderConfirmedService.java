@@ -37,21 +37,27 @@ public class OrderConfirmedService {
 
   private final ProcessedEventRepository processedEventRepository;
   private final CookingTicketRepository ticketRepository;
+  private final CookingMetrics metrics;
 
   public OrderConfirmedService(
-      ProcessedEventRepository processedEventRepository, CookingTicketRepository ticketRepository) {
+      ProcessedEventRepository processedEventRepository,
+      CookingTicketRepository ticketRepository,
+      CookingMetrics metrics) {
     this.processedEventRepository = processedEventRepository;
     this.ticketRepository = ticketRepository;
+    this.metrics = metrics;
   }
 
   @Transactional
   public void handle(OrderConfirmedEvent event) {
     if (processedEventRepository.insertIfAbsent(event.eventId()) == 0) {
       log.info("이미 처리한 OrderConfirmed 이벤트를 무시합니다 eventId={}", event.eventId());
+      metrics.orderConfirmedDuplicate();
       return;
     }
     if (ticketRepository.findByOrderId(event.orderId()).isPresent()) {
       log.warn("이미 조리 전표가 있는 주문입니다. 무시합니다 orderId={} eventId={}", event.orderId(), event.eventId());
+      metrics.orderConfirmedDuplicate();
       return;
     }
 
@@ -65,6 +71,7 @@ public class OrderConfirmedService {
         ticket.getOrderNo(),
         ticket.getEstimatedCookSec(),
         ticket.getQueuedAt());
+    metrics.orderConfirmedCreated();
   }
 
   static CookingTicketItem toItem(Long orderId, OrderConfirmedEvent.Item item) {

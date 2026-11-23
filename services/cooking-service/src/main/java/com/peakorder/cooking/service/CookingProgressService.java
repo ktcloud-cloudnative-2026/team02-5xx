@@ -41,16 +41,19 @@ public class CookingProgressService {
   private final OutboxEventRepository outboxEventRepository;
   private final JsonMapper jsonMapper;
   private final Clock clock;
+  private final CookingMetrics metrics;
 
   public CookingProgressService(
       CookingTicketRepository ticketRepository,
       OutboxEventRepository outboxEventRepository,
       JsonMapper jsonMapper,
-      Clock clock) {
+      Clock clock,
+      CookingMetrics metrics) {
     this.ticketRepository = ticketRepository;
     this.outboxEventRepository = outboxEventRepository;
     this.jsonMapper = jsonMapper;
     this.clock = clock;
+    this.metrics = metrics;
   }
 
   @Transactional
@@ -93,6 +96,7 @@ public class CookingProgressService {
         ticket.getOrderId(),
         ticket.getOrderNo(),
         eventId);
+    metrics.ticketCompleted();
   }
 
   private void start(CookingTicket ticket, Instant now) {
@@ -102,5 +106,6 @@ public class CookingProgressService {
         ticket.getOrderId(),
         ticket.getOrderNo(),
         ticket.getEstimatedCookSec());
+    metrics.ticketStarted();
   }
 }

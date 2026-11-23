@@ -51,7 +51,7 @@ class SchedulerIsolationTest {
     @Bean
     @Primary
     CookingProgressService fakeProgressService() {
-      return new CookingProgressService(null, null, null, null) {
+      return new CookingProgressService(null, null, null, null, null) {
         @Override
         public void tick() {
           PROGRESS_CALLS.incrementAndGet();
