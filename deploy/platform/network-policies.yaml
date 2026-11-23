@@ -211,7 +211,7 @@ spec:
         - port: 8080
 ---
 # 4. 공통 인프라
-# RabbitMQ: 메시지를 쓰는 서비스만 5672(amqp). 관리 화면 15672는 kubectl port-forward로만 쓴다.
+# RabbitMQ: 메시지를 쓰는 서비스만 5672(amqp), monitoring만 15692(지표). 관리 화면 15672는 kubectl port-forward로만 쓴다.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -239,5 +239,11 @@ spec:
               app: cooking-service
       ports:
         - port: 5672
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 15692
 # Redis: 지금 사용하는 서비스가 없어 허용 규칙을 두지 않는다(기본 차단).
 # 사용하는 서비스가 생기면 같은 형식으로 allow-redis를 추가한다.
