@@ -14,10 +14,22 @@ import {
 import { anonymousSession, planCartIntent } from './session.js';
 import CartOverlay from './components/CartOverlay.jsx';
 import LoginModal from './components/LoginModal.jsx';
+import CheckoutPage from './components/CheckoutPage.jsx';
+import {
+  createCheckoutFlow,
+  customerKey,
+  prepareCheckout,
+} from './checkout/checkoutFlow.js';
+import { createMockCheckoutAdapter } from './checkout/mockCheckoutAdapter.js';
+import {
+  captureCartStorage,
+  completePaidCart,
+} from './checkout/checkoutCompletion.js';
 
 export default function App({
   sessionSource = anonymousSession,
   storageProvider = browserStorage,
+  checkoutAdapter,
 }) {
   const session = useSyncExternalStore(
     sessionSource.subscribe,
@@ -31,8 +43,16 @@ export default function App({
       : 'menu',
   );
   const [cart, setCart] = useState(() => loadCart(storageProvider, getMenu));
+  const cartRef = useRef(cart);
   const [loginIntent, setLoginIntent] = useState(null);
   const [notice, setNotice] = useState('');
+  const [checkout, setCheckout] = useState(null);
+  const checkoutRef = useRef(null);
+  const defaultAdapter = useRef(null);
+  if (!defaultAdapter.current)
+    defaultAdapter.current = createMockCheckoutAdapter({
+      resolveMenu: getMenu,
+    });
   const intentNumber = useRef(0);
   const handledIntent = useRef(null);
   const lastMenuId = useRef(null);
@@ -51,6 +71,22 @@ export default function App({
 
   useEffect(() => {
     const onHistory = () => {
+      if (window.location.hash === '#checkout' && checkoutRef.current) return;
+      const completed =
+        checkoutRef.current?.flow.getSnapshot().stage === 'paid';
+      if (completed || window.location.hash === '#checkout') {
+        window.history.replaceState(
+          { peakOrderPage: 'menu' },
+          '',
+          '#menu-list',
+        );
+        setSelectedId(null);
+      }
+      if (checkoutRef.current) {
+        checkoutRef.current.flow.dispose();
+        checkoutRef.current = null;
+        setCheckout(null);
+      }
       const next = window.location.hash === '#cart' ? 'cart' : 'menu';
       if (next === 'cart' && previousPage.current !== 'cart')
         menuScroll.current = window.scrollY;
@@ -60,6 +96,7 @@ export default function App({
     };
     window.addEventListener('popstate', onHistory);
     window.addEventListener('hashchange', onHistory);
+    if (window.location.hash === '#checkout') onHistory();
     return () => {
       window.removeEventListener('popstate', onHistory);
       window.removeEventListener('hashchange', onHistory);
@@ -67,10 +104,10 @@ export default function App({
   }, []);
 
   useEffect(() => {
-    if (page === 'cart' && !signedIn && !loginIntent) {
+    if (page === 'cart' && !signedIn && !loginIntent && !checkout) {
       setLoginIntent({ type: 'view', id: ++intentNumber.current });
     }
-  }, [page, signedIn, loginIntent]);
+  }, [page, signedIn, loginIntent, checkout]);
 
   useEffect(() => {
     if (signedIn && loginIntent && handledIntent.current !== loginIntent.id) {
@@ -130,7 +167,9 @@ export default function App({
 
   function persist(items) {
     const warning = saveCart(items, storageProvider, getMenu);
-    setCart({ items, warning });
+    const next = { items, warning };
+    cartRef.current = next;
+    setCart(next);
   }
 
   function executeIntent(intent) {
@@ -140,9 +179,46 @@ export default function App({
       return;
     }
     if (intent.type === 'order') {
-      setNotice(
-        '주문·결제 연결을 준비 중이에요. 현재 주문은 생성되지 않습니다.',
-      );
+      if (checkoutRef.current) return;
+      try {
+        const input = prepareCheckout(
+          intent.selection ? [intent.selection] : cart.items,
+          getMenu,
+        );
+        const owner = customerKey(sessionSource.getSnapshot());
+        const baseline = captureCartStorage(storageProvider);
+        const next = {
+          source: intent.selection ? 'immediate' : 'cart',
+          flow: createCheckoutFlow({
+            input,
+            adapter: checkoutAdapter ?? defaultAdapter.current,
+            sessionSource,
+            onPaid: ({ items }) => {
+              const canApply = () =>
+                checkoutRef.current === next &&
+                customerKey(sessionSource.getSnapshot()) === owner;
+              if (!canApply() || next.source !== 'cart') return '';
+              const result = completePaidCart({
+                orderedItems: items,
+                currentItems: cartRef.current.items,
+                storageProvider,
+                baseline,
+                canApply,
+              });
+              if (canApply()) {
+                cartRef.current = result;
+                setCart(result);
+              }
+              return result.warning;
+            },
+          }),
+        };
+        checkoutRef.current = next;
+        setCheckout(next);
+        window.history.pushState({ peakOrderCheckout: true }, '', '#checkout');
+      } catch (failure) {
+        setNotice(failure.message);
+      }
       return;
     }
     try {
@@ -173,6 +249,25 @@ export default function App({
     if (page === 'cart' && !signedIn) {
       closeCart();
     }
+  }
+
+  function closeCheckout() {
+    const completed = checkoutRef.current?.flow.getSnapshot().stage === 'paid';
+    checkoutRef.current?.flow.dispose();
+    checkoutRef.current = null;
+    setCheckout(null);
+    if (completed) {
+      setPage('menu');
+      setSelectedId(null);
+      setLoginIntent(null);
+      setNotice(cartRef.current.warning);
+      window.history.replaceState({ peakOrderPage: 'menu' }, '', '#menu-list');
+      requestAnimationFrame(() =>
+        document.getElementById('menu-list')?.focus({ preventScroll: true }),
+      );
+      return;
+    }
+    if (window.history.state?.peakOrderCheckout) window.history.back();
   }
 
   function updateCart(key, quantity) {
@@ -412,6 +507,13 @@ export default function App({
         />
       )}
       {loginIntent && !signedIn && <LoginModal onClose={closeLogin} />}
+      {checkout && (
+        <CheckoutPage
+          flow={checkout.flow}
+          source={checkout.source}
+          onClose={closeCheckout}
+        />
+      )}
     </div>
   );
 }

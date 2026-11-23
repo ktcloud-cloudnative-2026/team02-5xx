@@ -5,12 +5,14 @@ import { build } from 'vite';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export async function startUiFixture() {
+export async function startUiFixture({
+  entryFile = 'tests/browser-fixture-entry.jsx',
+} = {}) {
   const bundle = await build({
     logLevel: 'error',
     build: {
       write: false,
-      rollupOptions: { input: resolve('tests/browser-fixture-entry.jsx') },
+      rollupOptions: { input: resolve(entryFile) },
     },
   });
   const files = new Map(
