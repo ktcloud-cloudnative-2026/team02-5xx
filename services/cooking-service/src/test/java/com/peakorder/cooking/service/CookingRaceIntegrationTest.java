@@ -62,6 +62,15 @@ class CookingRaceIntegrationTest {
 
   private static final AtomicLong ORDER_ID = new AtomicLong(1);
 
+  /** 시나리오 2·2-반대에서 잠금을 잡고 버티는 시간. CI가 느려도 상대가 도착할 여유를 둔다. */
+  private static final long LOCK_HOLD_MS = 1500;
+
+  /** 상대가 잠금을 실제로 기다렸다고 볼 최소 시간(LOCK_HOLD_MS보다 1초 여유) */
+  private static final long MIN_LOCK_WAIT_MS = 500;
+
+  /** 신호를 기다리는 최대 시간. 넘기면 무한 대기 대신 실패한다. */
+  private static final long SIGNAL_TIMEOUT_SEC = 10;
+
   @Autowired CookingCancelService cancelService;
   @Autowired CookingProgressService progressService;
   @Autowired CookingTicketRepository ticketRepository;
@@ -94,7 +103,7 @@ class CookingRaceIntegrationTest {
       Future<Object> cancel =
           pool.submit(() -> {
             ready.countDown();
-            go.await();
+            awaitSignal(go);
             try {
               cancelService.cancel(a);
               return "CANCELED";
@@ -105,14 +114,14 @@ class CookingRaceIntegrationTest {
       Future<?> tick =
           pool.submit(() -> {
             ready.countDown();
-            go.await();
+            awaitSignal(go);
             progressService.tick();
             return null;
           });
-      ready.await();
+      awaitOrFail(ready, "준비", cancel, tick);
       go.countDown();
-      cancelResult = cancel.get(10, TimeUnit.SECONDS);
-      tick.get(10, TimeUnit.SECONDS);
+      cancelResult = cancel.get(SIGNAL_TIMEOUT_SEC, TimeUnit.SECONDS);
+      tick.get(SIGNAL_TIMEOUT_SEC, TimeUnit.SECONDS);
     }
 
     TicketStatus statusA = status(a);
@@ -132,8 +141,8 @@ class CookingRaceIntegrationTest {
   /**
    * 시나리오 2: 취소가 A를 먼저 잠그면 tick()은 잠금이 풀릴 때까지 기다린 뒤 A를 건너뛰고, <b>같은 tick에서</b> B가 조리를 시작한다.
    *
-   * <p>기다린 행(A)이 조건(status = WAITING)에서 빠지면 PostgreSQL이 그 행을 버리고 다음 행(B)을 잠가 돌려준다(PostgreSQL
-   * 16.16에서 관찰). 순서를 강제하므로 매번 같은 결과여야 한다.
+   * <p>기다린 행(A)이 조건(status = WAITING)에서 빠지면 PostgreSQL이 그 행을 버리고 다음 행(B)을 잠가 돌려준다(PostgreSQL 16, 이
+   * 테스트 이미지 16.15에서 확인. 실행 계획 Limit → LockRows). 순서를 강제하므로 매번 같은 결과여야 한다.
    */
   @RepeatedTest(5)
   void 취소가_먼저_잠그면_조리시작은_기다린_뒤_다음_전표로_넘어간다() throws Exception {
@@ -150,17 +159,17 @@ class CookingRaceIntegrationTest {
                 CookingTicket ticket = ticketRepository.findWithLockByOrderId(a).orElseThrow();
                 ticket.cancel(Instant.now());
                 locked.countDown();
-                sleep(500); // 잠금을 잡은 채로 버틴다
+                sleep(LOCK_HOLD_MS); // 잠금을 잡은 채로 버틴다
               }));
-      locked.await();
+      awaitOrFail(locked, "잠금", cancelHoldingLock);
       long start = System.nanoTime();
       progressService.tick();
       waitedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-      cancelHoldingLock.get(10, TimeUnit.SECONDS);
+      cancelHoldingLock.get(SIGNAL_TIMEOUT_SEC, TimeUnit.SECONDS);
     }
 
     System.out.printf("[시나리오2] 대기=%dms 첫 tick 후 B=%s%n", waitedMs, status(b));
-    assertThat(waitedMs).as("tick()이 A의 행 잠금을 기다렸는지").isGreaterThanOrEqualTo(300);
+    assertThat(waitedMs).as("tick()이 A의 행 잠금을 기다렸는지").isGreaterThanOrEqualTo(MIN_LOCK_WAIT_MS);
     assertThat(status(a)).isEqualTo(TicketStatus.CANCELED);
     assertThat(status(b)).as("같은 tick에서 다음 전표로 넘어갔는지").isEqualTo(TicketStatus.COOKING);
   }
@@ -184,9 +193,9 @@ class CookingRaceIntegrationTest {
                 CookingTicket ticket = ticketRepository.findWithLockByOrderId(a).orElseThrow();
                 ticket.start(Instant.now());
                 locked.countDown();
-                sleep(500); // 잠금을 잡은 채로 버틴다
+                sleep(LOCK_HOLD_MS); // 잠금을 잡은 채로 버틴다
               }));
-      locked.await();
+      awaitOrFail(locked, "잠금", startHoldingLock);
       long start = System.nanoTime();
       try {
         cancelService.cancel(a);
@@ -195,11 +204,11 @@ class CookingRaceIntegrationTest {
         cancelResult = e.errorCode();
       }
       waitedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-      startHoldingLock.get(10, TimeUnit.SECONDS);
+      startHoldingLock.get(SIGNAL_TIMEOUT_SEC, TimeUnit.SECONDS);
     }
 
     System.out.printf("[시나리오2-반대] 대기=%dms 취소=%s A=%s%n", waitedMs, cancelResult, status(a));
-    assertThat(waitedMs).as("취소가 A의 행 잠금을 기다렸는지").isGreaterThanOrEqualTo(300);
+    assertThat(waitedMs).as("취소가 A의 행 잠금을 기다렸는지").isGreaterThanOrEqualTo(MIN_LOCK_WAIT_MS);
     assertThat(cancelResult).isEqualTo(ErrorCode.COOKING_ALREADY_STARTED);
     assertThat(status(a)).isEqualTo(TicketStatus.COOKING);
   }
@@ -216,21 +225,21 @@ class CookingRaceIntegrationTest {
       Future<?> first =
           pool.submit(() -> {
             ready.countDown();
-            go.await();
+            awaitSignal(go);
             progressService.tick();
             return null;
           });
       Future<?> second =
           pool.submit(() -> {
             ready.countDown();
-            go.await();
+            awaitSignal(go);
             progressService.tick();
             return null;
           });
-      ready.await();
+      awaitOrFail(ready, "준비", first, second);
       go.countDown();
-      first.get(10, TimeUnit.SECONDS); // V2 UNIQUE 위반 예외가 나면 여기서 실패
-      second.get(10, TimeUnit.SECONDS);
+      first.get(SIGNAL_TIMEOUT_SEC, TimeUnit.SECONDS); // V2 UNIQUE 위반 예외가 나면 여기서 실패
+      second.get(SIGNAL_TIMEOUT_SEC, TimeUnit.SECONDS);
     }
 
     assertThat(ticketRepository.countByStatus(TicketStatus.COOKING)).isEqualTo(1);
@@ -257,7 +266,7 @@ class CookingRaceIntegrationTest {
               .<Future<?>>map(orderId ->
                   pool.submit(() -> {
                     ready.countDown();
-                    go.await();
+                    awaitSignal(go);
                     tx.executeWithoutResult(status -> {
                       ticketRepository
                           .findWithLockByOrderId(orderId)
@@ -269,11 +278,11 @@ class CookingRaceIntegrationTest {
                     return null;
                   }))
               .toList();
-      ready.await();
+      awaitOrFail(ready, "준비", starts.toArray(Future<?>[]::new));
       go.countDown();
       for (Future<?> start : starts) {
         try {
-          start.get(10, TimeUnit.SECONDS);
+          start.get(SIGNAL_TIMEOUT_SEC, TimeUnit.SECONDS);
           succeeded++;
         } catch (ExecutionException e) {
           assertThat(causeMessages(e)).contains("uk_cooking_tickets_single_cooking");
@@ -286,6 +295,27 @@ class CookingRaceIntegrationTest {
     assertThat(succeeded).isEqualTo(1);
     assertThat(uniqueViolations).isEqualTo(1);
     assertThat(ticketRepository.countByStatus(TicketStatus.COOKING)).isEqualTo(1);
+  }
+
+  /** 작업 스레드: 출발 신호를 제한 시간 안에 받지 못하면 예외로 끝낸다(메인이 먼저 실패해도 스레드가 남지 않게). */
+  private static void awaitSignal(CountDownLatch go) throws InterruptedException {
+    if (!go.await(SIGNAL_TIMEOUT_SEC, TimeUnit.SECONDS)) {
+      throw new IllegalStateException("출발 신호를 받지 못했습니다");
+    }
+  }
+
+  /** 메인 스레드: 작업 스레드의 신호를 제한 시간 안에 받지 못하면 실패한다. 작업 스레드가 신호 전에 예외로 끝났다면 그 예외를 그대로 보여 준다. */
+  private static void awaitOrFail(CountDownLatch latch, String what, Future<?>... workers)
+      throws Exception {
+    if (latch.await(SIGNAL_TIMEOUT_SEC, TimeUnit.SECONDS)) {
+      return;
+    }
+    for (Future<?> worker : workers) {
+      if (worker.isDone()) {
+        worker.get(); // 작업 스레드의 예외(ExecutionException)를 그대로 던진다
+      }
+    }
+    throw new AssertionError(what + " 신호를 " + SIGNAL_TIMEOUT_SEC + "초 안에 받지 못했습니다");
   }
 
   private static String causeMessages(Throwable error) {
