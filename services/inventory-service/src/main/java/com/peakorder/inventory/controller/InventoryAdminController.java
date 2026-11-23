@@ -24,9 +24,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 관리자 재고 API (권한: STORE_ADMIN).
  *
- * <p>인증 연동 전까지 노출 방지: `inventory.admin.enabled=true`(환경 변수 INVENTORY_ADMIN_ENABLED)일 때만 등록된다. 기본값은
- * 꺼짐이며, 꺼져 있으면 관리자 경로는 404로 응답한다. 격리된 로컬에서만 켜고, 공유 dev·prod는 JWT/STORE_ADMIN 인가(#112)와 Gateway 격리를
- * 확인하기 전까지 끈다(PR #143 리뷰).
+ * <p>권한 검사는 AdminAuthInterceptor가 한다(#112 계약: 신원 헤더 누락·형식 오류 401, 역할 부족 403).
+ * `inventory.admin.enabled=true`(환경 변수 INVENTORY_ADMIN_ENABLED)일 때만 등록되며 기본은 꺼짐(관리자 경로 404)이다. 공유
+ * dev 활성화는 Gateway JWT 검증 dev 확인과 관리자 경로 노출 결정 뒤에 한다.
  */
 @RestController
 @RequestMapping("/api/v1/admin/inventory/items")

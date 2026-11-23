@@ -3,6 +3,7 @@ package com.peakorder.inventory.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import com.peakorder.inventory.config.AdminWebConfig;
 import com.peakorder.inventory.service.InventoryAdminService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -13,7 +14,7 @@ class AdminApiToggleTest {
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
           .withBean(InventoryAdminService.class, () -> mock(InventoryAdminService.class))
-          .withUserConfiguration(InventoryAdminController.class);
+          .withUserConfiguration(InventoryAdminController.class, AdminWebConfig.class);
 
   @Test
   void 기본값이면_관리자_API가_등록되지_않는다() {
@@ -25,5 +26,17 @@ class AdminApiToggleTest {
     runner
         .withPropertyValues("inventory.admin.enabled=true")
         .run(context -> assertThat(context).hasSingleBean(InventoryAdminController.class));
+  }
+
+  @Test
+  void 기본값이면_관리자_권한_검사_설정도_등록되지_않는다() {
+    runner.run(context -> assertThat(context).doesNotHaveBean(AdminWebConfig.class));
+  }
+
+  @Test
+  void 켜면_관리자_권한_검사_설정이_등록된다() {
+    runner
+        .withPropertyValues("inventory.admin.enabled=true")
+        .run(context -> assertThat(context).hasSingleBean(AdminWebConfig.class));
   }
 }
