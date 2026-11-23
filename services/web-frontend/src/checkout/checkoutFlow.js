@@ -174,6 +174,7 @@ export function createCheckoutFlow({
       stop();
       emit({
         stage: 'session-ended',
+        createRetryable: false,
         order: null,
         estimate: null,
         error:
@@ -210,15 +211,18 @@ export function createCheckoutFlow({
       busy = false;
     }
   }
-  const unknown = (error) =>
+  const unknown = (error, creating = false) =>
     emit({
       stage: 'unknown',
+      createRetryable: creating && !snapshot.order,
       recoverable: false,
       errorCode: error.code ?? 'UNKNOWN',
       error:
-        error.code === 'ORDER_PAY_IN_PROGRESS' && error.status === 409
-          ? '같은 주문의 결제 처리가 진행 중이에요. 잠시 후 주문 상태를 확인해 주세요.'
-          : '처리 결과를 확인할 수 없어요. 새 주문을 만들지 말고 주문 상태를 확인해 주세요.',
+        creating && !snapshot.order
+          ? '임시 주문 생성 결과를 확인하지 못했어요. 결제는 요청되지 않았으므로 잠시 후 새 임시 주문으로 다시 확인할 수 있어요.'
+          : error.code === 'ORDER_PAY_IN_PROGRESS' && error.status === 409
+            ? '같은 주문의 결제 처리가 진행 중이에요. 잠시 후 주문 상태를 확인해 주세요.'
+            : '처리 결과를 확인할 수 없어요. 새 주문을 만들지 말고 주문 상태를 확인해 주세요.',
     });
   function adopt(order, fromCheck = false) {
     if (['PAID', 'WAITING', 'COOKING', 'COMPLETED'].includes(order.status)) {
@@ -344,7 +348,12 @@ export function createCheckoutFlow({
         !current()
       )
         return;
-      emit({ stage: 'creating', error: '', errorCode: '' });
+      emit({
+        stage: 'creating',
+        createRetryable: false,
+        error: '',
+        errorCode: '',
+      });
       await run(
         (signal) => adapter.create({ items: input.items }, { signal }),
         (data) => {
@@ -357,17 +366,18 @@ export function createCheckoutFlow({
               );
             emit({ stage: 'ready', order });
           } catch (error) {
-            unknown(error);
+            unknown(error, true);
           }
         },
         (error) =>
           error.definitive === true
             ? emit({
                 stage: 'failed',
+                createRetryable: !snapshot.order,
                 error: error.message,
                 errorCode: error.code,
               })
-            : unknown(error),
+            : unknown(error, true),
       );
     },
     pay: () => submitPayment(),
@@ -390,7 +400,17 @@ export function createCheckoutFlow({
       if (current()) emit({ checking: false });
     },
     restart() {
-      if (snapshot.stage !== 'failed' || busy || !current()) return;
+      if (
+        (snapshot.stage !== 'failed' &&
+          !(
+            snapshot.stage === 'unknown' &&
+            snapshot.createRetryable &&
+            !snapshot.order
+          )) ||
+        busy ||
+        !current()
+      )
+        return;
       stop();
       emit({
         stage: 'review',
@@ -399,6 +419,7 @@ export function createCheckoutFlow({
         estimatePhase: 'idle',
         error: '',
         errorCode: '',
+        createRetryable: false,
       });
     },
     dispose() {

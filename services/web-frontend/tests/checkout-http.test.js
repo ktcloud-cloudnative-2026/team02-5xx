@@ -134,13 +134,18 @@ for (const [status, code] of [
   [409, 'STORE_NOT_ACCEPTING_ORDERS'],
   [409, 'MENU_NOT_AVAILABLE'],
   [400, 'INVALID_REQUEST'],
+  [503, 'MENU_SERVICE_UNAVAILABLE'],
+  [503, 'INVENTORY_SERVICE_UNAVAILABLE'],
 ])
   test(`create maps explicit ${code} without retry`, () =>
     fixture(async ({ adapter, requests, setHandler }) => {
       setHandler((req, res, send) => send(status, null, code));
       await assert.rejects(
         adapter.create({ items }),
-        (e) => e.code === code && e.definitive === true,
+        (e) =>
+          e.code === code &&
+          e.definitive === true &&
+          (code !== 'INVALID_REQUEST' || e.message.includes('255')),
       );
       assert.equal(
         requests.filter((r) => r.path === '/api/v1/orders').length,
@@ -153,6 +158,8 @@ for (const [status, code, definitive] of [
   [409, 'STOCK_CONFIRM_FAILED', true],
   [409, 'ORDER_PAY_IN_PROGRESS', false],
   [503, 'PAYMENT_SERVICE_UNAVAILABLE', false],
+  [503, 'MENU_SERVICE_UNAVAILABLE', false],
+  [503, 'INVENTORY_SERVICE_UNAVAILABLE', false],
   [502, 'UPSTREAM_INVALID_RESPONSE', false],
   [403, 'FORBIDDEN', false],
 ])

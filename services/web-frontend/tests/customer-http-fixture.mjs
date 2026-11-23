@@ -62,6 +62,19 @@ export async function startCustomerHttpFixture({ input } = {}) {
         return true;
       }
       if (request.method === 'POST' && path === '/api/v1/orders') {
+        const createFaults = {
+          'create-menu': [503, 'MENU_SERVICE_UNAVAILABLE'],
+          'create-inventory': [503, 'INVENTORY_SERVICE_UNAVAILABLE'],
+          'create-500': [500, 'INTERNAL_ERROR'],
+        };
+        if (createFaults[scenario]) {
+          send(createFaults[scenario][0], null, createFaults[scenario][1]);
+          return true;
+        }
+        if (scenario === 'create-malformed') {
+          send(201, { orderId: 999 });
+          return true;
+        }
         if (['stock', 'closed', 'unavailable'].includes(scenario)) {
           send(
             409,

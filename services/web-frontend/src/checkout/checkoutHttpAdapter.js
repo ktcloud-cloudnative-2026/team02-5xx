@@ -7,7 +7,8 @@ import {
 import { authSession } from '../authSession.js';
 
 const messages = {
-  INVALID_REQUEST: '주문 품목은 1~20개, 수량은 1~99개로 확인해 주세요.',
+  INVALID_REQUEST:
+    '품목은 1~20개, 수량은 1~99개, 옵션은 20개 이하로 확인해 주세요. 옵션 이름을 이어 붙인 길이(구분자 포함)가 255자를 넘으면 다른 옵션을 선택해 주세요.',
   STORE_NOT_ACCEPTING_ORDERS: '현재 매장이 주문을 받지 않고 있어요.',
   MENU_NOT_AVAILABLE: '판매 중지되었거나 선택할 수 없는 메뉴·옵션이 있어요.',
   OUT_OF_STOCK: '재고가 부족하여 주문을 만들지 못했어요.',
@@ -21,6 +22,8 @@ const messages = {
     '조리 서비스 문제로 지금은 주문·결제를 진행할 수 없어요.',
   MENU_SERVICE_UNAVAILABLE:
     '메뉴 정보를 확인하지 못했어요. 잠시 후 다시 조회해 주세요.',
+  INVENTORY_SERVICE_UNAVAILABLE:
+    '재고 확보를 확인하지 못해 주문을 준비하지 못했어요. 잠시 후 새 임시 주문으로 확인해 주세요.',
   UNAUTHORIZED: '고객 인증이 만료됐어요. 다시 로그인해 주세요.',
   FORBIDDEN: '요청 권한 또는 요청 출처가 허용되지 않았어요.',
 };
@@ -30,6 +33,8 @@ const terminalCreate = {
   MENU_NOT_AVAILABLE: 409,
   OUT_OF_STOCK: 409,
   COOKING_UNAVAILABLE: 503,
+  MENU_SERVICE_UNAVAILABLE: 503,
+  INVENTORY_SERVICE_UNAVAILABLE: 503,
 };
 const terminalPay = {
   PAYMENT_FAILED: 402,

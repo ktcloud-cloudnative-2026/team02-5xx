@@ -307,21 +307,32 @@ test('CREATED lookup stays unknown and only permits explicit same-order recovery
   assert.equal(flow.getSnapshot().recoverable, true);
   flow.dispose();
 });
-test('create transport error or malformed write response stays unknown without automatic retry', async () => {
+test('uncertain create allows only explicit restart before payment, without automatic retries', async () => {
   for (const create of [
     async () => {
       throw new Error('network');
     },
     async () => ({ status: 'PAID' }),
   ]) {
-    const { flow } = setup({ create });
+    const { flow, sessionSource } = setup({ create });
     await flow.estimate();
     await flow.create();
     assert.equal(flow.getSnapshot().stage, 'unknown');
     assert.equal(flow.getSnapshot().order, null);
+    assert.equal(flow.getSnapshot().createRetryable, true);
     flow.restart();
+    assert.equal(flow.getSnapshot().stage, 'review');
+    assert.equal(flow.getSnapshot().createRetryable, false);
+    // A new estimate and an explicit create are both required.
+    await flow.create();
+    assert.equal(flow.getSnapshot().stage, 'review');
+    await flow.estimate();
     await flow.create();
     assert.equal(flow.getSnapshot().stage, 'unknown');
+    sessionSource.publish(null);
+    assert.equal(flow.getSnapshot().createRetryable, false);
+    flow.restart();
+    assert.equal(flow.getSnapshot().stage, 'session-ended');
     flow.dispose();
   }
 });
@@ -607,5 +618,70 @@ test('failed or malformed lookup revokes recovery permission without posting', a
   await flow.check();
   await flow.recover();
   assert.equal(flow.getSnapshot().recoverable, false);
+  flow.dispose();
+});
+
+test('create timeout can restart once and an old response cannot replace the new temporary order', async () => {
+  const { flow, adapter } = setup({}, { timeoutMs: 40 });
+  const wait = deferred(),
+    original = adapter.create;
+  let creates = 0,
+    pays = 0;
+  adapter.create = () => {
+    creates++;
+    return wait.promise;
+  };
+  adapter.pay = () => {
+    pays++;
+    assert.fail('No payment during creation retry');
+  };
+  await flow.estimate();
+  await flow.create();
+  assert.equal(flow.getSnapshot().errorCode, 'TIMEOUT');
+  assert.equal(flow.getSnapshot().createRetryable, true);
+  flow.restart();
+  flow.restart();
+  adapter.create = (...args) => {
+    creates++;
+    return original(...args);
+  };
+  await flow.estimate();
+  const pending = flow.create();
+  await flow.create();
+  await pending;
+  const order = flow.getSnapshot().order;
+  wait.resolve({ ...order, orderId: 999 });
+  await Promise.resolve();
+  assert.equal(flow.getSnapshot().stage, 'ready');
+  assert.equal(flow.getSnapshot().order.orderId, order.orderId);
+  assert.equal(creates, 2);
+  assert.equal(pays, 0);
+  flow.dispose();
+});
+
+test('payment uncertainty with a known ID cannot restart into a new order', async () => {
+  const { flow } = setup(
+    {},
+    {
+      adapter: createMockCheckoutAdapter({
+        resolveMenu: getMenu,
+        delay: 0,
+        scenario: 'unknown',
+      }),
+    },
+  );
+  await flow.estimate();
+  await flow.create();
+  const id = flow.getSnapshot().order.orderId;
+  await flow.pay();
+  flow.restart();
+  await flow.create();
+  assert.equal(flow.getSnapshot().stage, 'unknown');
+  assert.equal(flow.getSnapshot().createRetryable, false);
+  assert.equal(flow.getSnapshot().order.orderId, id);
+  await flow.check();
+  flow.restart();
+  assert.equal(flow.getSnapshot().order.orderId, id);
+  assert.equal(flow.getSnapshot().stage, 'unknown');
   flow.dispose();
 });

@@ -23,6 +23,7 @@ async function fresh(
   scenario = 'success',
   mobile = false,
   initialCart = original,
+  clock = false,
 ) {
   await context?.close();
   Object.assign(fixture.checkoutControls, {
@@ -37,6 +38,7 @@ async function fresh(
       : { width: 1440, height: 1000 },
   });
   page = await context.newPage();
+  if (clock) await page.clock.install();
   page.setDefaultTimeout(6000);
   errors = [];
   consoleErrors = [];
@@ -125,6 +127,11 @@ async function pay() {
 const cart = () =>
   page.evaluate(() => JSON.parse(localStorage.getItem('peak-order.cart.v1')));
 async function check(name, run) {
+  if (
+    process.env.CUSTOMER_QA_FILTER &&
+    !new RegExp(process.env.CUSTOMER_QA_FILTER).test(name)
+  )
+    return;
   try {
     await run();
     assert.deepEqual(errors, []);
@@ -651,6 +658,119 @@ try {
         );
       },
     );
+  for (const scenario of [
+    'create-menu',
+    'create-inventory',
+    'create-500',
+    'create-malformed',
+  ])
+    await check(
+      `create failure ${scenario} permits one explicit new order without charging the old attempt`,
+      async () => {
+        await fresh(scenario);
+        await enterCart();
+        await page
+          .getByRole('button', { name: '임시 주문 만들기', exact: true })
+          .click();
+        const restart = page.getByRole('button', {
+          name: '새 임시 주문으로 다시 확인',
+          exact: true,
+        });
+        await restart.waitFor();
+        assert.equal(
+          fixture.requests.filter((r) => r.path === '/api/v1/orders').length,
+          1,
+        );
+        assert.equal(
+          fixture.requests.filter((r) => r.path.endsWith('/pay')).length,
+          0,
+        );
+        assert.deepEqual(await cart(), original);
+        assert.equal(
+          await page
+            .getByRole('button', { name: '주문 상태 확인', exact: true })
+            .count(),
+          0,
+        );
+        fixture.checkoutControls.scenario = 'success';
+        await restart.evaluate((b) => {
+          b.click();
+          b.click();
+        });
+        await create();
+        assert.equal(
+          fixture.requests.filter((r) => r.path === '/api/v1/orders').length,
+          2,
+        );
+        assert.equal(
+          fixture.requests.filter((r) => r.path.endsWith('/pay')).length,
+          0,
+        );
+        await pay();
+        await page.locator('.mock-order-number').waitFor();
+        assert.equal(
+          fixture.requests.filter((r) => r.path.endsWith('/pay')).length,
+          1,
+        );
+        assert.deepEqual(await cart(), { version: 1, items: [] });
+      },
+    );
+  await check(
+    'create timeout permits restart and late old response cannot replace the new order',
+    async () => {
+      await fresh('success', false, original, true);
+      await enterCart();
+      let release,
+        received,
+        oldId,
+        first = true;
+      const gate = new Promise((done) => {
+          release = done;
+        }),
+        arrived = new Promise((done) => {
+          received = done;
+        });
+      await page.route('**/api/v1/orders', async (route) => {
+        if (!first) return route.continue();
+        first = false;
+        const response = await route.fetch();
+        oldId = (await response.json()).data.orderId;
+        received();
+        await gate;
+        await route.fulfill({ response }).catch(() => {});
+      });
+      await page
+        .getByRole('button', { name: '임시 주문 만들기', exact: true })
+        .click();
+      await arrived;
+      await page.clock.fastForward(10020);
+      await page.getByText('안내 코드: TIMEOUT').waitFor();
+      const restart = page.getByRole('button', {
+        name: '새 임시 주문으로 다시 확인',
+        exact: true,
+      });
+      await restart.waitFor();
+      assert.deepEqual(await cart(), original);
+      assert.equal(
+        fixture.requests.filter((r) => r.path.endsWith('/pay')).length,
+        0,
+      );
+      await restart.click();
+      await create();
+      release();
+      await page.waitForTimeout(80);
+      await pay();
+      await page.locator('.mock-order-number').waitFor();
+      const pays = fixture.requests.filter((r) => r.path.endsWith('/pay'));
+      assert.equal(
+        fixture.requests.filter((r) => r.path === '/api/v1/orders').length,
+        2,
+      );
+      assert.equal(pays.length, 1);
+      assert.notEqual(pays[0].path, `/api/v1/orders/${oldId}/pay`);
+      assert.deepEqual(await cart(), { version: 1, items: [] });
+    },
+  );
 } finally {
   await writeFile(
     resolve(output, 'results.json'),
