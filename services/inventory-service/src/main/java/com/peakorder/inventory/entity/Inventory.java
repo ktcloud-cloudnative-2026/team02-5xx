@@ -38,6 +38,13 @@ public class Inventory {
 
   protected Inventory() {}
 
+  public Inventory(int stockQty, int lowStockThreshold) {
+    this.stockQty = stockQty;
+    this.reservedQty = 0;
+    this.lowStockThreshold = lowStockThreshold;
+    this.updatedAt = OffsetDateTime.now();
+  }
+
   public Long getId() {
     return id;
   }
@@ -54,8 +61,16 @@ public class Inventory {
     return reservedQty;
   }
 
+  public int getLowStockThreshold() {
+    return lowStockThreshold;
+  }
+
   public int getAvailableQty() {
     return stockQty - reservedQty;
+  }
+
+  public boolean isLowStock() {
+    return getAvailableQty() <= lowStockThreshold;
   }
 
   public void reserve(int quantity) {
@@ -79,6 +94,16 @@ public class Inventory {
 
   public void restore(int quantity) {
     stockQty += quantity;
+    updatedAt = OffsetDateTime.now();
+  }
+
+  public void addStock(int quantity) {
+    stockQty += quantity;
+    updatedAt = OffsetDateTime.now();
+  }
+
+  public void linkMenu(Long menuId) {
+    this.menuId = menuId;
     updatedAt = OffsetDateTime.now();
   }
 }
