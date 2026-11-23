@@ -1,0 +1,75 @@
+# Issue #180: #175의 서버/JWKS 후보를 dev에 연결한다. 비밀값은 외부 Secret에서만 주입한다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+spec:
+  template:
+    spec:
+      securityContext:
+        # 이미지 USER의 UID를 고정하지 않고 Secret 읽기용 보조 그룹을 부여한다.
+        fsGroup: 2000
+      containers:
+        - name: auth-service
+          env:
+            - name: AUTH_SESSION_ENABLED
+              value: "true"
+            - name: AUTH_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-db
+                  key: DB_URL
+            - name: AUTH_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-db
+                  key: DB_USER
+            - name: AUTH_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-db
+                  key: DB_PASSWORD
+            # DB 담당의 dev 연결 수 예산(#112·#186): Pod당 최대 4개, 최소 유휴 1개.
+            - name: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE
+              value: "4"
+            - name: SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE
+              value: "1"
+            - name: AUTH_JWT_ISSUER
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-runtime
+                  key: issuer
+            - name: AUTH_JWT_AUDIENCE
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-runtime
+                  key: audience
+            - name: AUTH_JWT_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-runtime
+                  key: key-id
+            - name: AUTH_ALLOWED_ORIGINS
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-runtime
+                  key: allowed-origins
+            - name: AUTH_JWT_PRIVATE_KEY_FILE
+              value: /var/run/secrets/auth-jwt/private-key.pem
+            - name: AUTH_JWT_PUBLIC_KEY_FILE
+              value: /var/run/secrets/auth-jwt/public-key.pem
+          volumeMounts:
+            - name: auth-jwt
+              mountPath: /var/run/secrets/auth-jwt
+              readOnly: true
+      volumes:
+        - name: auth-jwt
+          secret:
+            secretName: auth-service-jwt
+            optional: false
+            defaultMode: 0440
+            items:
+              - key: private-key.pem
+                path: private-key.pem
+              - key: public-key.pem
+                path: public-key.pem
