@@ -106,12 +106,13 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 
 | 서비스 | 지표 (Prometheus) | 종류 | 무엇을 보나 | 상태 |
 |---|---|---|---|---|
-| Cooking | `cooking_tickets{status="waiting"\|"cooking"}` | Gauge | 지금 주방이 얼마나 밀렸나 | 제안 |
-| Cooking | `cooking_expected_wait_seconds` | Gauge | 지금 주문하면 조리 시작까지 예상 대기(CO-01과 같은 값) | 제안 |
-| Cooking | `cooking_tickets_started_total`, `cooking_tickets_completed_total` | Counter | 처리 속도가 주문 속도를 따라가나 | 제안 |
-| Cooking | `cooking_tickets_canceled_total` | Counter | 취소가 갑자기 늘었나 (Order 취소 흐름 이상 신호, CI-03) | 제안 |
-| Cooking | `cooking_order_confirmed_received_total{result="created"\|"duplicate"}` | Counter | OrderConfirmed(EV-01)가 끊기지 않고 들어오나. `duplicate` 증가는 재발행 신호 | 제안 |
-| Cooking | `cooking_outbox_pending` | Gauge | CookingCompleted(EV-02) 발행이 막혔나 (정상이면 1초 안에 0, 계속 남아 있으면 이상 — 4-2 5번) | 제안 (#52 후속) |
+| Cooking | `cooking_tickets{status="waiting"\|"cooking"}` | Gauge | 지금 주방이 얼마나 밀렸나 | 구현 (#250) |
+| Cooking | `cooking_expected_wait_seconds` | Gauge | 지금 주문하면 조리 시작까지 예상 대기(CO-01과 같은 값) | 구현 (#250) |
+| Cooking | `cooking_tickets_started_total`, `cooking_tickets_completed_total` | Counter | 처리 속도가 주문 속도를 따라가나 | 구현 (#250) |
+| Cooking | `cooking_tickets_canceled_total` | Counter | 취소가 갑자기 늘었나 (Order 취소 흐름 이상 신호, CI-03) | 구현 (#250) |
+| Cooking | `cooking_order_confirmed_received_total{result="created"\|"duplicate"}` | Counter | OrderConfirmed(EV-01)가 끊기지 않고 들어오나. `duplicate` 증가는 재발행 신호 | 구현 (#250) |
+| Cooking | `cooking_outbox_pending` | Gauge | CookingCompleted(EV-02) 발행이 막혔나 (정상이면 1초 안에 0, 계속 남아 있으면 이상 — 4-2 5번) | 구현 (#250) |
+| Cooking | 위치 | — | Counter는 `service/CookingMetrics`(커밋 후 증가), Gauge는 `config/CookingMetricsConfig`(`MeterBinder`). 수집은 ServiceMonitor `cooking-service`(#278) | 구현 (#250) |
 | Order | `order_cancel_follow_up_manual_required` | Gauge | 사람이 확인해야 하는 취소 주문 수 | 구현 (#135) |
 | Order | `order_outbox_pending` | Gauge | OrderConfirmed(EV-01) 발행이 막혔나 (정상이면 1초 안에 0 — 4-2 5번) | 구현 (#272) |
 | RabbitMQ | `rabbitmq_detailed_queue_messages{queue=~".+\\.dlq"}` | Gauge (RabbitMQ) | 처리 못 한 이벤트가 있나 | 합의됨 (#52) |
@@ -194,7 +195,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 | 2 | `up{namespace="peakorder"} == 0` | 1분 | critical | 서비스가 죽었거나 지표를 가져오지 못함 | 제안 — `namespace` 라벨은 수집 설정 후 확인 | [runbook 공통 확인 순서](runbook.md#공통-확인-순서) |
 | 3 | 5xx 비율(1-1) > 5% | 5분 | critical | 서비스가 요청을 처리하지 못함 | 제안 — 기준값은 성공 기준(plan.md 5절)이 정해지면 조정 | [runbook 공통 확인 순서](runbook.md#공통-확인-순서) |
 | 4 | `increase(kube_pod_container_status_restarts_total{namespace="peakorder"}[15m]) >= 3` | — (15분 집계 구간이 대신함) | warning | 재시작 반복(메모리 초과·기동 실패) | 제안 | [runbook `CrashLoopBackOff`](runbook.md#crashloopbackoff) |
-| 5 | `max(cooking_outbox_pending) > 0`, `max(order_outbox_pending) > 0` (서비스별 규칙) | 5분 | warning | 이벤트 발행이 막힘(정상이면 1초 안에 비워짐) | 제안 (#52 후속, 각 지표 구현 후) | [runbook `Outbox`](runbook.md#outbox) |
+| 5 | `max(cooking_outbox_pending) > 0`, `max(order_outbox_pending) > 0` (서비스별 규칙) | 5분 | warning | 이벤트 발행이 막힘(정상이면 1초 안에 비워짐) | **구현 (#289)** — 규칙 `CookingOutboxPending`·`OrderOutboxPending`(`deploy/platform/monitoring/values.yaml`). Order는 ServiceMonitor 추가 후 값이 생김 | [runbook `Outbox`](runbook.md#outbox) |
 | 6 | `max(order_cancel_follow_up_manual_required) > 0` | 1분 | warning | 사람이 확인해야 하는 취소 주문이 있음 | 제안 (#135 리뷰) | `services/order-service/README.md` 수동 확인 운영 방법 |
 | 7 | `kube_deployment_status_replicas_available{namespace="peakorder"} == 0` (또는 `absent_over_time(up{…}[5m])`) | 1분 | critical | 서비스 Pod가 하나도 없음(수집 대상 자체가 사라짐 — 2번이 못 잡는 경우) | 미정 — 설치 후 어떤 방식이 동작하는지 검증 | [runbook 공통 확인 순서](runbook.md#공통-확인-순서) |
 
