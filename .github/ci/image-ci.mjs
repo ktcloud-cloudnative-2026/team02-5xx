@@ -23,7 +23,49 @@ const templates = fileURLToPath(new URL("./docker/", import.meta.url));
 const imageIdPattern = /^sha256:[a-f0-9]{64}$/;
 const step = (status, reason) => ({ status, reason });
 
-export function imagePlan(root, env) {
+// Issue #307: PR에서는 바뀐 서비스만 이미지를 빌드한다. 아래 공통 파일이 바뀌면 전체를 빌드한다.
+export const sharedImageFiles = [
+  ".github/ci/docker/",
+  ".github/ci/image-ci.mjs",
+  ".github/ci/service-config.mjs",
+  ".github/ci/services.json",
+  ".github/workflows/pr-ci.yml",
+];
+
+// PR 병합 검증 커밋(HEAD)과 그 첫 번째 부모(병합 대상 main) 사이의 변경 파일.
+// 병합 커밋이 아니거나 이력이 없으면 null을 반환해 전체를 빌드하게 한다.
+export function changedFiles(root) {
+  const run = (args) =>
+    spawnSync("git", args, { cwd: root, encoding: "utf8", timeout: 60000 });
+  if (run(["rev-parse", "--verify", "--quiet", "HEAD^2"]).status !== 0)
+    return null;
+  const diff = run(["diff", "--name-only", "-z", "HEAD^1", "HEAD"]);
+  if (diff.status !== 0 || diff.error) return null;
+  return diff.stdout.split("\0").filter(Boolean);
+}
+
+export function scopeServices(services, files) {
+  if (!Array.isArray(files)) return services;
+  if (
+    files.some((file) =>
+      sharedImageFiles.some((shared) =>
+        shared.endsWith("/") ? file.startsWith(shared) : file === shared,
+      ),
+    )
+  )
+    return services;
+  return services.filter((service) =>
+    files.some((file) => file.startsWith(service.path + "/")),
+  );
+}
+
+export function scopedToChanges(env) {
+  return (
+    env.CI_IMAGE_SCOPE === "changed" && env.GITHUB_EVENT_NAME === "pull_request"
+  );
+}
+
+export function imagePlan(root, env, listChanged = changedFiles) {
   if (
     !/^[a-zA-Z0-9][a-zA-Z0-9-]{0,38}\/[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,99}$/.test(
       env.GITHUB_REPOSITORY ?? "",
@@ -37,7 +79,7 @@ export function imagePlan(root, env) {
   if (rows.some((row) => row.status === "설정 오류")) {
     throw new Error("등록 서비스의 필수 파일·경로 설정 오류");
   }
-  return rows
+  const plan = rows
     .filter((row) => row.path !== null)
     .map(({ id, kind, path }) => ({
       id,
@@ -45,6 +87,7 @@ export function imagePlan(root, env) {
       path,
       image: `ghcr.io/${env.GITHUB_REPOSITORY.toLowerCase()}/${id}:sha-${env.GITHUB_SHA}`,
     }));
+  return scopedToChanges(env) ? scopeServices(plan, listChanged(root)) : plan;
 }
 
 export function executeCommand(command, args, options = {}) {
@@ -122,15 +165,27 @@ export function prepareContext(root, service, destination, execute) {
   }
 }
 
-export function checkImages(root, env, execute = executeCommand) {
+export function checkImages(
+  root,
+  env,
+  execute = executeCommand,
+  listChanged = changedFiles,
+) {
   root = realpathSync(root);
-  const results = imagePlan(root, env).map((service) => ({
+  const plan = imagePlan(root, env, listChanged);
+  const results = plan.map((service) => ({
     ...service,
     imageId: "",
     build: step("not_run", "검사 시작 전"),
     publish: step("not_run", "PR 검사 또는 main 게시 단계 전"),
   }));
   const report = { results, error: "", failed: false };
+  if (scopedToChanges(env)) {
+    const planned = new Set(plan.map((service) => service.id));
+    report.skipped = imagePlan(root, { ...env, CI_IMAGE_SCOPE: "" })
+      .map((service) => service.id)
+      .filter((id) => !planned.has(id));
+  }
   if (results.length === 0) return report;
   const temp = mkdtempSync(join(tmpdir(), "peakorder-images-"));
   try {
@@ -277,7 +332,7 @@ export function publishImages(root, env, report, execute = executeCommand) {
   return report;
 }
 
-export function evaluateImageJobs(needs, plan, mode) {
+export function evaluateImageJobs(needs, plan, mode, options = {}) {
   if (!["pr", "main"].includes(mode))
     throw new Error("이미지 검사 실행 모드 오류");
   const active = mode === "pr" ? "image_ci" : "image_publish";
@@ -297,7 +352,9 @@ export function evaluateImageJobs(needs, plan, mode) {
   }
   if (needs[active].result !== "success")
     throw new Error("필수 이미지 작업 실패·취소·비정상 생략");
-  if (plan.length === 0) throw new Error("이미지 대상 0개인데 작업이 실행됨");
+  // PR 변경 범위 빌드(#307)에서는 바뀐 서비스가 없어 대상 0개로 실행·성공할 수 있다.
+  if (plan.length === 0 && !(options.scoped && mode === "pr"))
+    throw new Error("이미지 대상 0개인데 작업이 실행됨");
   const results = JSON.parse(needs[active].outputs?.image_results ?? "");
   validateImageResults(plan, results, mode === "main");
   return { normalSkips, results };
@@ -311,11 +368,14 @@ export function imageSummary(report) {
   const labels = { success: "성공", failure: "실패", not_run: "미실행" };
   const lines = ["## 컨테이너 이미지 CI", ""];
   if (report.error) lines.push("오류 — " + cell(report.error), "");
+  const skipped = Array.isArray(report.skipped) ? report.skipped : [];
   if (report.results.length === 0)
     lines.push(
       report.error
         ? "이미지 빌드 대상 확인 불가·미실행"
-        : "대상 없음·미실행 — 등록된 서비스 0개",
+        : skipped.length
+          ? "이번 PR에서 바뀐 서비스가 없어 이미지 빌드를 생략했습니다."
+          : "대상 없음·미실행 — 등록된 서비스 0개",
     );
   else {
     lines.push(
@@ -340,6 +400,8 @@ export function imageSummary(report) {
       );
     }
   }
+  if (skipped.length)
+    lines.push("", "변경 없음으로 생략: " + skipped.map(cell).join(", "));
   return lines.join("\n") + "\n";
 }
 
