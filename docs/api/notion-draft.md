@@ -242,7 +242,7 @@ PAUSED 조회 허용·HIDDEN 비노출, 상세 옵션과 오류 계약은
 
 - **확정·구현 완료(main 병합):** Cooking 장애 시 신규 주문·결제 차단. [PR #56](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/56)은 합의된 `GET /actuator/health`(인증 없음)를 5초 주기·2초 타임아웃으로 확인하고, 3회 연속 실패 시 OR-01·OR-02에 `503 COOKING_UNAVAILABLE`을 반환합니다. 1회 성공 시 해제하며, 기동 직후 정상으로 시작합니다. 조회·확정 주문의 결제 재호출·이벤트 처리는 차단하지 않습니다. 결제를 이미 요청한 적이 있는 주문도 차단하지 않고(같은 키로 기존 결과를 확인하는 것이라 새 결제가 아님) 결과 확인·복구를 이어서 합니다. 이 수치는 해당 PR의 현재 실행 정책이며 운영 조정은 별도 합의 대상입니다.
 - **확정·구현 완료(main 병합):** 조리 시작 전 취소와 Cooking의 최종 판단(CI-03)이 확정됐고, 주문 취소 API(OR-05)와 재고 복원·환불 후속 처리는 [PR #61](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)에서 main에 병합됐습니다. 호출 대상인 Payment(PI-03, PR #71)와 Inventory(II-03·II-04, PR #115) 구현도 main에 병합됐지만, Order와 이 서비스들을 함께 띄워 실제 연동을 확인한 것은 아직 없습니다(서비스별 가짜 서버·담당자 대조까지 확인). 처리 방식은 아래 "주문 취소(OR-05) 처리" 표를 따릅니다.
-- **미확정:** 사용자 식별·권한 검증 위치. 현재 Order PR의 `X-User-Id`는 임시 헤더이며 JWT 검증이나 CUSTOMER 권한 보장이 아닙니다.
+- **확정(이슈 #112, Gateway 결정 기록 2026-11-23):** Gateway가 JWT를 검증해 `X-User-Id`(JWT `sub`, 회원 ID 숫자)와 `X-User-Role`(`CUSTOMER`·`STORE_ADMIN`)을 전달하고, 서비스가 역할·소유권을 판단합니다. Order 반영은 이슈 #263입니다. 아래 "사용자 식별" 항목을 따릅니다.
 - 확정된 내부 취소·재고 응답 계약은 아래 Inventory·Cooking 절을 따릅니다. Payment 환불(PI-03) 응답은 [Payment PR #71](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/71)의 구현을 확인했으며, 아래 Payment 절의 "Payment 내부 계약 확인"을 따릅니다. Payment 담당(정진혁)이 Order #61·#135 리뷰에서 호출·재시도·영구 실패 구분을 확인했고, #71은 main에 병합됐습니다.
 
 ### Order 외부 API 상세 (2026-11-18)
@@ -261,8 +261,8 @@ Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·
 | OR-08 | 쿼리(모두 선택, 함께 쓰면 AND) `from`·`to`(`yyyy-MM-dd`, KST), `orderNo`, `status`, `manualReviewRequired`, `page`, `size`. 자세한 규칙은 아래 "관리자 주문 조회" | `200`, `data`에 `items[]`(`orderId`, `orderNo`, `userId`, `status`, `totalAmount`, `orderedAt`, `canceledAt`, `itemCount`, `representativeMenuName`, `manualReviewRequired`)와 `page`, `size`, `totalElements` | 모든 사용자의 주문을 최신순으로 조회. 값이 없는 필드는 응답에서 생략(`manualReviewRequired`는 항상 포함). **main 병합**(PR #170, 이슈 #168)이며 인증 전에는 설정으로 꺼져 있음 |
 | OR-09 | 경로 `orderId` | `200`, `data`에 OR-04의 주문·항목 값에 더해 `userId`, `cancelReason`, `failReason`, `paymentId`, `cancelRequestedAt`, `stockRestoredAt`, `refundedAt`, `manualReviewRequired`, `manualReviewReason`, `cancelFollowUpAttempts` | 모든 사용자의 주문을 조회. 없는 주문은 `404 ORDER_NOT_FOUND`. Cooking을 호출하지 않아 `cooking`·`expectedWaitSec`·`holdExpiresAt`은 없음. 값이 없는 필드는 응답에서 생략. **main 병합**(PR #170), 인증 전에는 설정으로 꺼져 있음 |
 
-- **관리자 API(OR-06~09) 노출 정책:** 관리자 권한(STORE_ADMIN) 검사 방식은 Auth·Gateway·JWT 공통 계약(이슈 #112)에서 정해지므로, 그 전에는 설정을 켜면 **인증 없이 누구나** 영업을 열고 닫을 수 있고, 전체 사용자의 주문(결제 ID 포함)을 조회할 수 있습니다(OR-08·09는 `manualReviewRequired` 등 취소·환불 정보도 포함). OR-06·07과 OR-08·09는 같은 설정(`order.admin.enabled`) 하나로 함께 켜고 끕니다. 그래서 `order.admin.enabled`(환경 변수 `ORDER_ADMIN_ENABLED`, 기본 `false`)는 꺼 두는 것이 기본이고, 꺼져 있으면 경로가 없는 것처럼 `404 NOT_FOUND`입니다. **인증이 구현되기 전에는 격리된 로컬 검증 환경에서만 켜며, 외부에서 접근할 수 있거나 여러 사람이 함께 쓰는 dev와 운영(prod)에서는 켜지 않습니다.** (dev에서 테스트가 필요하면 `kubectl port-forward`처럼 클러스터 밖에서 열리지 않는 방식으로만 접근하고, Gateway 라우트에 관리자 경로가 없는지 함께 확인합니다.) Cooking 관리자 API(`COOKING_ADMIN_ENABLED`)와 같은 방식이며, 인증 적용은 #112 결정 후 별도 작업입니다. Gateway 담당(정진혁)은 Order HTTPRoute를 `/api/v1/orders` 등 필요한 경로만 등록하고 `/api/v1/admin/**`은 #112 전까지 넣지 않기로 했습니다(Cooking 관리자 API도 같은 기준). 보안 리뷰(이태훈)의 승인 범위는 "기본 비활성 임시 구현"이며, 위 조건 밖에서 켜는 것은 승인되지 않았습니다.
-- 사용자 식별은 임시 `X-User-Id` 헤더입니다. 클라이언트가 임의로 보낼 수 있으므로 인증 교체 전에는 외부에 노출하지 않습니다(위 **미확정** 항목).
+- **관리자 API(OR-06~09) 노출 정책:** 관리자 권한(STORE_ADMIN) 확인은 신원 헤더로 구현했지만(이슈 #263), 이 헤더는 Gateway의 JWT 검증이 dev에서 확인되기 전에는 믿을 수 없으므로 설정을 켜면 **신원을 위조해 누구나** 영업을 열고 닫을 수 있고, 전체 사용자의 주문(결제 ID 포함)을 조회할 수 있습니다(OR-08·09는 `manualReviewRequired` 등 취소·환불 정보도 포함). OR-06·07과 OR-08·09는 같은 설정(`order.admin.enabled`) 하나로 함께 켜고 끕니다. 그래서 `order.admin.enabled`(환경 변수 `ORDER_ADMIN_ENABLED`, 기본 `false`)는 꺼 두는 것이 기본이고, 꺼져 있으면 경로가 없는 것처럼 `404 NOT_FOUND`입니다. **인증이 구현되기 전에는 격리된 로컬 검증 환경에서만 켜며, 외부에서 접근할 수 있거나 여러 사람이 함께 쓰는 dev와 운영(prod)에서는 켜지 않습니다.** (dev에서 테스트가 필요하면 `kubectl port-forward`처럼 클러스터 밖에서 열리지 않는 방식으로만 접근하고, Gateway 라우트에 관리자 경로가 없는지 함께 확인합니다.) Cooking 관리자 API(`COOKING_ADMIN_ENABLED`)와 같은 방식이며, 인증 적용은 #112 결정 후 별도 작업입니다. Gateway 담당(정진혁)은 Order HTTPRoute를 `/api/v1/orders` 등 필요한 경로만 등록하고 `/api/v1/admin/**`은 #112 전까지 넣지 않기로 했습니다(Cooking 관리자 API도 같은 기준). 보안 리뷰(이태훈)의 승인 범위는 "기본 비활성 임시 구현"이며, 위 조건 밖에서 켜는 것은 승인되지 않았습니다.
+- **사용자 식별(이슈 #263):** `X-User-Id`(양의 정수)와 `X-User-Role`(`CUSTOMER`·`STORE_ADMIN`) 헤더를 씁니다. 클라이언트가 보낸 같은 이름의 헤더는 Gateway가 제거합니다. 두 헤더 중 하나라도 없거나 두 번 이상 오거나 형식이 틀리면 `401 UNAUTHORIZED`(형식 오류를 역할 판단보다 먼저, 요청 본문 검증보다도 먼저 확인), 고객 API(OR-01~05)에 `STORE_ADMIN`이 오면 `403 FORBIDDEN`(관리자 계정은 주문·결제 불가), 관리자 API(OR-06~09)에 `STORE_ADMIN`이 아니면 `403 FORBIDDEN`입니다. 다른 사용자의 주문은 기존대로 `404 ORDER_NOT_FOUND`입니다. 이 헤더는 Gateway를 거칠 때만 믿을 수 있으므로, Gateway의 JWT 검증이 dev에서 확인되고 Order 라우트가 합의되기 전에는 서비스를 외부에 직접 노출하지 않습니다.
 - 주문번호(`orderNo`)는 `yyMMdd-0001` 형식(날짜별 일련번호)이며 결제·재고 확정 시 발급합니다. 형식은 Order 구현 기준이며 팀 최종 확정은 아닙니다.
 - 조리 시간은 Order DB에 저장하지 않습니다. 결제를 시작할 때 Menu(MI-01)에서 다시 받아 `OrderConfirmed` 이벤트(`cookTimeSec`, 옵션 `extraCookTimeSec`)에 담아 Cooking에 전달합니다.
 
@@ -445,6 +445,8 @@ OR-08 검색 조건 (모두 선택, 함께 쓰면 AND)
 | HTTP | errorCode | 의미 |
 | --- | --- | --- |
 | 400 | `INVALID_REQUEST` | 요청 값 오류. 관리자 목록(OR-08)에서는 기간 형식·31일 초과·시작이 종료보다 늦음·상태 값 오류도 포함 |
+| 401 | `UNAUTHORIZED` | 신원 헤더(`X-User-Id`·`X-User-Role`)가 없거나 중복이거나 형식이 틀림(Gateway 우회 대비 방어, Gateway 자체의 JWT 검증 실패 401과 구분) |
+| 403 | `FORBIDDEN` | 역할 부족(고객 API에 `STORE_ADMIN`, 관리자 API에 `STORE_ADMIN`이 아닌 역할) |
 | 404 | `ORDER_NOT_FOUND` | 없는 주문 또는 다른 사용자의 주문(관리자 상세 OR-09는 없는 주문만) |
 | 404 | `NOT_FOUND` | 관리자 API(OR-06~09)가 설정(`order.admin.enabled`)으로 꺼져 있어 경로가 존재하지 않음 |
 | 409 | `STORE_NOT_ACCEPTING_ORDERS` | 매장 영업 종료·주문 미접수 |
