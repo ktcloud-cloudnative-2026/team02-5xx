@@ -11,6 +11,13 @@ on:
 permissions:
   contents: read
 
+# Issue #307: 같은 PR에서 새 실행(push·본문 수정·Ready 전환)이 시작되면 이전 실행을 자동 취소한다.
+# main push는 커밋마다 이미지를 게시해야 하므로 SHA별 그룹으로 두고 취소하지 않는다.
+# 취소된 실행에서도 CI Final은 always()로 실패를 남기므로, 취소 실행이 통과로 오인되지 않는다.
+concurrency:
+  group: pr-ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('push-{0}', github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   readiness:
     name: Service readiness

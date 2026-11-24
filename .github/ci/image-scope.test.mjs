@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { runInNewContext } from "node:vm";
 import {
   changedFiles,
   checkImages,
@@ -318,4 +319,44 @@ test("Java 코드 검사와 이미지 빌드는 같은 다운로드 재시도 �
   );
   assert.equal(gradleRetryArgs.length, 2);
   for (const arg of gradleRetryArgs) assert.ok(dockerfile.includes(arg), arg);
+});
+
+test("같은 PR의 이전 실행은 자동 취소하고 main push는 커밋마다 끝까지 실행한다", () => {
+  const workflow = readFileSync(
+    new URL("../workflows/pr-ci.yml", import.meta.url),
+    "utf8",
+  );
+  const block = workflow.match(/^concurrency:\n((?: {2}.+\n)+)/m)?.[1];
+  assert.ok(block, "워크플로 수준 concurrency가 있어야 합니다");
+  const expr = (key) =>
+    block.match(new RegExp(`^ {2}${key}: (.+)$`, "m"))[1].trim();
+  const groupTemplate = expr("group");
+  const cancelExpression =
+    expr("cancel-in-progress").match(/^\$\{\{(.+)\}\}$/)[1];
+  const format = (text, ...values) =>
+    text.replace(/\{(\d+)\}/g, (_, index) => String(values[index]));
+  const evaluate = (github) => ({
+    group: groupTemplate.replace(/\$\{\{(.+?)\}\}/g, (_, code) =>
+      runInNewContext(code, { github, format }),
+    ),
+    cancel: runInNewContext(cancelExpression, { github }),
+  });
+  const pr = (number) => ({
+    event_name: "pull_request",
+    event: { pull_request: { number } },
+    sha: "c".repeat(40),
+  });
+  const push = (sha) => ({ event_name: "push", event: {}, sha });
+  assert.deepEqual(evaluate(pr(12)), { group: "pr-ci-pr-12", cancel: true });
+  assert.notEqual(evaluate(pr(12)).group, evaluate(pr(13)).group);
+  assert.deepEqual(evaluate(push("a".repeat(40))), {
+    group: "pr-ci-push-" + "a".repeat(40),
+    cancel: false,
+  });
+  assert.notEqual(
+    evaluate(push("a".repeat(40))).group,
+    evaluate(push("b".repeat(40))).group,
+  );
+  const finalJob = workflow.split("\n  final:")[1].split(/\n {2}(?=\S)/)[0];
+  assert.match(finalJob, /if: \$\{\{ always\(\) \}\}/);
 });

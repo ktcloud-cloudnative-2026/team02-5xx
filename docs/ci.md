@@ -395,7 +395,7 @@ inventory·menu·web-frontend처럼 Argo CD 자동 Sync가 아닌 서비스는 P
 
 `.github/ci/dev-image-tags.test.mjs`가 sha 태그 읽기·교체, `latest`·짧은 태그 거부, 게시 성공 이미지만 선택, 소스 변경 유무와
 알 수 없는 이전 커밋 구분, 변경 없음 시 미수정, 토큰 없음 시 PR 미생성, 대체 PR 정리 범위, 워크플로 실행 조건과 권한을 재현합니다.
-기존 211개와 함께 총 227개를 실행합니다. Issue #307의 `.github/ci/image-scope.test.mjs` 11개를 더해 총 238개입니다.
+기존 211개와 함께 총 227개를 실행합니다. Issue #307의 `.github/ci/image-scope.test.mjs` 12개를 더해 총 239개입니다.
 
 ## 외부 다운로드 실패 줄이기 — Issue #307
 
@@ -414,6 +414,10 @@ Maven Central `429 Too Many Requests`와 Gradle 배포본 다운로드 timeout�
 
 - 각 Java 서비스의 `gradle/wrapper/gradle-wrapper.properties` `networkTimeout`을 10초에서 60초로 늘렸습니다.
 - Java 서비스 CI(코드 검사)와 Docker 이미지 빌드의 Gradle 실행에 `-Dorg.gradle.internal.repository.max.retries=5`, `-Dorg.gradle.internal.repository.initial.backoff=2000`을 지정해, 의존성 저장소의 일시적 네트워크 오류 재시도를 늘렸습니다(Gradle 기본값 3회·125ms). 429 응답이 재시도 대상인지는 실제 실행 결과로 확인합니다.
+
+### 겹치는 실행 자동 취소
+
+워크플로 수준 `concurrency`로 같은 PR의 이전 실행을 새 실행이 시작될 때 자동 취소합니다. 커밋 push, PR 본문 수정(`edited`), Ready 전환이 연달아 일어나도 마지막 실행 하나만 끝까지 돕니다. main push는 커밋마다 이미지를 게시해야 하므로 SHA별 그룹으로 두고 취소하지 않습니다. 취소된 실행에서도 `CI Final`은 `always()` 조건으로 실행되어 실패를 남기므로, 취소된 실행이 통과로 오인되지 않습니다.
 
 ### 로그 정리
 
