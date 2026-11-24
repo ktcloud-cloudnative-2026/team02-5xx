@@ -3,6 +3,7 @@ import { calculateTotal, formatPrice, MAX_QUANTITY } from '../menu.js';
 import useDialog from '../useDialog.js';
 import { describeItem } from '../cart.js';
 import MenuPhoto from './MenuPhoto.jsx';
+import { stockStatus } from '../stockAvailability.js';
 
 export default function MenuDetail({
   adding = false,
@@ -15,6 +16,10 @@ export default function MenuDetail({
   loading = false,
   failure = '',
   onRetry,
+  stock,
+  onStockRetry,
+  cartQuantity = 0,
+  stockChecking = false,
 }) {
   const { close: closeDetail, ...dialog } = useDialog(onClose);
   const options = menu?.options.filter((option) => option.active) ?? [];
@@ -30,6 +35,12 @@ export default function MenuDetail({
   }, [menu]);
   const selectedOption = options.find((option) => option.id === optionId);
   const available = menu?.status === 'ON_SALE';
+  const availability = stock
+    ? stockStatus(menu, stock, quantity)
+    : { blocked: false, label: '' };
+  const addAvailability = stock
+    ? stockStatus(menu, stock, quantity + cartQuantity)
+    : availability;
 
   const selection = {
     menuId: menu?.id,
@@ -129,6 +140,22 @@ export default function MenuDetail({
                 )}
               </div>
               <div className="detail-selection">
+                {stock && (
+                  <div className="stock-notice" role="status">
+                    <p>
+                      {availability.label ||
+                        `주문 가능 · 가용 ${availability.availableQty}개`}
+                    </p>
+                    {!availability.blocked && addAvailability.blocked && (
+                      <p>장바구니 합산 시 {addAvailability.label}</p>
+                    )}
+                    {stock.error && (
+                      <button className="text-button" onClick={onStockRetry}>
+                        재고 다시 확인
+                      </button>
+                    )}
+                  </div>
+                )}
                 <fieldset className="options">
                   <legend>옵션</legend>
                   {menu.options.length ? (
@@ -210,19 +237,30 @@ export default function MenuDetail({
                   role="status"
                   aria-live="polite"
                 >
-                  {selectionError || feedback}
+                  {stockChecking
+                    ? '주문 전 최신 재고 확인 중…'
+                    : selectionError || feedback}
                 </p>
                 <div className="detail-actions">
                   <button
                     className="pill-button"
-                    disabled={Boolean(selectionError) || adding}
+                    disabled={
+                      Boolean(selectionError) ||
+                      adding ||
+                      addAvailability.blocked ||
+                      stockChecking
+                    }
                     onClick={() => onAdd(selection)}
                   >
                     {adding ? '메뉴 확인 중…' : '장바구니에 담기'}
                   </button>
                   <button
                     className="text-button"
-                    disabled={Boolean(selectionError)}
+                    disabled={
+                      Boolean(selectionError) ||
+                      availability.blocked ||
+                      stockChecking
+                    }
                     onClick={() => onOrder(selection)}
                   >
                     이 메뉴만 바로 주문

@@ -5,6 +5,7 @@ import { build } from 'vite';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { menuApiHandler } from './menu-api-server.mjs';
+import { inventoryFixtureHandler } from './inventory-fixture.mjs';
 
 export async function startUiFixture({
   entryFile,
@@ -34,6 +35,7 @@ export async function startUiFixture({
     .join('');
   const server = http.createServer(async (request, response) => {
     if (handleRequest && (await handleRequest(request, response))) return;
+    if (inventoryFixtureHandler(request, response)) return;
     if (menuApiHandler(request, response)) return;
     const url = new URL(request.url, 'http://127.0.0.1');
     if (url.pathname === '/') {
