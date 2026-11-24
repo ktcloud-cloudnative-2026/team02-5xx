@@ -26,6 +26,8 @@ import CartOverlay from './components/CartOverlay.jsx';
 import LoginModal from './components/LoginModal.jsx';
 import CheckoutPage from './components/CheckoutPage.jsx';
 import OrderHistoryPage from './orders/OrderHistoryPage.jsx';
+import AccountPage from './account/AccountPage.jsx';
+import { useAccountRoute } from './account/accountRoute.js';
 import { useOrdersRoute, ordersHref } from './orders/ordersRoute.js';
 import {
   createCheckoutFlow,
@@ -45,6 +47,7 @@ export default function App({
   checkoutAdapter,
 }) {
   const ordersRoute = useOrdersRoute();
+  const accountRoute = useAccountRoute();
   const session = useSyncExternalStore(
     sessionSource.subscribe,
     sessionSource.getSnapshot,
@@ -168,7 +171,7 @@ export default function App({
 
   useEffect(() => {
     const onHistory = () => {
-      if (window.location.hash.startsWith('#orders')) setSelectedId(null);
+      if (/^#(orders|account)/.test(window.location.hash)) setSelectedId(null);
       if (window.location.hash === '#checkout' && checkoutRef.current) return;
       const completed =
         checkoutRef.current?.flow.getSnapshot().stage === 'paid';
@@ -216,6 +219,11 @@ export default function App({
       setLoginIntent(null);
     }
   }, [authenticated, checkout]);
+
+  useEffect(() => {
+    if (session?.reason === 'password-changed')
+      setNotice('비밀번호를 변경했어요. 새 비밀번호로 다시 로그인해 주세요.');
+  }, [session?.reason]);
 
   useEffect(() => {
     if (
@@ -493,9 +501,13 @@ export default function App({
         </div>
         <nav aria-label="고객 메뉴">
           <a
-            className={`nav-item ${page !== 'cart' && !ordersRoute ? 'active' : ''}`}
+            className={`nav-item ${page !== 'cart' && !ordersRoute && !accountRoute ? 'active' : ''}`}
             href="#menu-list"
-            aria-current={page !== 'cart' && !ordersRoute ? 'page' : undefined}
+            aria-current={
+              page !== 'cart' && !ordersRoute && !accountRoute
+                ? 'page'
+                : undefined
+            }
           >
             <svg
               viewBox="0 0 24 24"
@@ -541,9 +553,26 @@ export default function App({
             장바구니
             {cart.items.length > 0 ? ` (${cart.items.length})` : ''}
           </button>
+          <a
+            className={`nav-item ${accountRoute ? 'active' : ''}`}
+            href="#account"
+            aria-current={accountRoute ? 'page' : undefined}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 22v-3a8 8 0 0 1 16 0v3" />
+            </svg>
+            마이페이지
+          </a>
         </nav>
       </aside>
-      <main className="menu-page" hidden={Boolean(ordersRoute)}>
+      <main className="menu-page" hidden={Boolean(ordersRoute || accountRoute)}>
         {page !== 'cart' && (
           <p className="action-notice" role="status" aria-live="polite">
             {notice}
@@ -705,6 +734,9 @@ export default function App({
           </section>
         </>
       </main>
+      {accountRoute && (
+        <AccountPage route={accountRoute} sessionSource={sessionSource} />
+      )}
       {ordersRoute && (
         <OrderHistoryPage
           route={ordersRoute}

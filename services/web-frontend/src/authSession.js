@@ -21,6 +21,8 @@ export function createAuthSession({ api = createAuthApi() } = {}) {
   let loginFlight = null;
   let logoutFlight = null;
   let restoration = null;
+  let accountFlight = null;
+  let profileRevision = 0;
   const listeners = new Set();
   const publish = (next) => {
     snapshot = Object.freeze(next);
@@ -37,6 +39,7 @@ export function createAuthSession({ api = createAuthApi() } = {}) {
   };
   async function verified(data, epoch, signal) {
     check(epoch, signal);
+    const revision = profileRevision;
     const user = await api.me(data.accessToken, { signal });
     check(epoch, signal);
     if (user.id !== data.user.id)
@@ -48,7 +51,13 @@ export function createAuthSession({ api = createAuthApi() } = {}) {
     publish({
       authenticated: true,
       phase: 'authenticated',
-      user,
+      user:
+        revision === profileRevision
+          ? user
+          : Object.freeze({
+              ...user,
+              nickname: snapshot.user?.nickname ?? null,
+            }),
       role: user.role,
     });
     return snapshot;
@@ -115,14 +124,15 @@ export function createAuthSession({ api = createAuthApi() } = {}) {
     return operation;
   }
 
-  async function authorized(operation, retryOn401) {
+  async function authorized(operation, retryOn401, signal) {
     const epoch = generation;
     const originalToken = accessToken;
     try {
       const result = await operation(originalToken);
-      check(epoch);
+      check(epoch, signal);
       return result;
     } catch (error) {
+      if (signal?.aborted) throw cancelled();
       if (error.status !== 401 || generation !== epoch) throw error;
       if (!retryOn401) {
         clear('expired');
@@ -130,17 +140,50 @@ export function createAuthSession({ api = createAuthApi() } = {}) {
       }
       // Another concurrent 401 may already have completed rotation.
       if (!accessToken || accessToken === originalToken) await refresh();
-      check(epoch);
+      check(epoch, signal);
       if (!accessToken) throw error;
       try {
         const result = await operation(accessToken);
-        check(epoch);
+        check(epoch, signal);
         return result;
       } catch (retryError) {
         if (retryError.status === 401 && generation === epoch) clear('expired');
         throw retryError;
       }
     }
+  }
+
+  function changeAccount(operation, { signal, password = false } = {}) {
+    if (accountFlight || loginFlight || logoutFlight || !snapshot.authenticated)
+      return Promise.reject(busy());
+    if (snapshot.user.role !== 'CUSTOMER')
+      return Promise.reject(authFailure(403));
+    const epoch = generation;
+    const owner = snapshot.user.id;
+    profileRevision++;
+    const flight = Promise.resolve()
+      .then(async () => {
+        check(epoch, signal);
+        const result = await authorized(operation, false, signal);
+        check(epoch);
+        if (password) {
+          clear('password-changed');
+        } else {
+          check(epoch, signal);
+          if (result.id !== owner || result.role !== 'CUSTOMER')
+            throw new AuthError('회원정보 응답이 일치하지 않아요.', {
+              kind: 'protocol',
+            });
+          profileRevision++;
+          publish({ ...snapshot, user: result, role: result.role });
+        }
+        return result;
+      })
+      .finally(() => {
+        if (accountFlight === flight) accountFlight = null;
+      });
+    accountFlight = flight;
+    return flight;
   }
 
   return Object.freeze({
@@ -158,10 +201,29 @@ export function createAuthSession({ api = createAuthApi() } = {}) {
     login,
     logout,
     refresh,
-    async loadUser() {
+    updateProfile(nickname, { signal } = {}) {
+      return changeAccount(
+        (token) => api.updateProfile(token, nickname, { signal }),
+        { signal },
+      );
+    },
+    changePassword(input) {
+      // Let a dispatched password change finish even if its screen is left:
+      // a successful 204 must always invalidate local authentication.
+      return changeAccount((token) => api.changePassword(token, input), {
+        password: true,
+      });
+    },
+    async loadUser({ signal } = {}) {
       const epoch = generation;
-      const user = await authorized((token) => api.me(token), true);
-      check(epoch);
+      const revision = profileRevision;
+      const user = await authorized(
+        (token) => api.me(token, { signal }),
+        true,
+        signal,
+      );
+      check(epoch, signal);
+      if (revision !== profileRevision) throw cancelled();
       if (!snapshot.authenticated || user.id !== snapshot.user.id) {
         clear('expired');
         throw new AuthError('인증 사용자 응답이 일치하지 않아요.', {
