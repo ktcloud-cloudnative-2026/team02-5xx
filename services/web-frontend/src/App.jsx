@@ -624,10 +624,16 @@ export default function App({
             홈
           </a>
           <a
-            className={`nav-item ${page !== 'cart' && !ordersRoute && !accountRoute && !home ? 'active' : ''}`}
+            className={`nav-item ${
+              page !== 'cart' && !ordersRoute && !accountRoute && !home
+                ? 'active'
+                : ''
+            }`}
             href="#menu-list"
             aria-current={
-              page !== 'cart' && !ordersRoute && !accountRoute && !home ? 'page' : undefined
+              page !== 'cart' && !ordersRoute && !accountRoute && !home
+                ? 'page'
+                : undefined
             }
           >
             <svg
@@ -737,7 +743,10 @@ export default function App({
           congestionApi={congestionApi}
         />
       )}
-      <main className="menu-page" hidden={Boolean(ordersRoute || accountRoute) || home}>
+      <main
+        className="menu-page"
+        hidden={Boolean(ordersRoute || accountRoute) || home}
+      >
         {page !== 'cart' && (
           <p className="action-notice" role="status" aria-live="polite">
             {notice}
