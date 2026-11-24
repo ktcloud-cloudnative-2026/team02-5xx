@@ -8,9 +8,11 @@ import com.peakorder.menu.entity.Category;
 import com.peakorder.menu.entity.Menu;
 import com.peakorder.menu.entity.MenuOption;
 import com.peakorder.menu.entity.MenuStatus;
+import com.peakorder.menu.repository.AdminMenuQueryRepository;
 import com.peakorder.menu.repository.CategoryRepository;
 import com.peakorder.menu.repository.MenuOptionRepository;
 import com.peakorder.menu.repository.MenuRepository;
+import com.peakorder.menu.repository.MenuStatusRepository;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -35,6 +37,10 @@ import tools.jackson.databind.ObjectMapper;
     properties =
         "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration")
 class CustomerMenuHttpTests {
+  @MockitoBean MenuStatusRepository statusRepository;
+
+  @MockitoBean AdminMenuQueryRepository adminQueryRepository;
+
   @LocalServerPort private int port;
   @MockitoBean private MenuRepository menus;
   @MockitoBean private CategoryRepository categories;
