@@ -32,7 +32,12 @@ import CartOverlay from './components/CartOverlay.jsx';
 import LoginModal from './components/LoginModal.jsx';
 import CheckoutPage from './components/CheckoutPage.jsx';
 import OrderHistoryPage from './orders/OrderHistoryPage.jsx';
-import { useOrdersRoute, ordersHref } from './orders/ordersRoute.js';
+import {
+  useLocationHash,
+  parseOrdersRoute,
+  ordersHref,
+} from './orders/ordersRoute.js';
+import CustomerHome from './home/CustomerHome.jsx';
 import {
   createCheckoutFlow,
   customerKey,
@@ -50,8 +55,11 @@ export default function App({
   menuApi = defaultMenuApi,
   inventoryApi = defaultInventoryApi,
   checkoutAdapter,
+  congestionApi,
 }) {
-  const ordersRoute = useOrdersRoute();
+  const hash = useLocationHash();
+  const ordersRoute = parseOrdersRoute(hash);
+  const home = ['', '#', '#home'].includes(hash);
   const session = useSyncExternalStore(
     sessionSource.subscribe,
     sessionSource.getSnapshot,
@@ -84,12 +92,63 @@ export default function App({
   const lastMenuId = useRef(null);
   const previousPage = useRef(page);
   const menuScroll = useRef(0);
+  const section = home ? 'home' : ordersRoute ? 'orders' : 'menu';
+  const sectionRef = useRef(section);
+  const sectionScroll = useRef({ home: 0, menu: 0, orders: 0 });
+  useEffect(() => {
+    const rememberScroll = () => {
+      if (!cartOpen.current && !checkoutRef.current)
+        sectionScroll.current[sectionRef.current] = window.scrollY;
+    };
+    window.addEventListener('scroll', rememberScroll, { passive: true });
+    return () => window.removeEventListener('scroll', rememberScroll);
+  }, []);
+  useEffect(() => {
+    if (sectionRef.current === section) return;
+    sectionRef.current = section;
+    const frame = requestAnimationFrame(() => {
+      window.scrollTo(0, sectionScroll.current[section]);
+      if (!document.querySelector('dialog[open]'))
+        document
+          .getElementById(
+            {
+              home: 'home-heading',
+              menu: 'menu-list',
+              orders: 'orders-heading',
+            }[section],
+          )
+          ?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [section]);
   const [categoryId, setCategoryId] = useState('all');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('default');
   const [selectedId, setSelectedId] = useState(null);
   const openerRef = useRef(null);
   const cartOpenerRef = useRef(null);
+  const cartFromHome = useRef(false);
+  const restoreCartFocus = useRef(false);
+  useEffect(() => {
+    if (hash === '#cart' || !restoreCartFocus.current) return;
+    // Fragment navigation can move focus after the native dialog closes.
+    const frame = requestAnimationFrame(() => {
+      restoreCartFocus.current = false;
+      const opener = cartOpenerRef.current;
+      const target =
+        opener?.isConnected && opener.getClientRects().length
+          ? opener
+          : document.getElementById(
+              home
+                ? 'home-heading'
+                : ordersRoute
+                  ? 'orders-heading'
+                  : 'menu-list',
+            );
+      target?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [hash, page, home, Boolean(ordersRoute)]);
   const listKey = JSON.stringify([categoryId, query, sort]);
   const listing = useMenuRequest(
     listKey,
@@ -309,6 +368,7 @@ export default function App({
 
   function navigate(nextPage) {
     if (nextPage === 'cart' && page !== 'cart') {
+      cartFromHome.current = ['', '#', '#home'].includes(window.location.hash);
       menuScroll.current = window.scrollY;
       window.history.pushState(
         { peakOrderPage: nextPage, cartOverlay: true },
@@ -323,6 +383,7 @@ export default function App({
 
   function closeCart() {
     cancelStockCheck();
+    restoreCartFocus.current = true;
     // Update React first: a pending popstate must not reopen anonymous login.
     pendingIntent.current = null;
     setLoginIntent(null);
@@ -578,20 +639,80 @@ export default function App({
     }
   }
 
+  function navigateSection(event) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.shiftKey
+    )
+      return;
+    const link = event.target.closest('a');
+    const href = link?.getAttribute('href');
+    if (!['#home', '#menu-list', '#orders'].includes(href)) return;
+    event.preventDefault();
+    // Save before navigating: native anchor scrolling must not overwrite the previous page's position.
+    sectionScroll.current[sectionRef.current] = window.scrollY;
+    if (window.location.hash !== href)
+      window.history.pushState({ peakOrderPage: href.slice(1) }, '', href);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }
+
   return (
-    <div className="app-shell">
-      <a className="skip-link" href="#menu-list">
-        메뉴 목록으로 건너뛰기
+    <div className="app-shell" onClick={navigateSection}>
+      <a
+        className="skip-link"
+        href={
+          home
+            ? '#home-heading'
+            : ordersRoute
+              ? '#orders-heading'
+              : '#menu-list'
+        }
+        onClick={(event) => {
+          event.preventDefault();
+          const target = document.getElementById(
+            home
+              ? 'home-heading'
+              : ordersRoute
+                ? 'orders-heading'
+                : 'menu-list',
+          );
+          target?.focus();
+          target?.scrollIntoView();
+        }}
+      >
+        본문으로 건너뛰기
       </a>
       <aside className="sidebar" aria-label="피크오더">
-        <div className="brand" aria-label="피크오더">
+        <a className="brand" aria-label="피크오더 홈" href="#home">
           로고
-        </div>
+        </a>
         <nav aria-label="고객 메뉴">
           <a
-            className={`nav-item ${page !== 'cart' && !ordersRoute ? 'active' : ''}`}
+            className={`nav-item ${home ? 'active' : ''}`}
+            href="#home"
+            aria-current={home ? 'page' : undefined}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <path d="m3 10 9-7 9 7v11h-6v-7H9v7H3z" />
+            </svg>
+            홈
+          </a>
+          <a
+            className={`nav-item ${page !== 'cart' && !ordersRoute && !home ? 'active' : ''}`}
             href="#menu-list"
-            aria-current={page !== 'cart' && !ordersRoute ? 'page' : undefined}
+            aria-current={
+              page !== 'cart' && !ordersRoute && !home ? 'page' : undefined
+            }
           >
             <svg
               viewBox="0 0 24 24"
@@ -639,7 +760,51 @@ export default function App({
           </button>
         </nav>
       </aside>
-      <main className="menu-page" hidden={Boolean(ordersRoute)}>
+      <header className="customer-header" aria-label="고객 계정과 장바구니">
+        {authenticated && (
+          <span className="session-user" aria-label="로그인 사용자">
+            {session.user?.nickname || session.user?.email || '로그인됨'}
+          </span>
+        )}
+        {authenticated ? (
+          <button className="text-button" onClick={signOut} disabled={authBusy}>
+            로그아웃
+          </button>
+        ) : (
+          <button
+            className="text-button"
+            disabled={authBusy || session?.phase === 'restoring'}
+            onClick={() => requestIntent({ type: 'login' })}
+          >
+            {session?.phase === 'restoring' ? '세션 확인 중' : '로그인'}
+          </button>
+        )}
+        {logoutFailed && (
+          <button className="text-button" disabled={authBusy} onClick={signOut}>
+            로그아웃 다시 시도
+          </button>
+        )}
+        <button
+          className="pill-button header-cart"
+          onClick={requestCart}
+          aria-haspopup="dialog"
+        >
+          장바구니
+          {cart.items.length > 0 ? ` (${cart.items.length})` : ''}
+        </button>
+      </header>
+      {home && (
+        <CustomerHome
+          session={session}
+          sessionSource={sessionSource}
+          onLogin={() => requestIntent({ type: 'login' })}
+          onCart={requestCart}
+          authBusy={authBusy}
+          notice={notice}
+          congestionApi={congestionApi}
+        />
+      )}
+      <main className="menu-page" hidden={Boolean(ordersRoute) || home}>
         {page !== 'cart' && (
           <p className="action-notice" role="status" aria-live="polite">
             {notice}
@@ -651,37 +816,6 @@ export default function App({
               <strong>메뉴</strong> 카테고리
             </h1>
             <div className="header-actions">
-              {authenticated && (
-                <span className="session-user" aria-label="로그인 사용자">
-                  {session.user?.nickname || session.user?.email || '로그인됨'}
-                </span>
-              )}
-              {authenticated ? (
-                <button
-                  className="text-button"
-                  onClick={signOut}
-                  disabled={authBusy}
-                >
-                  로그아웃
-                </button>
-              ) : (
-                <button
-                  className="text-button"
-                  disabled={authBusy || session?.phase === 'restoring'}
-                  onClick={() => requestIntent({ type: 'login' })}
-                >
-                  {session?.phase === 'restoring' ? '세션 확인 중' : '로그인'}
-                </button>
-              )}
-              {logoutFailed && (
-                <button
-                  className="text-button"
-                  disabled={authBusy}
-                  onClick={signOut}
-                >
-                  로그아웃 다시 시도
-                </button>
-              )}
               <label className="search-field">
                 <svg
                   viewBox="0 0 24 24"
@@ -701,14 +835,6 @@ export default function App({
                   onChange={(event) => setQuery(event.target.value)}
                 />
               </label>
-              <button
-                className="pill-button header-cart"
-                onClick={requestCart}
-                aria-haspopup="dialog"
-              >
-                장바구니
-                {cart.items.length > 0 ? ` (${cart.items.length})` : ''}
-              </button>
             </div>
           </header>
           <div className="categories" role="group" aria-label="메뉴 카테고리">
@@ -817,10 +943,14 @@ export default function App({
           sessionSource={sessionSource}
           onLogout={signOut}
           authBusy={authBusy}
+          accountActions={false}
         />
       )}
       {page === 'cart' && (
         <CartOverlay
+          backLabel={
+            cartFromHome.current ? '홈으로 돌아가기' : '메뉴로 돌아가기'
+          }
           rows={view?.rows ?? []}
           total={view?.total}
           pending={catalog.loading}
@@ -848,6 +978,7 @@ export default function App({
       {selectedId !== null && (
         <RemoteMenuDetail
           key={selectedId}
+          active={!home && !ordersRoute}
           api={menuApi}
           menuId={selectedId}
           onLoaded={onDetailLoaded}

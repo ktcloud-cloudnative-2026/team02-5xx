@@ -89,7 +89,7 @@ async function fresh(
     if (localStorage.getItem('peak-order.cart.v1') === null)
       localStorage.setItem('peak-order.cart.v1', JSON.stringify(value));
   }, initialCart);
-  await page.goto(fixture.url);
+  await page.goto(fixture.url + '#menu-list');
   await page.locator('[data-menu-id="1"]').waitFor();
 }
 async function login(email = 'customer@example.test') {

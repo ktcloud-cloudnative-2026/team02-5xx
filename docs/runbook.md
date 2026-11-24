@@ -9,23 +9,147 @@
 장애가 났을 때 처음 보는 팀원도 그대로 따라 할 수 있게 씁니다. 해결한 [트러블슈팅 이슈](../../../issues?q=label%3Abug) 중 반복될 것을 여기로 옮깁니다.
 
 ## 공통 확인 순서
-1. 어느 서비스 · 환경인가 — 대시보드에서 에러율이 오른 서비스 확인
-2. `kubectl get pods -n <네임스페이스>` — 상태 · 재시작 수
-3. `kubectl describe pod <파드> -n <네임스페이스>` — Events
-4. `kubectl logs <파드> -n <네임스페이스> --previous` — 직전에 죽은 컨테이너 로그
-5. 최근 배포 확인 — Argo CD 이력, 최근 merge된 PR
+
+알림이 울리거나 서비스가 이상할 때 이 순서로 본다. dev 명령은 `t2-dev-cp`에 SSH로 접속해 그 노드의 `kubectl`로 실행한다. **prod에는 직접 아무것도 바꾸지 않는다**(CLAUDE.md 8절).
+
+```bash
+# 0. 어디에 접속했는지 먼저 (dev 노드는 10.10.22.11~13)
+hostname && kubectl config current-context && kubectl get nodes -o wide
+
+# 1. Pod 상태: STATUS·RESTARTS·AGE
+kubectl -n peakorder get pods -o wide
+
+# 2. 이상한 Pod의 Events (맨 아래가 최근)
+kubectl -n peakorder describe pod <파드> | tail -25
+
+# 3. 로그: 최근 경고·오류 / 직전에 죽은 컨테이너 로그 (서비스 로그 형식에 맞는 줄을 쓴다)
+kubectl -n peakorder logs deploy/<서비스> --since=15m | grep -E '"level":"(WARN|ERROR)"' | tail -20   # ECS JSON 로그
+kubectl -n peakorder logs deploy/<서비스> --since=15m | grep -E ' (WARN|ERROR) ' | tail -20          # 텍스트 로그
+kubectl -n peakorder logs <파드> --previous | tail -50
+
+# 4. 최근 배포: Argo CD 상태와 반영된 Git 커밋
+kubectl get application -n argocd
+kubectl get application <서비스>-dev -n argocd -o jsonpath='{.status.sync.status} {.status.health.status} {.status.sync.revision}{"\n"}'
+git log --oneline -5 origin/main -- deploy/apps/<서비스>   # 내 PC 저장소에서
+
+# 5. 의존 대상
+kubectl -n peakorder exec rabbitmq-0 -- rabbitmqctl ping
+kubectl -n peakorder exec rabbitmq-0 -- rabbitmqctl list_queues name messages consumers
+```
+
+- **로그 형식은 서비스마다 다르다.** ECS JSON(한 줄에 JSON 하나): **Cooking**(#190), **Order**(#271). 그 외 서비스는 ECS 적용 전이라 Spring 기본 텍스트 로그다. ECS가 적용되면 이 줄을 갱신한다. JSON용 명령은 텍스트 로그에서 아무것도 찾지 못하므로 형식에 맞는 명령을 쓴다.
+- 시각은 **UTC**라 한국 시간은 +9시간이다(ECS의 `@timestamp`).
+- `consumers`가 0인 업무 큐는 받는 서비스가 연결돼 있지 않다는 뜻이다(메시지가 쌓인다).
+- DB 접속 문제는 아래 [PostgreSQL](#postgresql-t2-db) 절의 "접속이 안 될 때"를 본다.
+- Secret은 `-o yaml`로 출력하지 않는다. 결과를 채팅·이슈에 붙일 때 비밀값이 섞이지 않았는지 확인한다.
+
+| 본 것 | 다음 |
+|---|---|
+| `CrashLoopBackOff`, RESTARTS가 계속 늘어남 | [CrashLoopBackOff](#crashloopbackoff) |
+| `*.dlq` 큐의 `messages`가 0보다 큼 | [DLQ](#dlq) |
+| 로그에 `이벤트 발행 실패`가 반복 | [Outbox](#outbox) |
+| 최근 배포 직후부터 이상 | 아래 각 절의 "되돌리기" |
 
 ## 장애별 대응
 
-### <증상 — 예: 파드가 CrashLoopBackOff>
-| 항목 | 내용 |
-|---|---|
-| 확인할 명령 | |
-| 흔한 원인 | |
-| 조치 | |
-| 되돌리기 | <예: Argo CD에서 이전 버전으로 Sync> |
-| 관련 이슈 | # |
+`docs/observability.md` 4-2절 알림의 대응 문서다. 알림 규칙의 링크가 깨지지 않도록 **절 제목을 바꾸지 않는다**.
 
+| 알림 (4-2절) | 절 |
+|---|---|
+| 1 DLQ 메시지 | [DLQ](#dlq) |
+| 2 `up == 0`, 3 5xx 비율, 7 Pod 없음 | [공통 확인 순서](#공통-확인-순서) |
+| 4 재시작 반복 | [CrashLoopBackOff](#crashloopbackoff) |
+| 5 Outbox 대기 | [Outbox](#outbox) |
+
+### CrashLoopBackOff
+
+컨테이너가 시작하자마자 죽고, Kubernetes가 간격을 늘려 가며 다시 띄우는 상태다.
+
+```bash
+kubectl -n peakorder get pods
+kubectl -n peakorder get pod <파드> -o jsonpath='{.status.containerStatuses[0].lastState.terminated.reason} {.status.containerStatuses[0].lastState.terminated.exitCode}{"\n"}'
+kubectl -n peakorder logs <파드> --previous | tail -50
+kubectl -n peakorder describe pod <파드> | tail -25
+```
+
+| 보이는 것 | 흔한 원인 | 조치 |
+|---|---|---|
+| `OOMKilled`, 종료 코드 137 | 메모리 제한(limits) 초과 | 자원 값 또는 `JAVA_TOOL_OPTIONS`(`-XX:MaxRAMPercentage`)을 고치는 PR |
+| 로그에 `password authentication failed`, `fe_sendauth` | DB Secret 값·키 문제 | Secret 키 확인(`kubectl -n peakorder get secret <서비스>-db` → DATA 수), [PostgreSQL](#postgresql-t2-db) 접속 표 |
+| `RABBITMQ_PORT`에 `tcp://…`가 들어가 숫자 변환 오류 | Service 이름 `rabbitmq`로 자동 주입된 환경 변수와 충돌 | Deployment에 `enableServiceLinks: false` + `RABBITMQ_PORT: "5672"` (#161) |
+| Flyway `Validate failed`, `checksum mismatch` | 이미 적용된 마이그레이션 파일이 바뀜 | 적용된 `V*.sql`은 고치지 않고 새 버전 파일로 바꾼다. DB 담당과 확인 |
+| Events에 `Startup probe failed`가 반복 | 기동이 제한 시간 안에 끝나지 않음(Cooking은 최대 2분) | 로그에서 멈춘 지점(DB·RabbitMQ 연결 등) 확인 |
+| 상태가 `CreateContainerConfigError` (CrashLoopBackOff 전) | 참조한 Secret이나 키가 없음 | `kubectl -n peakorder get secret <이름>`으로 존재·DATA 수 확인 |
+| 상태가 `ImagePullBackOff` | 이미지 태그 오타, GHCR 접근 | overlay의 이미지 태그·GHCR 게시 확인 |
+
+- 배포 교체 중 **이전 Pod**가 `Terminating` 뒤 `Error`로 보이는 것은 종료 신호로 내려가며 0이 아닌 코드로 끝난 것으로, 새 Pod가 `1/1`이면 장애가 아니다(#190에서 확인).
+
+**되돌리기**: 원인이 최근 배포라면 **Git에서 되돌리는 PR**(이전 이미지 태그·설정으로)을 올려 병합하고 Argo CD에서 Sync한다. `kubectl edit`·`apply`로 직접 고치지 않는다(Git과 달라지고 다음 Sync에서 덮어써진다). dev에서 급히 Argo CD 화면의 이전 버전 Sync(History and Rollback)가 필요하면 Argo CD 담당과 먼저 상의한다.
+
+### DLQ
+
+처리하지 못한 이벤트가 DLQ(Dead Letter Queue)에 들어갔다. 받는 쪽이 메시지를 거절하면 RabbitMQ가 DLX(`peakorder.dlx`)를 거쳐 `<업무 큐>.dlq`로 옮긴다.
+
+| DLQ | 무엇이 실패했나 | 담당 |
+|---|---|---|
+| `cooking.order-confirmed.dlq` | Cooking이 OrderConfirmed(EV-01)를 처리하지 못함 → 조리 전표가 안 생김 | Cooking |
+| `order.cooking-completed.dlq` | Order가 CookingCompleted(EV-02)를 처리하지 못함 → 주문이 완료로 안 바뀜 | Order |
+
+**언제 DLQ로 가나** ([이벤트 명세](events/notion-draft.md) "발행·재시도·DLQ")
+- 형식 오류·필수값 누락·잘못된 값·존재하지 않는 주문·처리할 수 없는 상태: 재시도 없이 바로
+- DB 연결 같은 일시적 오류: 첫 시도 포함 3번(1초·2초 간격) 실패한 뒤
+
+**확인**
+```bash
+kubectl -n peakorder exec rabbitmq-0 -- rabbitmqctl list_queues name messages consumers | grep -E 'dlq'
+kubectl -n peakorder logs deploy/<받는 서비스> --since=30m | grep -E '"level":"(WARN|ERROR)"' | tail -20   # ECS JSON 로그(Cooking·Order)
+kubectl -n peakorder logs deploy/<받는 서비스> --since=30m | grep -E ' (WARN|ERROR) ' | tail -20          # 텍스트 로그(그 외)
+```
+
+**메시지 내용 확인 방법은 아직 정하지 않았다(미정).** 확인할 것은 본문의 `eventId`·`orderId`와 헤더 `x-death`(거절 이유·원래 큐·횟수·시각)다.
+- RabbitMQ 관리 화면(15672)은 dev에서 `rabbitmq-secret` 계정으로 로그인하면 `Not authorized`로 거부됐다(2026-11-23, 원인 미확인). 관리 화면 접속 계정·권한은 플랫폼 담당에게 확인한다.
+- 방법이 정해지기 전까지 **DLQ 메시지를 꺼내거나(get) 지우지 않는다.** 꺼내는 방식에 따라 메시지가 큐에서 사라질 수 있다.
+- 그 전까지는 위 로그(받는 서비스의 WARN·ERROR)로 실패한 `eventId`·`orderId`와 이유를 찾는다.
+
+| 원인 | 조치 |
+|---|---|
+| 보낸 쪽 형식·값 오류(필수값 누락 등) | 보낸 서비스 담당에게 `eventId`·본문을 공유하고 코드 수정 |
+| 존재하지 않는 주문, 처리할 수 없는 상태 | Order 담당과 주문 상태 확인 |
+| 일시적 오류(재시도 소진) | 원인(DB·네트워크)을 먼저 해결 |
+
+**재처리는 아직 정하지 않았다(미정).** 팀 합의 전에는 DLQ 메시지를 지우거나(purge) 업무 큐에 다시 넣지 않는다([이벤트 명세](events/notion-draft.md): 임의로 재주입하거나 새 `eventId`로 바꾸지 않음). 이슈를 만들어 `eventId`·`orderId`·`x-death`·원인을 기록하고 담당자와 처리 방법을 정한다.
+- 참고: 받는 쪽은 `eventId`로 중복을 막는다(`processed_events`, Cooking은 `cooking_tickets.order_id` UNIQUE도). 같은 메시지가 다시 들어와도 두 번 처리되지 않지만, 재주입 방법과 주체는 합의 후 이 절에 추가한다.
+- 업무 큐의 dead-letter 설정(`x-dead-letter-*`)은 큐를 처음 만들 때 정해진다. 바꾸려면 큐를 지우고 다시 만들어야 하므로 큐 설정을 임의로 바꾸지 않는다.
+
+### Outbox
+
+서비스는 보낼 이벤트를 먼저 DB의 `outbox_events`에 `PENDING`으로 저장하고, 1초마다 RabbitMQ로 발행한 뒤 `SENT`로 바꾼다(Cooking·Order 같은 구조, #52). `PENDING`이 쌓이면 발행이 막힌 것이다.
+- 발행에 실패한 이벤트에서 그 주기를 멈추고 뒤의 이벤트도 보내지 않는다(순서 유지). 그래서 **하나가 막히면 뒤의 이벤트가 모두 쌓인다.**
+- 성공 판정은 브로커 확인(publisher confirm)을 받고, 라우팅할 큐가 없어 되돌아오지(return) 않았을 때만이다.
+
+**확인**
+```bash
+kubectl -n peakorder logs deploy/<서비스> --since=15m | grep -A3 '이벤트 발행 실패' | tail -20
+
+# t2-db에서 (읽기만)
+sudo -u postgres psql -d cooking_dev -c "SELECT event_type, count(*), min(created_at) FROM outbox_events WHERE status = 'PENDING' GROUP BY event_type;"
+# Order는 -d order_dev
+```
+
+원인 메시지(아래 표)가 찍히는 위치는 로그 형식에 따라 다르다. 그래서 위 명령은 `-A3`으로 다음 줄까지 본다.
+- Cooking: `이벤트 발행 실패 …` 같은 줄 끝에 원인 메시지가 붙는다.
+- ECS JSON 로그에서 예외를 함께 남기는 경우(Order, #271): 같은 줄의 `error.message`(원인)·`error.type`·`error.stack_trace` 필드에 들어간다(로컬 실행으로 확인했고 dev 로그는 병합 후 확인한다).
+- 텍스트 로그(ECS 적용 전 서비스): 원인이 다음 줄의 예외 메시지에 있다.
+
+| 로그 메시지 (Cooking·Order 같음) | 원인 | 조치 |
+|---|---|---|
+| `라우팅할 큐가 없어 메시지가 반환되었습니다(바인딩 필요)` | 받는 쪽 큐가 아직 없음(받는 서비스가 안 떴거나 큐 선언 전) | 받는 서비스 Pod와 `list_queues`로 큐 확인. 큐가 생기면 자동으로 발행된다. 받는 서비스가 나중에 배포되는 동안은 정상(#162 README) |
+| `발행 확인을 받지 못했습니다`, 연결 오류 | RabbitMQ 연결 문제 | `rabbitmq-0` 상태·`rabbitmqctl ping`, 5672 허용(NetworkPolicy #166) |
+| `브로커가 메시지를 거부했습니다` | 브로커가 거부(nack) | `kubectl -n peakorder logs rabbitmq-0` |
+
+- 원인을 해결하면 다음 주기(1초)에 자동으로 발행된다.
+- **`status`를 직접 `SENT`로 바꾸거나 행을 지우지 않는다.** 이벤트가 사라져 주문이 완료되지 않거나 전표가 생기지 않는다.
+- 알림 5번 지표(`cooking_outbox_pending` 등)는 아직 구현 전이다. 그 전까지는 위 SQL과 로그로 확인한다.
 
 ## PostgreSQL (t2-db)
 

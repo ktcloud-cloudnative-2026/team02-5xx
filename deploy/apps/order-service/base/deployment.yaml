@@ -69,6 +69,9 @@ spec:
             # 컨테이너 메모리 제한 안에서 힙이 차지할 비율(나머지는 메타스페이스·스레드용)
             - name: JAVA_TOOL_OPTIONS
               value: -XX:MaxRAMPercentage=60.0
+            # 로그를 한 줄 JSON(ECS)으로 출력한다. K8s에서만 켜고 로컬은 텍스트 로그 유지 (docs/observability.md 3-1, #271)
+            - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+              value: ecs
           resources:
             requests:
               cpu: 100m

@@ -21,7 +21,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: cooking-service
-          image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/cooking:sha-c8f13f69c36633b0cc3d45d84a438f5891d7128c
+          image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/cooking:sha-8bb8c680af1b8e11e6e6c2179704a812b2935c6e
           ports:
             - name: http
               containerPort: 8080

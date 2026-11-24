@@ -24,12 +24,13 @@ const subscribe = (listener) => {
       window.removeEventListener(event, listener);
   };
 };
-export function useOrdersRoute() {
-  return parseOrdersRoute(
-    useSyncExternalStore(
-      subscribe,
-      () => window.location.hash,
-      () => '',
-    ),
+export function useLocationHash() {
+  return useSyncExternalStore(
+    subscribe,
+    () => window.location.hash,
+    () => '',
   );
+}
+export function useOrdersRoute() {
+  return parseOrdersRoute(useLocationHash());
 }

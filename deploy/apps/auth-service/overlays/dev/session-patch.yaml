@@ -14,6 +14,12 @@ spec:
           env:
             - name: AUTH_SESSION_ENABLED
               value: "true"
+            # Issue #268: 프론트 회원가입(#258)과 맞춘 dev 시연용 약관 버전. 비밀값 아님.
+            # prod에는 넣지 않는다. 실제 약관 문구·버전이 정해질 때까지 prod 가입은 막아 둔다.
+            - name: AUTH_TERMS_VERSION
+              value: "demo-v1"
+            - name: AUTH_PRIVACY_VERSION
+              value: "demo-v1"
             - name: AUTH_DB_URL
               valueFrom:
                 secretKeyRef:

@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { startCustomerHttpFixture } from './customer-http-fixture.mjs';
+import {
+  startCustomerHttpFixture,
+  sampleCustomerOrder as sample,
+} from './customer-http-fixture.mjs';
 
 const { chromium } = createRequire(import.meta.url)(
   process.env.PLAYWRIGHT_PACKAGE,
@@ -13,30 +16,7 @@ await mkdir(output, { recursive: true });
 const records = new Map(),
   calls = [],
   controls = {};
-const sample = (id) => ({
-  orderId: id,
-  orderNo: `TEST-${id}`,
-  status: 'PAID',
-  orderedAt: '2026-11-23T09:00:00+09:00',
-  paidAt: '2026-11-23T09:01:00+09:00',
-  totalAmount: 18000,
-  items: [
-    {
-      menuId: 1,
-      menuName: '클래식 버거',
-      unitPrice: 6500,
-      quantity: 2,
-      lineAmount: 18000,
-      options: [{ optionId: 2, optionName: '세트', extraPrice: 2500 }],
-    },
-  ],
-  cooking: {
-    lookup: 'OK',
-    status: 'WAITING',
-    expectedWaitSec: 120,
-    expectedReadySec: 360,
-  },
-});
+
 function reset() {
   records.clear();
   for (let i = 1; i <= 21; i++) records.set(i, sample(i));

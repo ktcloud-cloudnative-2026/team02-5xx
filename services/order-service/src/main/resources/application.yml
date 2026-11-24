@@ -32,6 +32,13 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+  # docs/observability.md 1-2 (#272)
+  metrics:
+    tags:
+      application: ${spring.application.name} # 모든 지표에 서비스 이름 라벨
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true # p95를 Pod 여러 개 합쳐 계산하기 위해
 
 springdoc:
   swagger-ui:

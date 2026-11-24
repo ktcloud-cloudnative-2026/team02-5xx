@@ -51,7 +51,7 @@ async function scenario(name, run, mobile = false) {
   fixture.controls.logoutStatus = 204;
   try {
     const before = { ...fixture.counts };
-    await page.goto(fixture.url);
+    await page.goto(fixture.url + '#menu-list');
     await page.getByRole('button', { name: '로그인', exact: true }).waitFor();
     await run(page, context, before);
     results.push({ name, status: 'PASS' });

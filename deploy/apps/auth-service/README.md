@@ -57,7 +57,9 @@ prod Overlay는 환경별 이미지 버전을 구분하는 초기 구성을 제�
 
 DB 담당이 [#112 답변](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/112#issuecomment-7088497126)에서 Secret 이름·키와 Auth dev 접속 정보에 동의했고, Secret 생성은 비밀번호를 관리하는 DB 담당이 직접 수행한다. 생성 완료 전에는 준비됐다고 표시하지 않는다. [#186](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/186)의 DB 연결 수 예산에 따라 dev에만 `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE="4"`, `SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE="1"`을 적용한다. 이는 HPA·공통 자원 제한·prod DB 설정 변경을 포함하지 않는다.
 
-`AUTH_TERMS_VERSION`·`AUTH_PRIVACY_VERSION`은 포함하지 않는다. 실제 약관 버전 없이 회원가입은 기존 `REGISTRATION_UNAVAILABLE` 정책을 유지한다. **세션 기능이 켜지면 로그인·재발급 등도 구현상 활성화되므로 공개 JWKS만 켜지는 설정은 아니다.** 현재 HTTPRoute의 `/api/v1/auth` 전체 노출을 그대로 승인한 것으로 보지 않는다. 실제 활성화 전에 Gateway 담당과 HTTP 업무 경로 노출 제한 또는 합의한 HTTPS 경로를 확인한다. HTTP로 실제 비밀번호·쿠키·토큰을 주고받는 검증은 하지 않는다.
+**2026-11-24 갱신(#268):** dev에만 `AUTH_TERMS_VERSION`·`AUTH_PRIVACY_VERSION`=`demo-v1`을 넣어 회원가입을 연다. `demo-v1`은 프론트 회원가입(#258)과 맞춘 **dev 시연용 약관 버전**이며 prod에는 넣지 않는다. prod는 실제 약관 문구·버전이 정해질 때까지 `REGISTRATION_UNAVAILABLE`을 유지한다. dev Gateway는 HTTP이므로 팀원은 실제로 쓰는 비밀번호가 아닌 시험용 비밀번호만 사용한다. HTTPS 경로는 #112 후속 작업으로 남긴다.
+
+(이전 기록) `AUTH_TERMS_VERSION`·`AUTH_PRIVACY_VERSION`은 포함하지 않는다. 실제 약관 버전 없이 회원가입은 기존 `REGISTRATION_UNAVAILABLE` 정책을 유지한다. **세션 기능이 켜지면 로그인·재발급 등도 구현상 활성화되므로 공개 JWKS만 켜지는 설정은 아니다.** 현재 HTTPRoute의 `/api/v1/auth` 전체 노출을 그대로 승인한 것으로 보지 않는다. 실제 활성화 전에 Gateway 담당과 HTTP 업무 경로 노출 제한 또는 합의한 HTTPS 경로를 확인한다. HTTP로 실제 비밀번호·쿠키·토큰을 주고받는 검증은 하지 않는다.
 
 ### 병합 전 확인
 

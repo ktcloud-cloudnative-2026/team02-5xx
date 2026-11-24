@@ -32,7 +32,7 @@ try {
     await blocked;
     await route.continue();
   });
-  await page.goto(fixture.url);
+  await page.goto(fixture.url + '#menu-list');
   await page.locator('[data-menu-id="1"]').click();
   const detail = page.locator('.detail-modal');
   await detail.locator('input[type="radio"][value="2"]').check();

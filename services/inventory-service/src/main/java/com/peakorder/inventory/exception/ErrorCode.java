@@ -4,6 +4,8 @@ import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
   INVALID_REQUEST(HttpStatus.BAD_REQUEST, "잘못된 요청입니다."),
+  UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
+  FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
   INVENTORY_NOT_FOUND(HttpStatus.NOT_FOUND, "재고 항목을 찾을 수 없습니다."),
   INSUFFICIENT_STOCK(HttpStatus.CONFLICT, "재고가 부족합니다."),
   STOCK_NOT_LINKED(HttpStatus.CONFLICT, "재고가 연결되지 않은 메뉴입니다."),

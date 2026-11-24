@@ -5,11 +5,11 @@ import {
   cancelTopDialog,
 } from './dialogFocus.js';
 
-export default function useDialog(onClose) {
+export default function useDialog(onClose, active = true) {
   const dialogRef = useRef(null);
   useEffect(() => {
-    return activateDialog(dialogRef.current);
-  }, []);
+    if (active) return activateDialog(dialogRef.current);
+  }, [active]);
   function close() {
     if (dialogRef.current?.open) dialogRef.current.close();
     onClose();
