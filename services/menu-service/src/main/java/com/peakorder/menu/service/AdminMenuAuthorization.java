@@ -26,7 +26,7 @@ public final class AdminMenuAuthorization {
     var id = singleHeader(request, "X-User-Id");
     var role = singleHeader(request, "X-User-Role");
     try {
-      if (!id.matches("[0-9]+") || Long.parseLong(id) <= 0)
+      if (!id.matches("[1-9][0-9]*") || Long.parseLong(id) <= 0)
         throw AdminMenuAccessException.unauthenticated();
     } catch (NumberFormatException exception) {
       throw AdminMenuAccessException.unauthenticated();

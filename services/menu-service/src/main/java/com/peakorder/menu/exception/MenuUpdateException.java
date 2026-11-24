@@ -26,9 +26,6 @@ public class MenuUpdateException extends RuntimeException {
     return new MenuUpdateException(404, "OPTION_NOT_FOUND", "Option not found for menu");
   }
 
-  public static MenuUpdateException forbidden() {
-    return new MenuUpdateException(403, "FORBIDDEN", "Administrator access denied");
-  }
 
   public int status() {
     return status;

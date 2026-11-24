@@ -18,9 +18,6 @@ public class MenuStatusChangeException extends RuntimeException {
     return new MenuStatusChangeException(404, "MENU_NOT_FOUND", "Menu not found");
   }
 
-  public static MenuStatusChangeException forbidden() {
-    return new MenuStatusChangeException(403, "FORBIDDEN", "Administrator access denied");
-  }
 
   public int status() {
     return status;

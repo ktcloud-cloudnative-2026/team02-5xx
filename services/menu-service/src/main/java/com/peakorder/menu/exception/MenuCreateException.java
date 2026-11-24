@@ -18,9 +18,6 @@ public class MenuCreateException extends RuntimeException {
     return new MenuCreateException(404, "CATEGORY_NOT_FOUND", "Category not found");
   }
 
-  public static MenuCreateException forbidden() {
-    return new MenuCreateException(403, "FORBIDDEN", "Administrator access denied");
-  }
 
   public int status() {
     return status;
