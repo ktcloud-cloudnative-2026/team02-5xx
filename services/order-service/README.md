@@ -38,8 +38,9 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 | OR-03 | GET | `/api/v1/orders?page=0&size=20` | 본인 주문 목록 (CREATED·FAILED 제외, 최신순) |
 | OR-04 | GET | `/api/v1/orders/{orderId}` | 본인 주문 상세 (타인 주문은 404) |
 
-- 임시: 사용자 식별은 `X-User-Id` 헤더를 쓴다. 클라이언트가 임의로 보낼 수 있어 **다른 사용자의 ID를 알면 그 사용자의 주문을 조회할 수 있다.** 인증 방식이 확정되면 검증된 사용자 정보로 교체해야 한다.
-  - **외부 노출 금지 조건**: 인증 교체 전에는 `/api/v1/orders` 경로를 Gateway·Ingress로 외부에 열지 않는다. 로컬·개발자 확인과 서비스 간 테스트에만 쓰고, order-service의 외부 Ingress·Gateway 라우트 추가 PR은 인증 교체 이슈가 끝나기 전에는 병합하지 않는다.
+- 사용자 식별: Gateway가 검증된 JWT에서 꺼내 전달하는 `X-User-Id`(JWT `sub`, 회원 ID 숫자)와 `X-User-Role`(`CUSTOMER` 또는 `STORE_ADMIN`) 헤더를 쓴다(이슈 #112 Gateway 결정 기록 11/23, 이슈 #263). 클라이언트가 보낸 같은 이름의 헤더는 Gateway가 항상 제거하고 검증된 값만 넣는다. Order는 값을 변환·추측하지 않는다.
+  - **응답**: 두 헤더 중 하나라도 없거나 두 번 이상 오거나 형식이 틀리면(`X-User-Id`가 양의 정수가 아님, `X-User-Role`이 두 값 외) `401 UNAUTHORIZED`다. 형식 오류가 역할 판단보다 먼저다. 고객 API(OR-01~05)에 `STORE_ADMIN`이 오면 `403 FORBIDDEN`이다(관리자 계정은 주문·결제를 할 수 없다). 다른 사용자의 주문은 기존대로 `404 ORDER_NOT_FOUND`다. 요청 본문이 잘못됐어도 신원 확인이 먼저라 401이다.
+  - **헤더는 Gateway를 거칠 때만 믿을 수 있다.** 클라이언트가 직접 보낼 수 있는 경로(서비스 직접 호출)에서는 위조할 수 있으므로, Gateway의 JWT 검증이 dev에서 확인되고 Order HTTPRoute가 합의되기 전에는 `/api/v1/orders` 경로를 Gateway·Ingress로 외부에 열지 않는다. 로컬 확인 예: `curl -H "X-User-Id: 7" -H "X-User-Role: CUSTOMER" localhost:8080/api/v1/orders`.
   - 교체 작업은 별도 이슈로 관리한다(Auth 담당과 JWT 전달 방식 합의 필요).
 - 매장은 기본 영업 종료·주문 미접수 상태이며, 접수 상태는 관리자 API(OR-07, 기본 꺼짐)로 바꾼다. 켜지 않은 로컬에서는 `store_operations`를 직접 갱신한다.
 - Menu·Inventory 내부 API의 요청·응답 필드는 초안이다(`client` 패키지 참고). 담당자와 합의 후 확정한다.
@@ -87,12 +88,12 @@ export RABBITMQ_USER=<사용자> RABBITMQ_PASSWORD=<비밀번호>
 
 - 요청·응답 필드: `isOpen`(영업 여부), `acceptingOrders`(주문 접수 여부), `updatedAt`(마지막 변경 시각, KST). `PATCH`는 **보낸 항목만** 바꾸며 둘 다 비었거나 값이 불린이 아니면 `400 INVALID_REQUEST`다. 값이 바뀐 경우에만 `updatedAt`을 갱신한다.
 - 주문 생성(OR-01)은 `isOpen`과 `acceptingOrders`가 **둘 다 true**일 때만 받고, 변경은 다음 요청부터 바로 반영된다(아니면 `409 STORE_NOT_ACCEPTING_ORDERS`). 이미 만들어진 주문의 결제(OR-02)·조회·취소는 이 설정과 무관하다. 초기값은 영업 종료·접수 안 함이다.
-- 동시에 두 관리자가 서로 다른 항목을 보내도 행 잠금으로 직렬화해 서로의 값을 덮어쓰지 않는다. 인증이 없어 "누가" 바꿨는지는 남기지 못하고 변경 전후 값만 로그로 남긴다.
-- **기본 꺼짐**: 관리자 권한 검사 방식은 Auth·Gateway·JWT 공통 계약(#112)에서 정해진다. 그 전에는 누구나 영업을 열고 닫을 수 있으므로 `order.admin.enabled`(환경 변수 `ORDER_ADMIN_ENABLED`, 기본 `false`)가 켜진 경우에만 이 API를 등록하며, 격리된 로컬 검증 환경에서만 켜고 외부 접근이 가능하거나 공유되는 dev·prod에서는 켜지 않는다. 꺼져 있으면 경로가 존재하지 않는 것처럼 `404`다. 운영(prod)에서는 켜지 않는다. Cooking 관리자 API(`COOKING_ADMIN_ENABLED`)와 같은 방식이다.
+- 동시에 두 관리자가 서로 다른 항목을 보내도 행 잠금으로 직렬화해 서로의 값을 덮어쓰지 않는다. 변경자(`X-User-Id`)는 아직 로그에 남기지 않고 변경 전후 값만 남긴다(후속).
+- **권한 확인과 기본 꺼짐**: 요청의 `X-User-Id`·`X-User-Role`이 유효하고 역할이 `STORE_ADMIN`이어야 한다(헤더 누락·형식 오류 `401`, 역할 불일치 `403`, 이슈 #263). 다만 이 헤더는 Gateway의 JWT 검증이 dev에서 확인되기 전에는 믿을 수 없어 누구나 영업을 열고 닫을 수 있으므로 `order.admin.enabled`(환경 변수 `ORDER_ADMIN_ENABLED`, 기본 `false`)가 켜진 경우에만 이 API를 등록하며, 격리된 로컬 검증 환경에서만 켜고 외부 접근이 가능하거나 공유되는 dev·prod에서는 켜지 않는다. 꺼져 있으면 경로가 존재하지 않는 것처럼 `404`다. 운영(prod)에서는 켜지 않는다. Cooking 관리자 API(`COOKING_ADMIN_ENABLED`)와 같은 방식이다.
 
 ## 관리자 주문 조회 (OR-08·OR-09)
 
-가게 관리자가 전체 사용자의 주문을 조회한다(권한 STORE_ADMIN). **인증이 없어 `order.admin.enabled`(`ORDER_ADMIN_ENABLED`, 기본 `false`)가 켜져야만 경로가 등록되고, 꺼져 있으면 `404`다.** 영업·접수(OR-06·07)와 같은 방식이며 `X-User-Role` 같은 헤더만 보고 접근을 허용하지 않는다. 격리된 로컬 검증 환경에서만 켜고 공유 dev·prod에서는 켜지 않는다(인증은 이슈 #112 이후).
+가게 관리자가 전체 사용자의 주문을 조회한다(권한 STORE_ADMIN). 요청의 `X-User-Id`·`X-User-Role`이 유효하고 역할이 `STORE_ADMIN`이어야 하며 헤더 누락·형식 오류는 `401`, 역할 불일치는 `403`이다(이슈 #263). **이 헤더는 Gateway의 JWT 검증이 dev에서 확인되기 전에는 믿을 수 없어, `order.admin.enabled`(`ORDER_ADMIN_ENABLED`, 기본 `false`)가 켜져야만 경로가 등록되고 꺼져 있으면 `404`다.** 영업·접수(OR-06·07)와 같은 방식이다. 격리된 로컬 검증 환경에서만 켜고 공유 dev·prod에서는 켜지 않는다(활성화는 Gateway JWT 검증을 dev에서 확인한 뒤 별도로 결정한다).
 
 | ID | 경로 | 설명 |
 |---|---|---|
