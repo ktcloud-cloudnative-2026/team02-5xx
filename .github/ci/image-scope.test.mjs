@@ -309,3 +309,13 @@ test("빌드 컨텍스트 준비는 git 파일 목록을 조용히 읽는다", (
   assert.equal(gitCalls.length, 1);
   assert.equal(gitCalls[0].quietStdout, true);
 });
+
+test("Java 코드 검사와 이미지 빌드는 같은 다운로드 재시도 값을 쓴다", async () => {
+  const { gradleRetryArgs } = await import("./run-services.mjs");
+  const dockerfile = readFileSync(
+    new URL("./docker/java.Dockerfile", import.meta.url),
+    "utf8",
+  );
+  assert.equal(gradleRetryArgs.length, 2);
+  for (const arg of gradleRetryArgs) assert.ok(dockerfile.includes(arg), arg);
+});
