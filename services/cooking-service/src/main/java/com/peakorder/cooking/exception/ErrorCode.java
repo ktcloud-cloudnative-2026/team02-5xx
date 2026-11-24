@@ -4,6 +4,10 @@ import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
   INVALID_REQUEST(HttpStatus.BAD_REQUEST, "잘못된 요청입니다."),
+  /** 신원 헤더(X-User-Id·X-User-Role) 누락·중복·형식 오류 (#112, Order와 같은 코드·메시지) */
+  UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증 정보를 확인할 수 없습니다. 다시 로그인해 주세요."),
+  /** 역할 부족 (예: CUSTOMER가 관리자 API 호출) (#112, Order와 같은 코드·메시지) */
+  FORBIDDEN(HttpStatus.FORBIDDEN, "이 요청을 처리할 권한이 없습니다."),
   /** 조리 전표 없음. EV-01(OrderConfirmed)이 아직 처리되지 않아 대기열 등록 전인 경우도 포함한다. */
   COOKING_TICKET_NOT_FOUND(HttpStatus.NOT_FOUND, "조리 대기열에 등록되지 않은 주문입니다."),
   /** CI-03: 조리가 이미 시작되어(COOKING) 취소할 수 없음 */

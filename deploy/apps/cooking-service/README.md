@@ -15,12 +15,12 @@ Cooking의 로컬 기본 포트는 8084(`application.yml`)다. 클러스터에�
 
 ## 외부 노출
 
-이 구성에는 Gateway(HTTPRoute)를 넣지 않는다.
+공개 경로는 `base/httproute.yaml`(#266)이 정한다. 고정 경로라 `Exact` + 메서드로 필요한 것만 연다.
 
 | 경로 | 권한 | 노출 |
 |---|---|---|
-| `GET /api/v1/cooking/congestion` (CO-01), `POST /api/v1/cooking/estimates` (CO-02) | 전체(비회원 포함) | 공개 예정 — Gateway 담당과 협의 후 별도 PR |
-| `/api/v1/admin/cooking/**` (CO-03·04) | STORE_ADMIN | 연결하지 않음. `COOKING_ADMIN_ENABLED=false`라 경로 자체가 없다(404). #99·#112 확정 후 |
+| `GET /api/v1/cooking/congestion` (CO-01), `POST /api/v1/cooking/estimates` (CO-02) | 전체(비회원 포함) | **공개**(#266). 다른 메서드는 Gateway에서 404 |
+| `/api/v1/admin/cooking/**` (CO-03·04) | STORE_ADMIN | 연결하지 않음. 서비스는 신원 헤더로 STORE_ADMIN을 확인하지만(#99: 헤더 없음·형식 오류 401, 역할 부족 403) Gateway JWT 검증이 dev에서 확인되기 전까지 `COOKING_ADMIN_ENABLED=false`로 경로 자체를 없앤다(404, #112) |
 | `/internal/v1/cooking/**` (CI-02·03) | 호출자 Order | 연결하지 않음(클러스터 안에서만) |
 | `/actuator/**` | — | 연결하지 않음(Prometheus는 클러스터 안에서 수집) |
 
