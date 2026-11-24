@@ -60,7 +60,7 @@ dev 노드(11/20): t2-dev-cp CPU 2·약 3.8Gi(실사용 78%), t2-dev-w1·w2 CPU 
 - node-exporter는 DaemonSet이라 메모리가 빠듯한 cp에도 뜬다 → 제한을 작게 둔다.
 - 요청 합계 약 1Gi(node-exporter 3개 포함, sidecar·config-reloader 제외). 실제 사용량을 본 뒤 조정한다.
 
-## 렌더링 결과 (103개)
+## 렌더링 결과 (105개)
 
 같은 결과를 다시 보려면:
 
@@ -74,10 +74,11 @@ helm template monitoring prometheus-community/kube-prometheus-stack --version 93
 | 범위 | 종류 (개수) |
 |---|---|
 | 클러스터 | CustomResourceDefinition (10), ClusterRole (3), ClusterRoleBinding (3) |
-| `monitoring` | PrometheusRule (30), ConfigMap (27), ServiceMonitor (8), Service (6), ServiceAccount (6), Deployment (3), Secret (2), DaemonSet (1), Prometheus (1), Alertmanager (1), Role (1), RoleBinding (1) |
+| `monitoring` | PrometheusRule (31), ConfigMap (27), ServiceMonitor (9), Service (6), ServiceAccount (6), Deployment (3), Secret (2), DaemonSet (1), Prometheus (1), Alertmanager (1), Role (1), RoleBinding (1) |
 
+- 개수는 실제로 적용되는 객체 기준이다. 차트는 추가 ServiceMonitor(`prometheus.additionalServiceMonitors`)를 `kind: List`로 감싸 출력하므로, 출력에서 `kind:`를 셀 때는 List 대신 안의 ServiceMonitor(1)를 센다. Argo CD는 List를 풀어 안의 객체를 하나씩 적용한다.
 - 모든 namespace 리소스는 `monitoring`에 만들어진다. 다른 namespace에 만드는 리소스는 없다.
-- `app`·`team` 라벨은 CRD 10개를 뺀 93개 리소스와 Pod 템플릿(Deployment 3·DaemonSet 1)·Operator가 만들 Pod(`podMetadata`)에 모두 있다.
+- `app`·`team` 라벨은 CRD 10개를 뺀 95개 리소스와 Pod 템플릿(Deployment 3·DaemonSet 1)·Operator가 만들 Pod(`podMetadata`)에 모두 있다.
 - MutatingWebhookConfiguration·ValidatingWebhookConfiguration·Job·Pod(helm hook)는 없다.
 - AppProject 허용 목록은 위 종류와 정확히 같다(빠짐·남음 없음, 스크립트로 대조).
 - Prometheus·Alertmanager의 StatefulSet은 Operator가 실행 중에 만든다(Argo CD가 만드는 리소스가 아니라 AppProject 목록에 없다).
@@ -98,9 +99,19 @@ helm template monitoring prometheus-community/kube-prometheus-stack --version 93
   - **플랫폼 담당 확인(11/23): dev에서는 차트 기본값 유지에 동의** — [정진혁 님 #185 승인](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/185#pullrequestreview-6015497000). monitoring·peakorder로 좁히는 작업은 고도화 단계 별도 이슈. dev 범위의 판단이며 prod 승인은 아니다.
 - 전체 rules는 렌더링 결과에서 확인할 수 있다(`kind: ClusterRole` 검색).
 
-### 기본 수집 대상 (ServiceMonitor 8개)
+### 수집 대상 (ServiceMonitor 9개)
 
-apiserver, kubelet(cAdvisor 포함), kube-state-metrics, node-exporter, Prometheus, Alertmanager, Operator, Grafana. 서비스(`/actuator/prometheus`)·RabbitMQ 수집은 아래 후속에서 추가한다.
+- 차트 기본 8개: apiserver, kubelet(cAdvisor 포함), kube-state-metrics, node-exporter, Prometheus, Alertmanager, Operator, Grafana
+- **RabbitMQ**(#187, values의 `prometheus.additionalServiceMonitors`): `peakorder`의 `app: rabbitmq` Service 포트 `prometheus`(15692, #206), 경로 `/metrics/detailed?family=queue_coarse_metrics`, 30초. 큐 이름(`queue`) 라벨이 붙은 `rabbitmq_detailed_queue_messages` 등을 가져온다. 차트는 추가 ServiceMonitor를 `kind: List`로 감싸 렌더링한다(Argo CD가 풀어서 적용).
+- 서비스(`/actuator/prometheus`) 수집은 후속.
+
+### 팀 알림 규칙 (values의 `additionalPrometheusRulesMap`)
+
+| 규칙 | 식 | 지속 | 심각도 | 런북 |
+|---|---|---|---|---|
+| `RabbitMQDeadLetterQueueNotEmpty` (`docs/observability.md` 4-2 1번, #52) | `max by (queue) (rabbitmq_detailed_queue_messages{queue=~".+\\.dlq"}) > 0` | 1분 | warning | [DLQ](../../../docs/runbook.md#dlq) |
+
+- 알림 채널(#138)이 정해지기 전까지는 Prometheus Alerts·Alertmanager 화면에서만 확인한다.
 
 ## dev 적용 (병합 후)
 
@@ -151,7 +162,7 @@ kubectl -n monitoring port-forward --address 127.0.0.1 svc/monitoring-grafana 30
 
 ## 후속
 
-- **RabbitMQ 큐별 지표**: 정진혁 님이 `rabbitmq.yaml`(15692 `prometheus` 포트)·NetworkPolicy(`monitoring` → 15692)를 별도 PR로 진행(#176). 적용 후 RabbitMQ ServiceMonitor(`/metrics/detailed?family=queue_coarse_metrics`)와 DLQ 알림 추가
+- ~~RabbitMQ 큐별 지표~~ → #206(15692 노출·NetworkPolicy, 정진혁 님) + #187(ServiceMonitor·DLQ 알림)로 반영
 - 서비스 `/actuator/prometheus` ServiceMonitor, `docs/observability.md` 4절 알림 규칙, 대시보드, `docs/runbook.md`
 - Operator 권한 축소(namespace별 Role 직접 관리) 여부, CoreDNS(기존 kube-dns Service) 수집 검토
 - Loki·Alloy(로깅), prod 구성

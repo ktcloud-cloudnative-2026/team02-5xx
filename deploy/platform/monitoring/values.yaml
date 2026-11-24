@@ -39,6 +39,25 @@ defaultRules:
     kubeSchedulerRecording: false
     windows: false
 
+# --- 팀 알림 규칙 (docs/observability.md 4-2) ---
+# 알림 채널(#138)이 정해지기 전까지는 Prometheus·Alertmanager 화면에서만 확인한다.
+additionalPrometheusRulesMap:
+  rabbitmq-dlq:
+    groups:
+      - name: rabbitmq-dlq
+        rules:
+          # 4-2 알림 1번(#52 합의): 처리 못 한 이벤트가 DLQ에 1분 넘게 남아 있음
+          - alert: RabbitMQDeadLetterQueueNotEmpty
+            expr: 'max by (queue) (rabbitmq_detailed_queue_messages{queue=~".+\\.dlq"}) > 0'
+            for: 1m
+            labels:
+              severity: warning
+              team: team02
+            annotations:
+              summary: DLQ에 처리하지 못한 이벤트가 있습니다
+              description: 받는 서비스가 이벤트를 처리하지 못해 DLQ로 옮겨졌습니다. 메시지를 지우거나 다시 넣지 말고 런북 절차로 원인을 확인하세요.
+              runbook_url: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/main/docs/runbook.md#dlq
+
 # --- Prometheus Operator ---
 # admission webhook을 끄면 webhook 설정·인증서 생성 Job(hook)과 그 권한이 만들어지지 않는다.
 # webhook이 없으면 Operator의 TLS 인증서도 필요 없으므로 함께 끈다.
@@ -60,6 +79,24 @@ prometheusOperator:
 
 # --- Prometheus ---
 prometheus:
+  # 차트 밖 수집 대상 (#187)
+  additionalServiceMonitors:
+    # RabbitMQ 큐별 지표: peakorder의 rabbitmq Service 포트 prometheus(15692, #206).
+    # 큐 이름(queue) 라벨이 붙은 묶음만 가져온다 → DLQ 메시지 수(docs/observability.md 4-2 알림 1번)
+    - name: rabbitmq
+      selector:
+        matchLabels:
+          app: rabbitmq
+      namespaceSelector:
+        matchNames:
+          - peakorder
+      endpoints:
+        - port: prometheus
+          path: /metrics/detailed
+          params:
+            family:
+              - queue_coarse_metrics
+          interval: 30s
   prometheusSpec:
     # 차트가 만든 것만이 아니라 다른 namespace(peakorder)의 ServiceMonitor·PodMonitor·규칙도 읽는다.
     serviceMonitorSelectorNilUsesHelmValues: false
