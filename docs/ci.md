@@ -395,7 +395,7 @@ inventory·menu·web-frontend처럼 Argo CD 자동 Sync가 아닌 서비스는 P
 
 `.github/ci/dev-image-tags.test.mjs`가 sha 태그 읽기·교체, `latest`·짧은 태그 거부, 게시 성공 이미지만 선택, 소스 변경 유무와
 알 수 없는 이전 커밋 구분, 변경 없음 시 미수정, 토큰 없음 시 PR 미생성, 대체 PR 정리 범위, 워크플로 실행 조건과 권한을 재현합니다.
-기존 211개와 함께 총 227개를 실행합니다.
+기존 211개와 함께 총 227개를 실행합니다. Issue #307의 `.github/ci/image-scope.test.mjs` 10개를 더해 총 237개입니다.
 
 ## 외부 다운로드 실패 줄이기 — Issue #307
 
@@ -414,6 +414,10 @@ Maven Central `429 Too Many Requests`와 Gradle 배포본 다운로드 timeout�
 
 - 각 Java 서비스의 `gradle/wrapper/gradle-wrapper.properties` `networkTimeout`을 10초에서 60초로 늘렸습니다.
 - Docker 이미지 빌드의 Gradle 실행에 `-Dorg.gradle.internal.repository.max.retries=5`, `-Dorg.gradle.internal.repository.initial.backoff=2000`을 지정해, 의존성 저장소의 일시적 네트워크 오류 재시도를 늘렸습니다(Gradle 기본값 3회·125ms). 429 응답이 재시도 대상인지는 실제 실행 결과로 확인합니다.
+
+### 로그 정리
+
+이미지 빌드 컨텍스트를 만들 때 `git ls-files` 결과(서비스 파일 목록)를 로그에 그대로 출력하지 않고, 복사한 파일 개수만 남깁니다. 파일 목록은 전체 로그의 약 11~20%를 차지했고, 파일 이름(`ErrorCode.java` 등) 때문에 로그에서 `error`를 검색하면 실제 오류보다 먼저 걸렸습니다.
 
 ### 다음 단계 후보
 

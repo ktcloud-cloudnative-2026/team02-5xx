@@ -269,3 +269,43 @@ test("Java 이미지 빌드는 의존성 다운로드 재시도를 늘린다", (
     /-Dorg\.gradle\.internal\.repository\.initial\.backoff=2000/,
   );
 });
+
+test("파일 목록처럼 프로그램만 읽는 명령 출력은 로그에 남기지 않고 결과는 그대로 돌려준다", () => {
+  const moduleUrl = new URL("./image-ci.mjs", import.meta.url).href;
+  const script = (quiet) =>
+    `import { executeCommand } from ${JSON.stringify(moduleUrl)};
+     const o = executeCommand(process.execPath, ["-e", "process.stdout.write(['FILE', 'LIST', 'PAYLOAD'].join('-'))"], { quietStdout: ${quiet} });
+     if (o.stdout !== "FILE-LIST-PAYLOAD") process.exit(2);`;
+  for (const quiet of [true, false]) {
+    const child = spawnSync(
+      process.execPath,
+      ["--input-type=module", "-e", script(quiet)],
+      {
+        encoding: "utf8",
+      },
+    );
+    assert.equal(child.status, 0, child.stderr);
+    assert.match(child.stdout, /^> /);
+    assert.equal(child.stdout.includes("FILE-LIST-PAYLOAD"), !quiet);
+  }
+});
+
+test("빌드 컨텍스트 준비는 git 파일 목록을 조용히 읽는다", (t) => {
+  const root = fixture(t, ["auth"]);
+  const gitCalls = [];
+  checkImages(
+    root,
+    { ...prEnv, CI_IMAGE_SCOPE: "" },
+    (command, args, settings = {}) => {
+      if (command === "git") {
+        gitCalls.push(settings);
+        return { status: 0, stdout: "services/auth/build.gradle\0" };
+      }
+      if (args[0] === "image")
+        return { status: 0, stdout: "sha256:" + "a".repeat(64) };
+      return { status: 0, stdout: "" };
+    },
+  );
+  assert.equal(gitCalls.length, 1);
+  assert.equal(gitCalls[0].quietStdout, true);
+});

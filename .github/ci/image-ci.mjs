@@ -90,15 +90,17 @@ export function imagePlan(root, env, listChanged = changedFiles) {
   return scopedToChanges(env) ? scopeServices(plan, listChanged(root)) : plan;
 }
 
+// quietStdout: 결과를 프로그램이 읽기만 하는 명령(예: 파일 목록)의 표준 출력은 로그에 남기지 않는다(#307).
 export function executeCommand(command, args, options = {}) {
+  const { quietStdout = false, ...spawnOptions } = options;
   console.log("> " + [command, ...args].join(" "));
   const outcome = spawnSync(command, args, {
     encoding: "utf8",
     timeout: 30 * 60 * 1000,
     maxBuffer: 32 * 1024 * 1024,
-    ...options,
+    ...spawnOptions,
   });
-  if (outcome.stdout) process.stdout.write(outcome.stdout);
+  if (outcome.stdout && !quietStdout) process.stdout.write(outcome.stdout);
   if (outcome.stderr) process.stderr.write(outcome.stderr);
   return outcome;
 }
@@ -125,13 +127,19 @@ function inspectImage(execute, image) {
 
 export function prepareContext(root, service, destination, execute) {
   const tracked = requireSuccess(
-    execute("git", ["ls-files", "-z", "--", service.path + "/"], { cwd: root }),
+    execute("git", ["ls-files", "-z", "--", service.path + "/"], {
+      cwd: root,
+      quietStdout: true,
+    }),
     "추적 파일 목록 조회",
   )
     .split("\0")
     .filter(Boolean);
   if (tracked.length === 0)
     throw new Error("서비스의 Git 추적 파일이 없습니다.");
+  console.log(
+    `빌드 컨텍스트: ${service.path}의 Git 추적 파일 ${tracked.length}개 복사`,
+  );
   for (const file of tracked) {
     const source = resolve(root, file);
     const local = relative(resolve(root, service.path), source);
