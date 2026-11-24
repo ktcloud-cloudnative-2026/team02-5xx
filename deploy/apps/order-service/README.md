@@ -7,7 +7,7 @@ Order 서비스를 GHCR 이미지와 Argo CD에 연결하는 Kustomize 구성이
 - `base/`: Deployment 1개, ClusterIP Service 1개 (`order-service:8080`)
 - `overlays/dev/`, `overlays/prod/`: 환경별 이미지 태그
 - namespace `peakorder`, 라벨 `app: order-service`, `team: team02`
-- 이미지: `ghcr.io/ktcloud-cloudnative-2026/team02-5xx/order:sha-<머지 커밋 전체 번호>` (`latest` 금지). 현재 태그는 관리자 주문 조회(OR-08·09, #170) 병합 커밋 `b05b9c0`의 main CI 게시본이다. 이 이미지부터 Flyway V6(`idx_orders_ordered_at`)이 적용된다. 새 변경이 병합되면 overlay의 태그를 그 커밋으로 올린다.
+- 이미지: `ghcr.io/ktcloud-cloudnative-2026/team02-5xx/order:sha-<머지 커밋 전체 번호>` (`latest` 금지). dev 태그는 지표(#272) 병합 커밋 `5f38479`의 main CI 게시본이다(사용자 신원 헤더·역할 검증 #263 포함, 이슈 #300). base·prod는 관리자 주문 조회(OR-08·09, #170) 병합 커밋 `b05b9c0`를 그대로 두며 이 이미지부터 Flyway V6(`idx_orders_ordered_at`)이 적용된다. 새 변경이 병합되면 dev overlay의 태그를 그 커밋으로 올린다.
 
 ## 필요한 Secret (값은 Git에 올리지 않는다)
 
