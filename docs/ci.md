@@ -170,7 +170,7 @@ Node.js 24에서 저장소 루트 기준으로 실행합니다.
 
 ```powershell
 node --version
-node --test .github/ci/ci.test.mjs .github/ci/image-ci.test.mjs
+node --test .github/ci/ci.test.mjs .github/ci/image-ci.test.mjs .github/ci/dev-image-tags.test.mjs
 node .github/ci/check-services.mjs
 ```
 
@@ -344,7 +344,7 @@ GHCR은 이미지를 하나씩 업로드하므로 중간 실패 시 일부 이�
 ### 검증 방법과 현재 한계
 
 ```sh
-node --test .github/ci/ci.test.mjs .github/ci/image-ci.test.mjs
+node --test .github/ci/ci.test.mjs .github/ci/image-ci.test.mjs .github/ci/dev-image-tags.test.mjs
 node .github/ci/check-services.mjs
 ```
 
@@ -363,3 +363,36 @@ PR 게시 조건, 정상·비정상 생략, CI Final 실패 전파를 재현합�
 로컬 PC에 Docker 엔진이 없으면 실제 이미지 검증은 미실행으로 기록합니다.
 actionlint 1.7.12와 Prettier 3.10.1을 사용하며 ShellCheck는 별도로 실행하지 않았습니다.
 React 등록은 기존 PR #64, 아직 main에 없는 Inventory는 기존 PR #70의 진행 상태를 따릅니다.
+
+## dev 이미지 태그 갱신 PR 자동 생성 — Issue #281
+
+main push에서 `Image build and GHCR`가 성공하면 `Dev image tag PR` 작업이 실행됩니다.
+배포 경로(Git PR → Argo CD)와 `latest` 금지는 그대로이며, 사람이 만들던 dev 태그 PR 작성만 자동화합니다.
+
+1. 이번 main 실행에서 게시에 성공한 이미지만 대상으로 합니다.
+2. 서비스마다 현재 dev 태그의 커밋에서 새 main 커밋까지 `services/<서비스>/`가 바뀌었는지 비교합니다.
+   main push마다 등록 이미지 전체를 다시 게시하므로, 소스가 바뀌지 않은 서비스는 불필요한 Pod 재시작을 막기 위해 건너뜁니다.
+3. 바뀐 서비스의 `deploy/apps/<서비스>/overlays/dev/kustomization.yaml` `newTag`만 `sha-<main 커밋 전체 SHA>`로 바꿉니다. base·prod는 바꾸지 않습니다.
+4. `infra/auto-dev-image-tags-<짧은 SHA>` 브랜치로 PR을 만들고, 이전에 열린 자동 PR은 대체 안내 후 닫습니다. 강제 push는 하지 않습니다.
+5. PR 본문에 서비스별 이전·새 태그와 Argo CD 자동 Sync 여부를 적고 `Refs #281`로 추적 Issue를 연결합니다.
+
+자동 PR도 일반 배포 PR과 같이 작성자 외 팀원 1명의 승인 후 Squash and merge합니다. 자동 병합은 하지 않습니다.
+inventory·menu·web-frontend처럼 Argo CD 자동 Sync가 아닌 서비스는 PR 본문에 "수동 Sync 필요"로 표시합니다.
+
+### 토큰
+
+기본 `GITHUB_TOKEN`은 이 저장소에서 PR을 만들 수 없고, 만들더라도 그 PR에서 CI가 실행되지 않습니다.
+그래서 PR 생성과 브랜치 push에는 Actions Secret `PEAKORDER_DEV_TAG_TOKEN`만 사용합니다.
+
+- 필요한 권한: 이 저장소의 Contents 읽기·쓰기, Pull requests 읽기·쓰기 (Fine-grained PAT 또는 GitHub App 설치 토큰)
+- 토큰 값은 Git·문서·로그에 기록하지 않습니다.
+- Secret이 없으면 PR을 만들지 않고, 바꿀 내용만 Job Summary에 남긴 뒤 성공으로 끝납니다.
+
+워크플로 권한은 `contents: read`만 사용하고 `packages: write`는 기존 게시 작업에만 둡니다.
+이 작업은 `CI Final`의 판정 대상이 아닙니다. 태그 PR 생성이 실패해도 이미 게시된 이미지와 main 검사 결과는 바뀌지 않습니다.
+
+### 검증
+
+`.github/ci/dev-image-tags.test.mjs`가 sha 태그 읽기·교체, `latest`·짧은 태그 거부, 게시 성공 이미지만 선택, 소스 변경 유무와
+알 수 없는 이전 커밋 구분, 변경 없음 시 미수정, 토큰 없음 시 PR 미생성, 대체 PR 정리 범위, 워크플로 실행 조건과 권한을 재현합니다.
+기존 211개와 함께 총 227개를 실행합니다.
