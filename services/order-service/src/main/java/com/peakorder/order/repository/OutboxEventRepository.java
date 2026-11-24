@@ -30,6 +30,14 @@ public class OutboxEventRepository {
   private static final String MARK_SENT_SQL =
       "UPDATE outbox_events SET status = 'SENT', sent_at = ? WHERE id = ?";
 
+  /**
+   * 발행 대기(PENDING) 건수 — 지표 {@code order_outbox_pending}(#272). 상태 값을 쿼리에 직접 써야 부분 인덱스 {@code
+   * idx_outbox_events_pending}(WHERE status = 'PENDING')를 쓸 수 있다. 바인드 파라미터로 넘기면 일반 실행 계획에서 부분 인덱스를
+   * 못 쓸 수 있다.
+   */
+  private static final String COUNT_PENDING_SQL =
+      "SELECT count(*) FROM outbox_events WHERE status = 'PENDING'";
+
   private final JdbcTemplate jdbcTemplate;
 
   public OutboxEventRepository(JdbcTemplate jdbcTemplate) {
@@ -58,5 +66,11 @@ public class OutboxEventRepository {
 
   public void markSent(Long id, OffsetDateTime sentAt) {
     jdbcTemplate.update(MARK_SENT_SQL, sentAt, id);
+  }
+
+  /** 발행 대기(PENDING) 이벤트 수. 지표 수집(scrape)마다 호출되므로 부분 인덱스를 타는 쿼리를 쓴다. */
+  public long countPending() {
+    Long count = jdbcTemplate.queryForObject(COUNT_PENDING_SQL, Long.class);
+    return count == null ? 0L : count;
   }
 }
