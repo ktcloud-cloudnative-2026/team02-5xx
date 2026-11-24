@@ -8,6 +8,7 @@ export default function Cart({
   onQuantity,
   onRemove,
   onBack,
+  backLabel = '메뉴로 돌아가기',
   onOrder,
   pending = false,
   failure = '',
@@ -23,7 +24,7 @@ export default function Cart({
         </div>
         <button className="close-button" onClick={onBack}>
           <span aria-hidden="true">×</span>
-          <span className="sr-only">메뉴로 돌아가기</span>
+          <span className="sr-only">{backLabel}</span>
         </button>
       </header>
       {notice && (

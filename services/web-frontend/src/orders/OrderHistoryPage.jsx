@@ -277,7 +277,13 @@ function Detail({ state, store, onClose }) {
     </>
   );
 }
-function CustomerOrders({ route, sessionSource, onLogout, authBusy }) {
+function CustomerOrders({
+  route,
+  sessionSource,
+  onLogout,
+  authBusy,
+  accountActions,
+}) {
   const store = useMemo(
     () =>
       createOrderHistoryStore({
@@ -338,13 +344,15 @@ function CustomerOrders({ route, sessionSource, onLogout, authBusy }) {
         </h1>
         <div className="order-actions">
           <a href="#menu-list">메뉴로 돌아가기</a>
-          <button
-            className="text-button"
-            disabled={authBusy}
-            onClick={onLogout}
-          >
-            로그아웃
-          </button>
+          {accountActions && (
+            <button
+              className="text-button"
+              disabled={authBusy}
+              onClick={onLogout}
+            >
+              로그아웃
+            </button>
+          )}
         </div>
       </header>
       <p className="order-caption">내 주문을 최신순으로 확인할 수 있어요.</p>
@@ -443,6 +451,7 @@ function CustomerOrders({ route, sessionSource, onLogout, authBusy }) {
   );
 }
 export default function OrderHistoryPage({
+  accountActions = true,
   route,
   sessionSource,
   onLogout,
@@ -480,6 +489,7 @@ export default function OrderHistoryPage({
           sessionSource={sessionSource}
           onLogout={onLogout}
           authBusy={authBusy}
+          accountActions={accountActions}
         />
       ) : (
         <div className="orders-message">

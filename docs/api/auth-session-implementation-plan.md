@@ -1,6 +1,6 @@
 # Auth 세션 API 구현 준비 — Issue #149
 
-> 상태: Auth 로컬 구현·검증 완료. 팀 연동 계약·외부 리뷰·PR·배포 대기. 미정 항목은 최종 합의로 표시하지 않는다.
+> 현재 상태(2026-11-23): 구현 PR #164와 배포 PR #181 병합, Auth dev 배포 완료. 최신 계약·실행 결과는 [Auth 연동 계약](auth-session-contract.md)을 따른다. 아래 구현 준비·제안·검증 기록은 작성 당시 이력이며, 미정 Gateway/브라우저 계약을 확정으로 바꾸지 않는다.
 > 구현 기준: origin/main `aa7de274bbc8bbb3d9f3cc8a9247f6e9651b8b06`, 2026-11-20. 기존 설계 파일을 보존하고 작업 브랜치만 fast-forward했다.
 > 작업 브랜치: `feat/149-auth-session`.
 

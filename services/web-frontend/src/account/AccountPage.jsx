@@ -249,7 +249,7 @@ export default function AccountPage({ route, sessionSource }) {
       <header className="page-heading">
         <div>
           <p className="account-eyebrow">MY ACCOUNT</p>
-          <h1 ref={heading} tabIndex={-1}>
+          <h1 id="account-heading" ref={heading} tabIndex={-1}>
             {title}
           </h1>
         </div>
