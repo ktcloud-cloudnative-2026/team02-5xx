@@ -219,7 +219,7 @@ try {
     });
     await page.keyboard.press('Tab');
   }
-  // 401 mutation logs out without refresh/replay.
+  // Mutation 401 attempts one refresh; an expired Refresh ends authentication.
   await page.setViewportSize({ width: 320, height: 740 });
   assert.equal(
     await page.evaluate(
@@ -233,6 +233,7 @@ try {
   });
   await route('#account/profile');
   fixture.controls.status = 401;
+  fixture.controls.refreshStatus = 401;
   await main.getByLabel('닉네임', { exact: true }).fill('expired');
   const refreshBefore = fixture.requests.filter((r) =>
     r.path.endsWith('/refresh'),
@@ -243,7 +244,7 @@ try {
     .waitFor();
   assert.equal(
     fixture.requests.filter((r) => r.path.endsWith('/refresh')).length,
-    refreshBefore,
+    refreshBefore + 1,
   );
   fixture.controls.status = 200;
   await login('admin@example.test', 'fixture-new-password');

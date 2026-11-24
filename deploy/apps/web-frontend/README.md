@@ -15,6 +15,7 @@ web-frontend/
   base/
     deployment.yaml
     service.yaml
+    httproute.yaml
     kustomization.yaml
   overlays/
     dev/kustomization.yaml
@@ -81,24 +82,58 @@ git diff --check
 
 각 결과에서 다음을 확인합니다.
 
-- Deployment 1개와 Service 1개, 모두 namespace `peakorder`
-- 두 리소스 및 Pod의 공통 `app` / `team` 라벨
+- Deployment·Service·HTTPRoute 각 1개, 모두 namespace `peakorder`
+- 세 리소스 및 Pod의 공통 `app` / `team` 라벨
 - Deployment와 Service selector가 Pod 라벨에 일치
 - ClusterIP, Service 8080 → `http` → containerPort 8080 연결
 - 두 Probe의 `/index.html`, `http` 포트
 - 지정 GHCR 경로, 배포 전 실제 게시된 SHA 태그, `latest` 및 플레이스홀더 없음
 
-작성 환경에는 PATH에서 `kubectl` / `kustomize`를 찾을 수 없어 Base와 두
-Overlay의 Kustomize 빌드 및 생성 YAML 검증은 미실행입니다.
-도구가 준비된 환경에서 위 검증이 필요합니다. 실제 이미지 게시 여부,
+초기 작성 시 렌더링은 미실행이었으나 #275에서 저장소 밖 Kustomize v5.8.3으로
+base/dev/prod 렌더링과 기존 리소스 YAML 객체 동일성을 확인했습니다. 실제 이미지 게시 여부,
 컨테이너 기동, Probe 응답, Service 통신 및 dev/prod 배포도 미검증입니다.
 
 ## 후속 연동과 범위
 
-Gateway / HTTPRoute / Ingress / TLS, Argo CD Application과 자동 동기화,
+공개 HTTPRoute는 아래 #275 구성에 포함합니다. TLS, Argo CD Application과 자동 동기화,
 Namespace 및 인증정보 준비는 별도 작업입니다. 실제 배포 경로는
 **Git PR → Argo CD**이며 이 작업에서는 클러스터에 접근하거나 배포하지 않습니다.
 Dockerfile, 이미지 CI, React 소스, 다른 서비스 구성은 변경하지 않습니다.
 
 Kubernetes 변경은 `CLAUDE.md` 6절의 필수 리뷰 대상입니다.
 후속 PR 제출 시 GitHub Actions 결과 확인과 작성자 외 팀원 1명의 승인이 필요합니다.
+
+## 공개 HTTPRoute (#275)
+
+`base/httproute.yaml`은 `envoy-gateway-system/peakorder-gateway`의 `http`
+리스너에 연결하며 backend는 `peakorder/web-frontend:8080`입니다.
+dev/prod 모두 base를 상속하므로 Route가 렌더링되지만 실제 적용은 하지 않습니다.
+이미지 태그·Deployment·Service·자동 Sync 정책은 변경하지 않습니다.
+
+| 메서드 | 경로 | 매칭·근거 |
+| --- | --- | --- |
+| GET, HEAD | `/`, `/index.html` | Exact, HTML 진입점 |
+| GET, HEAD | `/assets` | PathPrefix, Vite 빌드 JS·CSS |
+| GET, HEAD | `/images` | PathPrefix, public 이미지(SVG 포함) |
+
+`src/App.jsx`는 `window.location.hash`를 사용하며 해시 부분은 HTTP 요청에
+포함되지 않습니다. 따라서 `/menu`·`/cart` 같은 별도 SPA 경로는 열지 않습니다.
+실제 `npm run build` 산출물은 `index.html`, `assets/index-*.js`,
+`assets/index-*.css`, `images/defaults/menu-placeholder.svg` 등입니다.
+favicon은 index.html의 data URI이므로 `/favicon.ico` 경로를 추가하지 않습니다.
+
+Nginx의 `try_files $uri $uri/ /index.html` fallback을 고려해 `/` PathPrefix를
+추가하지 않습니다. `/api/v1/unknown`, `/internal/v1/**`, `/actuator/**`,
+Swagger 경로 및 다른 메서드는 Frontend로 전달되지 않습니다. PathPrefix는
+세그먼트 경계 기준이므로 `/assets-other`·`/images-other`도 매칭되지 않습니다.
+허용한 정적 경로 안의 미존재 파일은 기존 Nginx fallback 동작을 따릅니다.
+공개 정적 요청에서도 #112 계약에 맞춰 `X-User-Id`·`X-User-Role`을 제거합니다.
+
+로컬에서 실제 production 빌드를 저장소 밖에 생성하고 모든 산출물의 GET/HEAD
+Route 매칭, 금지 경로 및 Auth/Cooking 경로와의 비충돌을 검사했습니다.
+두 서비스 base/dev/prod 총 6건의 Kustomize 렌더링, 기존 리소스 불변,
+Route 메타데이터·연결 정보 및 `git diff --check`를 확인했습니다.
+실제 Gateway의 HTML·JS·CSS·SVG 상태/Content-Type, 브라우저 동일 Origin 메뉴 연동,
+미등록 API의 비노출·헤더 제거 및 Accepted/ResolvedRefs 상태는 **미검증**입니다.
+server dry-run·Argo CD Sync·dev/prod 배포는 실행하지 않았습니다.
+Gateway 담당자 리뷰 승인과 CI 성공 후 실환경에서 후속 확인해야 합니다.

@@ -5,16 +5,16 @@
 
 ## 개발 환경
 
-| 항목 | 버전 / 값 |
-| --- | --- |
-| Java | 21 |
-| Spring Boot | 4.1.2 |
-| Gradle Wrapper | 8.14.3 (Groovy DSL) |
-| Gradle group | `com.peakorder` |
-| 기본 패키지 | `com.peakorder.menu` |
-| springdoc-openapi | 3.2.0 |
-| Spotless | 7.2.1 |
-| Google Java Format | 1.28.0 |
+| 항목               | 버전 / 값            |
+| ------------------ | -------------------- |
+| Java               | 21                   |
+| Spring Boot        | 4.1.2                |
+| Gradle Wrapper     | 8.14.3 (Groovy DSL)  |
+| Gradle group       | `com.peakorder`      |
+| 기본 패키지        | `com.peakorder.menu` |
+| springdoc-openapi  | 3.2.0                |
+| Spotless           | 7.2.1                |
+| Google Java Format | 1.28.0               |
 
 Java 21 JDK를 설치하고 `JAVA_HOME` 또는 `PATH`로 지정합니다.
 Spotless 7.2.1과 Google Java Format 1.28.0은 Java 21 / Gradle 8.14.3에서 사용하도록 고정했습니다.
@@ -48,6 +48,30 @@ java -jar build/libs/menu-service-0.0.1-SNAPSHOT.jar
 ```
 
 ## API 문서
+
+### 관리자 ME-03~07 통합 (#245)
+
+기존 Draft #117·#119·#123·#127의 구현을 최신 main 기반으로 결합했습니다.
+아래 경로는 모두 공통 `AdminMenuAuthorization`을 거치며 **현재 제품 실행에서는 기본 403 차단**입니다.
+헤더·Bearer 문자열·Servlet 역할·환경 변수만으로 활성화할 수 없습니다.
+
+| 기능     | 경로                                                          | 보존한 계약                                         |
+| -------- | ------------------------------------------------------------- | --------------------------------------------------- |
+| ME-03·04 | `GET /api/v1/admin/menus`, `GET /api/v1/admin/menus/{menuId}` | 전체 판매 상태·옵션 조회, 필터·검색·정렬            |
+| ME-05    | `POST /api/v1/admin/menus`                                    | 메뉴·옵션 원자 등록, 성공 201 + menuId              |
+| ME-06    | `PATCH /api/v1/admin/menus/{menuId}`                          | 부분 수정·옵션별 수정/추가, 생략 옵션 보존, 행 잠금 |
+| ME-07    | `PATCH /api/v1/admin/menus/{menuId}/status`                   | ON_SALE/PAUSED/HIDDEN 전이, 같은 상태 시각 유지     |
+
+#112의 Gateway A안·신원 헤더·401/403 책임은 합의됐습니다. 실제 JWT 검증·claim 전달·위조/직접 접근 방어 검증은 별도입니다.
+현재 `AdminMenuGatewayTrust`는 항상 false이며 공개 활성화 설정이 없습니다.
+신뢰 경계 검증 이후에만 공통 정책이 헤더 누락/형식 오류 401, CUSTOMER 403, STORE_ADMIN 허용을 적용할 수 있습니다.
+로컬 테스트의 신뢰 경계 모의 허용은 실제 Gateway 인증 성공 증거가 아닙니다.
+
+- [공통 인증 경계·후속 검증](../../docs/api/menu-admin-auth-integration.md)
+- [통합·PostgreSQL 검증 결과](../../docs/api/menu-admin-postgresql-validation.md)
+- 기존 상세 계약: [ME-03·04](../../docs/api/menu-me03-me04-draft.md), [ME-05](../../docs/api/menu-me05-draft.md), [ME-06](../../docs/api/menu-me06-draft.md), [ME-07](../../docs/api/menu-me07-draft.md)
+
+아래 고객·내부 API는 기존 공개/내부 계약을 유지하며 관리자 권한 검사를 적용하지 않습니다.
 
 ME-01 `GET /api/v1/menus`, ME-02 `GET /api/v1/menus/{menuId}`는 비회원 고객의
 메뉴 목록·상세 조회를 제공합니다. 필터·정렬·상태·옵션 및 오류 계약은
@@ -85,11 +109,11 @@ $env:MENU_DB_PASSWORD = $dbCredential.GetNetworkCredential().Password
 .\gradlew.bat bootRun
 ```
 
-| 환경 변수 | 용도 |
-| --- | --- |
-| `MENU_DB_URL` | Menu Service 전용 PostgreSQL JDBC URL |
-| `MENU_DB_USERNAME` | DB 접속 사용자 |
-| `MENU_DB_PASSWORD` | DB 접속 비밀번호 |
+| 환경 변수          | 용도                                  |
+| ------------------ | ------------------------------------- |
+| `MENU_DB_URL`      | Menu Service 전용 PostgreSQL JDBC URL |
+| `MENU_DB_USERNAME` | DB 접속 사용자                        |
+| `MENU_DB_PASSWORD` | DB 접속 비밀번호                      |
 
 접속 정보는 환경 변수로 주입하며 코드나 Git에 저장하지 않습니다.
 테이블은 시작 시 Flyway가 `src/main/resources/db/migration`에서 생성합니다.

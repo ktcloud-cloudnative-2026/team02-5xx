@@ -672,7 +672,15 @@ PR #62(main 병합)는 전표를 `PESSIMISTIC_WRITE` 행 잠금으로 읽고 상
 
 **CI-02 — 구현 완료(main 병합: PR #53·#141), 팀 전체 확정은 미확인:** [PR #53](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/53)은 `orderId`, `orderNo`, `status`, `waitingAhead`, `estimatedCookSec`, `expectedWaitSec`, `queuedAt`, `startedAt`, `completedAt`, `canceledAt`을 반환하는 안을 제시했고, #139에서 CO-01·CO-02와 뜻을 맞추며 `expectedReadySec`를 추가했습니다. null 시각은 생략되며, 전표가 없으면 `404 COOKING_TICKET_NOT_FOUND`입니다. `expectedWaitSec`는 **조리 시작까지**(WAITING: 현재 조리 잔여 + 앞 대기 전표 예상 조리 시간 합, 그 외 0), `expectedReadySec`는 **조리 완료까지**(WAITING: `expectedWaitSec` + `estimatedCookSec`, COOKING: 자기 남은 조리 시간, DONE·CANCELED: 0)의 예상 시간(초)입니다. 이 계산식·필드 전체의 팀 확정은 확인되지 않았습니다.
 
-CO-04의 WAITING 대기열은 `queued_at, id` 오름차순입니다. 관리자 권한은 설계상 STORE_ADMIN이나 현재 Cooking PR에는 검사 TODO가 남아 있으므로 권한 검증 완료로 보지 않습니다.
+CO-04의 WAITING 대기열은 `queued_at, id` 오름차순입니다.
+
+**CO-03·CO-04 관리자 권한(이슈 #99, #112 계약):** Gateway가 전달하는 `X-User-Id`(양의 정수)와 `X-User-Role`(`CUSTOMER`·`STORE_ADMIN`)을 Order(#263)와 같은 규칙으로 확인합니다. 두 헤더 중 하나라도 없거나 두 번 이상 오거나 형식이 틀리면 `401 UNAUTHORIZED`(형식 오류를 역할 판단보다 먼저 확인), `STORE_ADMIN`이 아니면 `403 FORBIDDEN`입니다. 오류 코드·메시지는 Order와 같습니다. 이 헤더는 Gateway의 JWT 검증이 dev에서 확인되기 전에는 믿을 수 없으므로 `cooking.admin.enabled`(환경 변수 `COOKING_ADMIN_ENABLED`, 기본 `false`)는 계속 꺼 두고, 꺼져 있으면 경로가 없는 것처럼 `404`입니다. `/api/v1/admin/**`은 그 전까지 HTTPRoute에 넣지 않습니다(Cooking 공개 경로는 CO-01·CO-02만, #266).
+
+| HTTP | errorCode | 의미 (CO-03·CO-04) |
+| --- | --- | --- |
+| 401 | `UNAUTHORIZED` | 신원 헤더가 없거나 중복이거나 형식이 틀림(Gateway 우회 대비 방어, Gateway 자체의 JWT 검증 실패 401과 구분) |
+| 403 | `FORBIDDEN` | 역할이 `STORE_ADMIN`이 아님 |
+| 404 | `NOT_FOUND` | 관리자 API가 설정(`cooking.admin.enabled`)으로 꺼져 있어 경로가 존재하지 않음 |
 
 #### RabbitMQ 이벤트
 

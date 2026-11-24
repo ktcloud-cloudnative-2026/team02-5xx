@@ -21,6 +21,35 @@ Refresh 쿠키는 브라우저가 처리하며, Access Token은 메모리에서 
 [고객 메뉴 API 연동 기록](docs/customer-menu-api-145.md)과 [Auth 세션 기록](docs/auth-session-156.md)은 각 구현 당시의 계약·검증 근거입니다.
 현재 통합 실행·검증 결과와 실제 Menu/Auth·Order·Cooking·Gateway 연동의 남은 의존성은 [고객 통합 #201](docs/customer-integration-201.md)을 확인합니다.
 
+## #129 관리자 메뉴 관리 Mock 미리보기
+
+고객 App과 별개인 관리자 React 컴포넌트·메모리 Mock adapter를 추가했습니다.
+목록·검색·카테고리/상태 필터·가격 정렬, 상세·옵션, 등록·부분 수정·판매 상태 변경을 지원합니다.
+제품 라우트나 실제 권한을 개방하지 않습니다. 일반 build에는 관리자 미리보기/Mock 코드가 포함되지 않습니다.
+
+```powershell
+npm.cmd ci
+npm.cmd run preview:admin
+```
+
+출력된 `http://127.0.0.1:<임시 포트>`를 브라우저로 여세요. 샘플은 메모리에만 존재하며 새로고침하면 초기화됩니다.
+고정 포트가 필요하면 `ADMIN_PREVIEW_PORT`를 해당 로컬 프로세스 환경에 지정합니다. 바인딩은 loopback 전용입니다.
+미리보기 하단의 시나리오 도구에서 다음 조회/저장 실패·빈 목록을 확인할 수 있습니다.
+
+```powershell
+npm.cmd test
+npm.cmd run format:check
+npm.cmd run build
+npm.cmd run check:admin-boundary
+```
+
+최신 main `eac2e88c` 통합에서 고객 Node 198건과 관리자 69건을 확인했습니다.
+과거 Mock 카탈로그 즉시 표시를 가정한 관리자 SSR 기대값만 현재 고객 HTTP 로딩 상태에 맞췄습니다.
+실제 Chromium은 관리자 Mock 21건과 고객 메뉴·장바구니·Checkout·주문 내역 21건을 이번 통합 코드에서 검증했습니다.
+기존 관리자 Chromium 21 PASS 기록과 이번 실행 결과는 [계약 대조·통합 검증 기록](docs/admin-menu-ui-129.md)에서 구분합니다.
+#240까지의 고객 기능은 main을 통해 반영했으며, 리뷰 중인 #251 백엔드 코드는 가져오지 않았습니다.
+실제 API·JWT·Gateway·보호된 관리자 제품 라우트 연결은 후속 작업입니다.
+
 ## 준비 환경
 
 - Node.js 24 LTS (`.nvmrc`: 24.22.3)

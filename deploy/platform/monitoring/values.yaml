@@ -79,7 +79,7 @@ prometheusOperator:
 
 # --- Prometheus ---
 prometheus:
-  # 차트 밖 수집 대상 (#187)
+  # 차트 밖 수집 대상 (#187, #278)
   additionalServiceMonitors:
     # RabbitMQ 큐별 지표: peakorder의 rabbitmq Service 포트 prometheus(15692, #206).
     # 큐 이름(queue) 라벨이 붙은 묶음만 가져온다 → DLQ 메시지 수(docs/observability.md 4-2 알림 1번)
@@ -96,6 +96,20 @@ prometheus:
           params:
             family:
               - queue_coarse_metrics
+          interval: 30s
+    # Cooking 서비스 지표(#250): peakorder의 cooking-service Service 포트 http(8080)의 /actuator/prometheus.
+    # cooking_* 업무 지표, HTTP histogram, Hikari, JVM (docs/observability.md 1-2·2-2).
+    # /actuator는 외부(Gateway)에 열지 않는다(#266) — 클러스터 안 Prometheus만 읽는다(NetworkPolicy monitoring → 8080, #166).
+    - name: cooking-service
+      selector:
+        matchLabels:
+          app: cooking-service
+      namespaceSelector:
+        matchNames:
+          - peakorder
+      endpoints:
+        - port: http
+          path: /actuator/prometheus
           interval: 30s
   prometheusSpec:
     # 차트가 만든 것만이 아니라 다른 namespace(peakorder)의 ServiceMonitor·PodMonitor·규칙도 읽는다.

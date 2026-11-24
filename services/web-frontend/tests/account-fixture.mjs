@@ -19,9 +19,16 @@ export async function startAccountFixture() {
     role: 'STORE_ADMIN',
   };
   const tokens = new Map(),
+    tokenVersions = new Map(),
     cookies = new Map(),
     requests = [];
-  const controls = { status: 200, delay: 0, meStatus: 200 };
+  const controls = {
+    status: 200,
+    delay: 0,
+    meStatus: 200,
+    refreshStatus: 200,
+    refreshDelay: 0,
+  };
   let password = 'fixture-only-password',
     serial = 0;
   const fixture = await startUiFixture({
@@ -40,7 +47,13 @@ export async function startAccountFixture() {
         return true;
       }
       if (!path.startsWith('/api/v1/auth/')) return false;
-      requests.push({ path, method: req.method }); // Never record passwords or tokens.
+      requests.push({
+        path,
+        method: req.method,
+        accessVersion: tokenVersions.get(
+          req.headers.authorization?.replace(/^Bearer /, ''),
+        ),
+      }); // Numeric fixture issuance version only; never passwords/tokens.
       let raw = '';
       for await (const chunk of req) raw += chunk;
       const body = raw ? JSON.parse(raw) : {};
@@ -64,6 +77,7 @@ export async function startAccountFixture() {
         const accessToken = `synthetic-access-${++serial}`,
           cookie = `synthetic-refresh-${serial}`;
         tokens.set(accessToken, who);
+        tokenVersions.set(accessToken, serial);
         cookies.set(cookie, who);
         res.setHeader(
           'Set-Cookie',
@@ -89,6 +103,14 @@ export async function startAccountFixture() {
         if (who && body.password === password) issue(who);
         else send(401, null, 'UNAUTHORIZED');
       } else if (path.endsWith('/refresh')) {
+        const status = controls.refreshStatus;
+        if (controls.refreshDelay)
+          await new Promise((done) => setTimeout(done, controls.refreshDelay));
+        if (status !== 200) {
+          if (status === 401) cookies.delete(cookie);
+          send(status, null, 'UNAUTHORIZED');
+          return true;
+        }
         const who = cookies.get(cookie);
         cookies.delete(cookie);
         if (who) issue(who);

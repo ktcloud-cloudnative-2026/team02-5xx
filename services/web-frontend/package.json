@@ -9,7 +9,7 @@
   },
   "packageManager": "npm@11.19.1",
   "scripts": {
-    "test": "node --test tests/*.test.js",
+    "test": "node --test tests/*.test.js tests/*.test.mjs",
     "test:ui": "node tests/ui-fixture.mjs",
     "test:checkout:ui": "node tests/checkout-preview.mjs",
     "test:customer:ui": "node tests/customer-http-preview.mjs",
@@ -18,7 +18,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "format": "prettier . --write",
-    "format:check": "prettier . --check"
+    "format:check": "prettier . --check",
+    "preview:admin": "node scripts/admin-preview.mjs",
+    "check:admin-boundary": "node scripts/check-admin-boundary.mjs"
   },
   "dependencies": {
     "react": "19.3.1",

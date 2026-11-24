@@ -41,27 +41,34 @@ function AccountForm({ route, user, sessionSource, onSaved }) {
     setPending(true);
     setError('');
     controller.current = new AbortController();
+    let preserveInputs = false;
     try {
       if (password)
-        await sessionSource.changePassword({
-          currentPassword: current,
-          newPassword: next,
-        });
+        await sessionSource.changePassword(
+          {
+            currentPassword: current,
+            newPassword: next,
+          },
+          { signal: controller.current.signal },
+        );
       else
         await sessionSource.updateProfile(nickname, {
           signal: controller.current.signal,
         });
       if (active.current) onSaved(password);
     } catch (failure) {
+      preserveInputs = failure.kind === 'account-retry';
       if (active.current && failure.kind !== 'cancelled')
         setError(accountError(failure));
     } finally {
       busy.current = false;
       if (active.current) {
         setPending(false);
-        setCurrent('');
-        setNext('');
-        setConfirmation('');
+        if (!preserveInputs) {
+          setCurrent('');
+          setNext('');
+          setConfirmation('');
+        }
       }
     }
   }

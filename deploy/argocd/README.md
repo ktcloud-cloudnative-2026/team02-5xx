@@ -100,7 +100,7 @@ spec:
 
 자동 Sync는 GitHub Actions의 완료 여부를 직접 조회하거나 기다리지 않는다. 기존 CI 통과·필수 리뷰 절차를 지키고, 이미지 게시가 이미 완료된 고정 SHA 태그와 필요한 Secret·DB 설정을 확인한 배포 PR을 병합한다. 코드 PR의 main 빌드 중 아직 존재하지 않는 이미지 태그를 미리 넣지 않는다.
 
-GHCR에 새 이미지가 생기는 것만으로 실행 버전이 바뀌지 않는다. 해당 서비스 dev Overlay의 이미지 태그도 Git에서 갱신해야 한다. 이미지 태그 갱신 자동화는 이번 작업에 추가하지 않는다.
+GHCR에 새 이미지가 생기는 것만으로 실행 버전이 바뀌지 않는다. 해당 서비스 dev Overlay의 이미지 태그도 Git에서 갱신해야 한다. Issue #281부터는 main CI가 소스가 바뀐 서비스의 dev 태그 갱신 PR을 자동으로 만든다([CI 문서](../../docs/ci.md#dev-이미지-태그-갱신-pr-자동-생성--issue-281)). 자동 PR도 승인 후 병합해야 배포되며, 자동 Sync가 아닌 Application은 병합 후 수동 Sync가 필요하다.
 
 Inventory #208, 향후 Menu·프론트 배포 등록 시에는 위 설정을 Application에 넣고 해당 서비스의 준비 상태를 검증한다. 기존 syncOptions·ignoreDifferences가 있다면 같은 syncPolicy에 보존한다. Order #205의 RespectIgnoreDifferences=true 및 Deployment /spec/replicas 예외와 함께 사용할 수 있으며, HPA 예외를 지우거나 다른 팀원 PR을 직접 수정하지 않는다.
 

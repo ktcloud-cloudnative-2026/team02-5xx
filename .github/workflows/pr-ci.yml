@@ -36,7 +36,7 @@ jobs:
           package-manager-cache: false
 
       - name: Test CI foundation
-        run: node --test .github/ci/ci.test.mjs .github/ci/image-ci.test.mjs
+        run: node --test .github/ci/ci.test.mjs .github/ci/image-ci.test.mjs .github/ci/dev-image-tags.test.mjs
 
       - name: Check service registration and required files
         id: services
@@ -205,3 +205,42 @@ jobs:
           CI_NEEDS_JSON: ${{ toJSON(needs) }}
           CI_IMAGE_MODE: ${{ github.event_name == 'push' && 'main' || 'pr' }}
         run: node .github/ci/final-check.mjs
+
+  # Issue #281: main 게시 성공 후 소스가 바뀐 서비스만 dev 태그 갱신 PR을 만든다.
+  # PR 생성·push는 PEAKORDER_DEV_TAG_TOKEN으로만 하며, 토큰이 없으면 계획만 Summary에 남긴다.
+  dev_image_tags:
+    name: Dev image tag PR
+    needs: [image_publish]
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.image_publish.result == 'success' }}
+    permissions:
+      contents: read
+    concurrency:
+      group: dev-image-tags
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout merged commit with history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Plan dev image tag updates
+        id: plan
+        env:
+          IMAGE_RESULTS_JSON: ${{ needs.image_publish.outputs.image_results }}
+        run: node .github/ci/dev-image-tags.mjs plan
+
+      - name: Open dev image tag PR
+        if: ${{ steps.plan.outputs.changed == 'true' }}
+        env:
+          DEV_TAG_TOKEN: ${{ secrets.PEAKORDER_DEV_TAG_TOKEN }}
+          DEV_TAG_FILES: ${{ steps.plan.outputs.files }}
+        run: node .github/ci/dev-image-tags.mjs open

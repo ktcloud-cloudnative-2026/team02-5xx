@@ -1,0 +1,58 @@
+# React는 해시 라우팅을 사용한다. 미등록 API가 Nginx SPA fallback에 도달하지 않게
+# 문서와 정적 파일 경로만 연결한다. / PathPrefix catch-all은 추가하지 않는다.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-frontend
+  namespace: peakorder
+  labels:
+    app: web-frontend
+    team: team02
+spec:
+  parentRefs:
+    - name: peakorder-gateway
+      namespace: envoy-gateway-system
+      sectionName: http
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /
+          method: GET
+        - path:
+            type: Exact
+            value: /
+          method: HEAD
+        - path:
+            type: Exact
+            value: /index.html
+          method: GET
+        - path:
+            type: Exact
+            value: /index.html
+          method: HEAD
+        - path:
+            type: PathPrefix
+            value: /assets
+          method: GET
+        - path:
+            type: PathPrefix
+            value: /assets
+          method: HEAD
+        - path:
+            type: PathPrefix
+            value: /images
+          method: GET
+        - path:
+            type: PathPrefix
+            value: /images
+          method: HEAD
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            remove:
+              - X-User-Id
+              - X-User-Role
+      backendRefs:
+        - name: web-frontend
+          port: 8080

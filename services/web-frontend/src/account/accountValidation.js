@@ -12,6 +12,8 @@ export function passwordError(current, next, confirmation) {
   return '';
 }
 export function accountError(error) {
+  if (error.kind === 'account-retry')
+    return '인증이 갱신되었어요. 입력한 내용을 확인하고 다시 저장해 주세요.';
   if (error.errorCode === 'CURRENT_PASSWORD_MISMATCH')
     return '현재 비밀번호가 일치하지 않아요.';
   if (error.status === 401) return '인증이 만료됐어요. 다시 로그인해 주세요.';

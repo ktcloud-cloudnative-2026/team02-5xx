@@ -50,6 +50,8 @@ export default function App({
   storageProvider = browserStorage,
   menuApi = defaultMenuApi,
   checkoutAdapter,
+  registrationApi,
+  registrationTerms,
   congestionApi,
 }) {
   const hash = useLocationHash();
@@ -941,6 +943,8 @@ export default function App({
         ['order', 'login'].includes(loginIntent.type) &&
         !authenticated && (
           <LoginModal
+            registrationApi={registrationApi}
+            registrationTerms={registrationTerms}
             onClose={closeLogin}
             onLogin={sessionSource.login}
             waiting={session?.phase === 'restoring' || authBusy}

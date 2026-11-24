@@ -13,7 +13,24 @@ AU-05는 `{nickname}`만 PATCH하고 200 회원정보로 로그인 표시·마�
 
 AU-06은 `{currentPassword,newPassword}`만 PATCH한다. 새 비밀번호는 현재 개발 기본 정책 12~64 코드 포인트이며 확인은 화면에서만 검사한다. 원문을 trim하지 않는다. 204에서 JSON 파싱·추가 logout 없이 Access 메모리·인증 스냅샷·이전 세션 요청을 무효화한다. 메뉴·장바구니 데이터는 보존한다. 모든 기기의 Refresh 폐기와 기존 Access 잔여 유효시간을 구분해 안내한다.
 
-중복 제출을 세션·화면 양쪽에서 차단하고 변경 요청은 자동 재전송하지 않는다. 화면을 떠난 프로필 요청은 취소하고 abort를 무시하는 응답도 적용하지 않는다. 이미 전송한 비밀번호 변경은 화면을 떠나도 204를 받으면 로컬 인증을 종료한다. 이전 GET·Refresh가 새 닉네임이나 종료된 인증을 덮어쓰지 못한다. 400 코드별 입력 오류, 401 재로그인, 403 권한, 서버·네트워크 오류를 구분한다.
+중복 제출을 세션·화면 양쪽에서 차단하고 변경 요청은 자동 재전송하지 않는다. 화면을 떠난 프로필 요청은 취소하고 abort를 무시하는 응답도 적용하지 않는다. 이미 전송한 비밀번호 변경은 화면을 떠나도 204를 받으면 로컬 인증을 종료한다. 이전 GET·Refresh가 새 닉네임이나 종료된 인증을 덮어쓰지 못한다. 400 코드별 입력 오류, 401 복구·재로그인, 403 권한, 서버·네트워크 오류를 구분한다.
+
+## PR #262 Auth 401 후속 보완 (로컬 검증)
+
+- 작업 시작 시 #298 `fb39138`, #299 `72d7d5b` 브랜치와 재고 미리보기 5284(PID 1868)를 확인했다. 이 두 ref·프로세스는 변경하지 않았다. 기존 서비스 bin 미추적 파일과 다른 worktree도 보존했다.
+- 로컬 #260을 원격 PR HEAD `df7abb5`까지 fast-forward했다. 최신 `origin/main` **316a404**를 `merge --no-commit --no-ff`로 통합했으며 **충돌 없음**. #258 회원가입과 #132 관리자 메뉴를 보존했다. main에 없는 #298/#299 코드는 가져오지 않았다. Commit 금지에 따라 HEAD는 그대로이며 merge 결과는 index, 이번 수정은 working tree/신규 테스트에 남겨 두었다. Push·PR 갱신도 하지 않았다.
+- 변경 전: AU-05·06은 `authorized(operation, false)`의 401에서 즉시 `clear('expired')`를 실행했다. 폼 finally는 성공 여부와 무관하게 비밀번호 세 필드를 지웠다.
+- 변경 후: 계정 변경 요청만 별도 401 복구 경로를 사용한다. 같은 탭의 진행 중 Refresh를 공유하고, 이미 완료된 회전은 인증 revision으로 감지한다. Access 문자열이 같아도 회전 완료를 다시 Refresh하지 않는다. Refresh/AU-02 검증 성공 시 Access·인증 상태를 갱신하지만 **원래 PATCH는 재전송하지 않고** `AuthError.kind = 'account-retry'`를 반환한다.
+- 폼은 해당 오류에서만 현재·새·확인 비밀번호를 유지하며 닉네임 초안도 유지한다. 안내는 **"인증이 갱신되었어요. 입력한 내용을 확인하고 다시 저장해 주세요."**다. 사용자 저장 버튼이 다음 PATCH를 새 Access로 한 번 보낸다. 일반 입력/서버 오류의 기존 비밀번호 정리 동작과 204 성공 후 재로그인 흐름은 유지한다.
+- Refresh 전후 현재 사용자 ID와 CUSTOMER 역할, Refresh user·AU-02 user ID/역할을 확인하고 **스냅샷 공개 전에** 불일치를 거절한다. Refresh 401뿐 아니라 503·네트워크 실패도 기존 Refresh 실패 정책과 동일하게 로컬 인증을 종료한다. 이 경우 폼이 해제되므로 이전 비밀번호는 재로그인 후 복원하지 않는다.
+- 변경 요청 400·403·503·네트워크 실패에는 Refresh를 호출하지 않는다. 기존 GET 재시도와 일반 `session.request`의 인증 정책은 수정하지 않았다.
+- 계정 변경 때문에 시작한 Refresh는 취소 후 성공/실패 모두 늦은 Access·화면·안내를 적용하지 않는다. 다른 GET/명시적 Refresh가 이미 소유하거나 공유한 회전은 그 독립 요청의 기존 수명을 유지하며, 취소된 계정 요청만 cancelled로 처리한다. 어느 경우에도 PATCH 재전송·옛 폼 복원은 없다. 로그아웃·계정 전환은 기존 generation으로 무효화한다.
+- AU-06은 UI 취소 signal을 복구 경로에 전달하지만 이미 보낸 PATCH 자체는 abort하지 않는다. 따라서 늦게 204가 와도 같은 세대의 로컬 인증을 폐기한다. 추가 `/logout`은 호출하지 않고 모든 기기 Refresh 폐기·기존 Access 잔여 유효시간 안내와 메뉴·장바구니 보존을 유지한다.
+- 입력은 React 폼의 메모리에만 보존한다. 비밀번호를 localStorage/sessionStorage·스냅샷·로그로 저장하지 않는다. HTTP fixture의 요청 기록도 path/method와 합성 토큰의 숫자 발급 순번만 기록한다.
+
+이번 보완 파일은 `src/authSession.js`, `src/account/AccountPage.jsx`, `src/account/accountValidation.js`, `tests/account.test.js`, `tests/account-fixture.mjs`, `tests/account-browser.mjs`, 신규 `tests/account-recovery.test.js`, `tests/account-recovery-browser.mjs` 및 이 문서다. Auth 백엔드·API 계약·라이브러리는 변경하지 않았다. staged에 보이는 다른 main 파일은 기존 main merge 결과다.
+
+검증 로그는 저장소 밖 `C:/M/Peak_Order-account-401-qa/`에 둔다. 전체 Node **399 PASS**. 새 복구 Chromium **14 PASS**는 AU-05/06 401 성공·입력 유지, 실패 401/503/network 후 재로그인, 명시적 새 Access 재제출, 자동 PATCH 없음, 중복 제출, 취소·로그아웃·CUSTOMER 제한, 204/no logout과 저장소 보존을 포함한다. 기존 마이페이지 Chromium(1440·390·320)도 통과했다. 회원가입 **13 PASS**, 기존 고객 **79 PASS**(Auth 9/HTTP Checkout 23/장바구니 16/주문 내역 16/홈 15), Build·변경 파일 Prettier·전체 `--end-of-line auto`·working/index/신규 파일 diff 검사도 통과했다. 실제 Auth/Gateway E2E는 이 HTTP fixture 결과와 구분하며 여전히 미검증이다.
 
 ## 로컬 화면 검수
 

@@ -169,7 +169,7 @@ test('cancelled profile GET/PATCH responses are ignored even if transport ignore
   await assert.rejects(changing, (e) => e.kind === 'cancelled');
   assert.equal(session.getSnapshot().user.nickname, null);
 });
-for (const status of [400, 401, 403, 503])
+for (const status of [400, 403, 503])
   test(`session mutation ${status}: no refresh or replay`, async () => {
     let count = 0,
       refresh = 0;
@@ -185,7 +185,7 @@ for (const status of [400, 401, 403, 503])
     await assert.rejects(session.changePassword({}));
     assert.equal(count, 1);
     assert.equal(refresh, 0);
-    assert.equal(session.getSnapshot().authenticated, status !== 401);
+    assert.equal(session.getSnapshot().authenticated, true);
   });
 
 test('password invalidation rejects an already pending refresh verification', async () => {
