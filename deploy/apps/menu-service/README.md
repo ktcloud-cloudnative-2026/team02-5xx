@@ -20,6 +20,7 @@ menu-service/
   base/
     deployment.yaml
     service.yaml
+    httproute.yaml
     kustomization.yaml
   overlays/
     dev/kustomization.yaml
@@ -126,7 +127,7 @@ git diff --check
 
 각 렌더 결과에서 다음 항목을 확인합니다.
 
-- Deployment 1개와 Service 1개, namespace `peakorder`
+- Deployment·Service·HTTPRoute 각 1개, namespace `peakorder`
 - 리소스 및 Pod의 공통 라벨과 selector 일치
 - ClusterIP 및 Service 8080 → `http` → containerPort 8080 연결
 - DB 환경 변수 3개의 `menu-service-db` Secret 이름과 동일 이름 키 참조
@@ -153,10 +154,49 @@ Service 통신 및 실제 dev/prod 배포는 미검증입니다.
 PR #76·#79·#82는 병합됐지만 해당 사실만으로 실배포 검증이 완료되지는 않습니다.
 실제 배포 전 게시 이미지, 환경별 DB 및 Secret,
 Namespace·이미지 접근 권한, 기동 시간 검증이 필요합니다.
-Gateway / HTTPRoute / Ingress / TLS와 Argo CD Application은 별도 작업입니다.
+공개 HTTPRoute는 아래 #275 구성에 포함합니다. TLS와 Argo CD Application 운영은 별도 작업입니다.
 배포 경로는 **Git PR → Argo CD**이며 이 작업에서는 클러스터에 접근하지 않습니다.
 
 Kubernetes 변경은 `CLAUDE.md` 6절의 필수 리뷰 대상입니다.
 후속 PR 제출 시 GitHub Actions 결과 확인과 작성자 외 팀원 1명 승인이 필요합니다.
 이 작업은 `deploy/apps/menu-service/`만 수정하며 서비스 소스·CI·Dockerfile,
 다른 서비스 배포 구성 및 실제 Secret을 변경하거나 생성하지 않습니다.
+
+## 공개 HTTPRoute (#275)
+
+`base/httproute.yaml`은 `envoy-gateway-system/peakorder-gateway`의 `http`
+리스너에 연결하며, backend는 같은 namespace의 `menu-service:8080`입니다.
+base를 사용하는 dev/prod 렌더링에 모두 포함됩니다. 이미지·Deployment·Service는
+변경하지 않으며 실제 prod 적용은 수행하지 않습니다.
+
+| 메서드 | 경로 | 매칭 |
+| --- | --- | --- |
+| GET | `/api/v1/menus` | Exact (ME-01) |
+| GET | `/api/v1/menus/{menuId}` | RegularExpression `^/api/v1/menus/[^/]+$` (ME-02) |
+
+상세는 비어 있지 않은 한 세그먼트만 허용합니다. 숫자로만 제한하지 않아
+`0`, `-1`, `abc`, `1.5`, Long 범위 초과 ID도 서비스에 도달하여
+[기존 JSON 400 계약](../../../docs/api/menu-me01-me02.md)을 유지합니다.
+쿼리 조건을 Route에 넣거나 경로를 rewrite하지 않습니다. 추가 하위 경로·후행 슬래시,
+GET 외 메서드(HEAD 포함), 관리자·내부·Actuator·Swagger 경로는 이 Route에서 연결하지 않습니다.
+
+RegularExpression은 구현체별 지원 기능입니다.
+[Envoy Gateway v1.5.0 공식 구현](https://github.com/envoyproxy/gateway/blob/v1.5.0/internal/gatewayapi/route.go)은
+`PathMatchRegularExpression`을 검증해 `SafeRegex`로 전달합니다. 이는 제품 지원 근거이며
+현재 dev/prod 설치 버전 확인 결과가 아닙니다. 로컬에 kubectl 및 kubeconfig가 없어
+설치 이미지·CRD 지원 범위는 **미검증**입니다. Gateway 담당자가 실제 설치 버전과
+정규식 지원을 확인하고 dev server dry-run 및 `Accepted=True`·`ResolvedRefs=True`를
+검증해야 합니다. 지원하지 않으면 넓은 PathPrefix로 대체하지 말고 별도 협의합니다.
+
+Auth #155·Cooking PR #266 선례 및
+[#112 확정 기록](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/112#issuecomment-7094381845)에
+따라 `X-User-Id`·`X-User-Role`을 제거합니다. 공개 조회에 JWT는 요구하지 않습니다.
+현재 main의 Auth `/api/v1/auth` 및 미병합 #266의 Cooking 공개 경로와 겹치지 않습니다.
+
+로컬 검증: Kustomize v5.8.3으로 두 서비스 base/dev/prod 총 6건 렌더링,
+변경 전후 기존 리소스의 YAML 객체 동일성, parentRef/backend/method/path/라벨,
+허용·차단 경로와 `git diff --check`를 확인했습니다.
+실제 Gateway JSON 응답·검색 쿼리·잘못된 ID의 400·미존재/HIDDEN의 404,
+위조/중복/대소문자 변형 헤더 제거, 다른 서비스의 실환경 회귀는 미검증입니다.
+server dry-run·실제 배포·Argo CD Sync는 실행하지 않았습니다.
+Gateway 담당자 리뷰 승인과 CI 성공 후 Git PR → Argo CD 절차로 후속 검증합니다.
