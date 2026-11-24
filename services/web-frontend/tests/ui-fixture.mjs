@@ -12,6 +12,7 @@ export async function startUiFixture({
   input = resolve(entryFile ?? 'tests/browser-fixture-entry.jsx'),
   handleRequest,
   testControls = true,
+  previewControls,
 } = {}) {
   const bundle = await build({
     logLevel: 'error',
@@ -26,15 +27,6 @@ export async function startUiFixture({
       file.type === 'chunk' ? file.code : file.source,
     ]),
   );
-  files.set(
-    '/images/defaults/menu-placeholder.svg',
-    await readFile(
-      new URL(
-        '../public/images/defaults/menu-placeholder.svg',
-        import.meta.url,
-      ),
-    ),
-  );
   const entry = bundle.output.find(
     (file) => file.type === 'chunk' && file.isEntry,
   );
@@ -46,6 +38,13 @@ export async function startUiFixture({
     if (handleRequest && (await handleRequest(request, response))) return;
     if (menuApiHandler(request, response)) return;
     const url = new URL(request.url, 'http://127.0.0.1');
+    if (url.pathname === '/images/defaults/menu-placeholder.svg') {
+      response.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+      response.end(
+        await readFile(resolve('public/images/defaults/menu-placeholder.svg')),
+      );
+      return;
+    }
     if (url.pathname === '/') {
       const html = `<!doctype html>
       <html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="icon" href="data:,"><title>Issue 110 UI test fixture</title>${styles}</head>
@@ -58,17 +57,15 @@ export async function startUiFixture({
         <button id="test-pending">다음 로그인 안내에서 세션 모의 주입</button>
       </aside>`
           : ''
-      }<script type="module" src="/${entry.fileName}"></script></body></html>`;
+      }${typeof previewControls === 'function' ? previewControls() : ''}<script type="module" src="/${entry.fileName}"></script></body></html>`;
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       response.end(html);
     } else {
       const file = files.get(url.pathname);
       response.writeHead(file === undefined ? 404 : 200, {
-        'Content-Type': url.pathname.endsWith('.svg')
-          ? 'image/svg+xml'
-          : url.pathname.endsWith('.css')
-            ? 'text/css'
-            : 'text/javascript',
+        'Content-Type': url.pathname.endsWith('.css')
+          ? 'text/css'
+          : 'text/javascript',
       });
       response.end(file);
     }

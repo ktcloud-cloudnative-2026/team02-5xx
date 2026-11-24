@@ -113,7 +113,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 | Cooking | `cooking_order_confirmed_received_total{result="created"\|"duplicate"}` | Counter | OrderConfirmed(EV-01)가 끊기지 않고 들어오나. `duplicate` 증가는 재발행 신호 | 제안 |
 | Cooking | `cooking_outbox_pending` | Gauge | CookingCompleted(EV-02) 발행이 막혔나 (정상이면 1초 안에 0, 계속 남아 있으면 이상 — 4-2 5번) | 제안 (#52 후속) |
 | Order | `order_cancel_follow_up_manual_required` | Gauge | 사람이 확인해야 하는 취소 주문 수 | 구현 (#135) |
-| Order | `order_outbox_pending` | Gauge | OrderConfirmed(EV-01) 발행이 막혔나 (정상이면 1초 안에 0 — 4-2 5번) | 제안 (#52 후속, 김민규 님 제안) |
+| Order | `order_outbox_pending` | Gauge | OrderConfirmed(EV-01) 발행이 막혔나 (정상이면 1초 안에 0 — 4-2 5번) | 구현 (#272) |
 | RabbitMQ | `rabbitmq_detailed_queue_messages{queue=~".+\\.dlq"}` | Gauge (RabbitMQ) | 처리 못 한 이벤트가 있나 | 합의됨 (#52) |
 | Auth · Menu · Inventory · Payment | (담당자 기입) | | | |
 
@@ -190,13 +190,13 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 
 | # | 조건 | 지속 | 심각도 | 무엇을 알리나 | 상태 | 대응 문서 |
 |---|---|---|---|---|---|---|
-| 1 | `max by (queue) (rabbitmq_detailed_queue_messages{queue=~".+\\.dlq"}) > 0` | 1분 | warning | 처리 못 한 이벤트가 DLQ에 들어감 | **합의됨 (#52)** | runbook `DLQ` (작성 예정) |
-| 2 | `up{namespace="peakorder"} == 0` | 1분 | critical | 서비스가 죽었거나 지표를 가져오지 못함 | 제안 — `namespace` 라벨은 수집 설정 후 확인 | runbook 공통 확인 순서 |
-| 3 | 5xx 비율(1-1) > 5% | 5분 | critical | 서비스가 요청을 처리하지 못함 | 제안 — 기준값은 성공 기준(plan.md 5절)이 정해지면 조정 | runbook 공통 확인 순서 |
-| 4 | `increase(kube_pod_container_status_restarts_total{namespace="peakorder"}[15m]) >= 3` | — (15분 집계 구간이 대신함) | warning | 재시작 반복(메모리 초과·기동 실패) | 제안 | runbook `CrashLoopBackOff` (작성 예정) |
-| 5 | `max(cooking_outbox_pending) > 0`, `max(order_outbox_pending) > 0` (서비스별 규칙) | 5분 | warning | 이벤트 발행이 막힘(정상이면 1초 안에 비워짐) | 제안 (#52 후속, 각 지표 구현 후) | runbook `Outbox` (작성 예정) |
+| 1 | `max by (queue) (rabbitmq_detailed_queue_messages{queue=~".+\\.dlq"}) > 0` | 1분 | warning | 처리 못 한 이벤트가 DLQ에 들어감 | **합의됨 (#52)** | [runbook `DLQ`](runbook.md#dlq) |
+| 2 | `up{namespace="peakorder"} == 0` | 1분 | critical | 서비스가 죽었거나 지표를 가져오지 못함 | 제안 — `namespace` 라벨은 수집 설정 후 확인 | [runbook 공통 확인 순서](runbook.md#공통-확인-순서) |
+| 3 | 5xx 비율(1-1) > 5% | 5분 | critical | 서비스가 요청을 처리하지 못함 | 제안 — 기준값은 성공 기준(plan.md 5절)이 정해지면 조정 | [runbook 공통 확인 순서](runbook.md#공통-확인-순서) |
+| 4 | `increase(kube_pod_container_status_restarts_total{namespace="peakorder"}[15m]) >= 3` | — (15분 집계 구간이 대신함) | warning | 재시작 반복(메모리 초과·기동 실패) | 제안 | [runbook `CrashLoopBackOff`](runbook.md#crashloopbackoff) |
+| 5 | `max(cooking_outbox_pending) > 0`, `max(order_outbox_pending) > 0` (서비스별 규칙) | 5분 | warning | 이벤트 발행이 막힘(정상이면 1초 안에 비워짐) | 제안 (#52 후속, 각 지표 구현 후) | [runbook `Outbox`](runbook.md#outbox) |
 | 6 | `max(order_cancel_follow_up_manual_required) > 0` | 1분 | warning | 사람이 확인해야 하는 취소 주문이 있음 | 제안 (#135 리뷰) | `services/order-service/README.md` 수동 확인 운영 방법 |
-| 7 | `kube_deployment_status_replicas_available{namespace="peakorder"} == 0` (또는 `absent_over_time(up{…}[5m])`) | 1분 | critical | 서비스 Pod가 하나도 없음(수집 대상 자체가 사라짐 — 2번이 못 잡는 경우) | 미정 — 설치 후 어떤 방식이 동작하는지 검증 | runbook 공통 확인 순서 |
+| 7 | `kube_deployment_status_replicas_available{namespace="peakorder"} == 0` (또는 `absent_over_time(up{…}[5m])`) | 1분 | critical | 서비스 Pod가 하나도 없음(수집 대상 자체가 사라짐 — 2번이 못 잡는 경우) | 미정 — 설치 후 어떤 방식이 동작하는지 검증 | [runbook 공통 확인 순서](runbook.md#공통-확인-순서) |
 
 - p95 응답 시간은 기준값(SLO)이 정해지기 전까지 **대시보드에서만** 본다.
 - **감시 한계 (미정 — 후속 플랫폼 작업)**: DB를 세는 Gauge(5·6번)는 DB 조회가 실패하면 값이 NaN이 되어 `> 0` 조건이 성립하지 않는다(Micrometer가 값 함수 예외를 삼킴, #146 리뷰에서 재현). 업무 요청이 없으면 5xx(3번)도 생기지 않고, 앱과 수집이 살아 있으면 2·7번도 울리지 않는다. **지금 규칙으로는 이 경우의 자동 감지를 보장하지 않는다.**

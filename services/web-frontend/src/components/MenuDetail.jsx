@@ -5,6 +5,7 @@ import { describeItem } from '../cart.js';
 import MenuPhoto from './MenuPhoto.jsx';
 
 export default function MenuDetail({
+  active = true,
   adding = false,
   menu,
   onClose,
@@ -16,7 +17,7 @@ export default function MenuDetail({
   failure = '',
   onRetry,
 }) {
-  const { close: closeDetail, ...dialog } = useDialog(onClose);
+  const { close: closeDetail, ...dialog } = useDialog(onClose, active);
   const options = menu?.options.filter((option) => option.active) ?? [];
   const [optionId, setOptionId] = useState(
     (options.find((option) => option.isDefault) ?? options[0])?.id ?? null,

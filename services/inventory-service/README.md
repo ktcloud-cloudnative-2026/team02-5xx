@@ -42,7 +42,7 @@ export DB_USER=<사용자> DB_PASSWORD=<비밀번호>
 | `STOCK_HOLD_TTL` | 재고 임시 확보 유효시간 | `5m` (테스트 환경은 `10s`) |
 | `INVENTORY_EXPIRY_CHECK_DELAY_MS` | 만료 스케줄러 실행 간격(ms). 한 번 돈 뒤 이만큼 쉬고 다시 실행 | `5000` |
 | `MENU_SERVICE_URL` | Menu 서비스 주소. IN-05에서 MI-02(메뉴 존재 확인) 호출에 사용. 연결 2초·응답 3초 제한 | `http://localhost:8081` |
-| `INVENTORY_ADMIN_ENABLED` | 관리자 API(IN-02~06) 등록 여부. 인증(#112) 연동 전까지 꺼 두고 격리된 로컬에서만 `true`. 꺼져 있으면 관리자 경로 404 | `false` |
+| `INVENTORY_ADMIN_ENABLED` | 관리자 API(IN-02~06) 등록 여부. `STORE_ADMIN` 권한 검사는 적용됐고, 공유 dev에서 켜는 것은 Gateway JWT 검증 확인 뒤. 꺼져 있으면 관리자 경로 404 | `false` |
 
 ## 외부 API (프론트 → Inventory)
 
@@ -58,7 +58,17 @@ export DB_USER=<사용자> DB_PASSWORD=<비밀번호>
 - IN-02는 재고 항목 목록을, IN-03~06은 바뀐 재고 항목 `{stockItemId, menuId, stockQty, reservedQty, availableQty, lowStockThreshold, lowStock}`을 돌려준다.
 - IN-01의 `orderable`은 재고 기준만 본다(연결됨 + 주문 가능 수량 1 이상). 메뉴 판매 상태와의 결합은 프론트가 한다. 미연결 메뉴는 오류가 아니라 `false`. 잠금 없이 읽는다. `menuIds`가 없거나 숫자가 아니거나 0 이하이거나 100개를 넘으면 400.
 - IN-05 오류: 없는 메뉴 404 `MENU_NOT_FOUND`, 숨김 메뉴 409 `MENU_NOT_LINKABLE`, 이미 다른 재고에 연결된 메뉴 409 `MENU_ALREADY_LINKED`(동시에 같은 메뉴를 연결해도 409 `MENU_ALREADY_LINKED`), 현재 메뉴로 결제 대기(`RESERVED`)이거나 복원될 수 있는 확정(`CONFIRMED`) 주문이 있으면 409 `STOCK_ITEM_IN_USE`, Menu 장애 503 `MENU_SERVICE_UNAVAILABLE`(기존 연결 유지). ON_SALE·PAUSED 메뉴는 연결할 수 있다.
-- 관리자 API는 `INVENTORY_ADMIN_ENABLED=true`일 때만 등록된다(기본 꺼짐, 꺼져 있으면 404). 공유 dev·prod에서는 JWT 공통 계약(#112)의 `STORE_ADMIN` 인가와 Gateway 격리를 확인하기 전까지 켜지 않는다.
+- 관리자 API는 `INVENTORY_ADMIN_ENABLED=true`일 때만 등록된다(기본 꺼짐, 꺼져 있으면 404). 공유 dev·prod에서는 Gateway JWT 검증을 확인하고 관리자 경로 노출을 정하기 전까지 켜지 않는다.
+- 관리자 API 권한 검사: 신원 헤더는 Gateway가 JWT 검증 후 넣는다(#112). 서비스는 값을 변환·추측하지 않는다.
+  - `X-User-Id`: 정확히 1개, 앞뒤 공백 없는 양의 정수(long 범위)
+  - `X-User-Role`: 정확히 1개, `CUSTOMER` 또는 `STORE_ADMIN`과 정확히 일치(대소문자 구분)
+
+| 상황 | 응답 |
+|---|---|
+| 신원 헤더 누락, 형식 오류, 같은 헤더 여러 개, 정해지지 않은 역할 | 401 `UNAUTHORIZED` |
+| 역할이 `CUSTOMER` | 403 `FORBIDDEN` |
+| 역할이 `STORE_ADMIN` | 통과 |
+
 - IN-02는 삭제되지 않은 재고만 id순으로 잠금 없이 읽는다. `lowStockOnly`(기본 `false`)가 `true`면 부족한 것만.
 - IN-06은 행을 지우지 않고 `deleted_at`을 기록한 뒤 메뉴 연결을 푼다(그 메뉴는 다른 재고에 다시 연결할 수 있다). 연결된 메뉴로 결제 대기(`RESERVED`)이거나 복원될 수 있는 확정(`CONFIRMED`) 주문이 있으면 409 `STOCK_ITEM_IN_USE`, 없거나 이미 삭제된 재고는 404 `INVENTORY_NOT_FOUND`. 삭제된 재고는 IN-01·IN-02·IN-04·IN-05·II-01~04에서 없는 것으로 본다.
 

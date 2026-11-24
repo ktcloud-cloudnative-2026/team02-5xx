@@ -6,6 +6,7 @@ import { startUiFixture } from './ui-fixture.mjs';
 export async function startAuthFixture({
   input = resolve('tests/auth-browser-entry.jsx'),
   handleRequest,
+  previewControls,
 } = {}) {
   const counts = { login: 0, me: 0, refresh: 0, logout: 0 };
   const controls = { loginStatus: 200, logoutStatus: 204, delay: 0 };
@@ -52,6 +53,7 @@ export async function startAuthFixture({
   const fixture = await startUiFixture({
     input,
     testControls: false,
+    previewControls,
     async handleRequest(request, response) {
       const endpoint = request.url?.split('?')[0].replace('/api/v1/auth/', '');
       if (!Object.hasOwn(counts, endpoint))

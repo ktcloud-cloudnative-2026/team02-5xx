@@ -147,7 +147,7 @@ async function scenario(name, run) {
 async function pending(page, cleanups, action = 'add') {
   const gate = await blockCatalog(page);
   cleanups.push(gate.cleanup);
-  await page.goto(fixture.url);
+  await page.goto(fixture.url + '#menu-list');
   const detail = await choose(page, action);
   return { gate, detail };
 }
@@ -261,7 +261,7 @@ try {
     async (page, cleanups) => {
       const gate = await blockCatalog(page);
       cleanups.push(gate.cleanup);
-      await page.goto(fixture.url);
+      await page.goto(fixture.url + '#menu-list');
       await page.locator('[data-menu-id="1"]').waitFor();
       await page.evaluate(() => {
         window.__integration.unmount();
@@ -326,7 +326,7 @@ try {
             })
           : route.fulfill({ json: response(9000) }),
       );
-      await page.goto(fixture.url);
+      await page.goto(fixture.url + '#menu-list');
       const detail = await choose(page);
       await loginModal(page);
       assert.deepEqual(await stored(page), original);
@@ -352,7 +352,7 @@ try {
     async (page, cleanups) => {
       const gate = await blockCatalog(page);
       cleanups.push(gate.cleanup);
-      await page.goto(fixture.url);
+      await page.goto(fixture.url + '#menu-list');
       await page.locator('[data-menu-id="1"]').waitFor();
       await sessionLogin(page);
       // Replace the handler for the retry while the old request remains blocked.

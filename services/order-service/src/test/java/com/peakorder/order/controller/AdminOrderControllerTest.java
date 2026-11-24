@@ -6,11 +6,13 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.peakorder.order.config.CurrentUserArgumentResolver;
 import com.peakorder.order.dto.AdminOrderListResponse;
 import com.peakorder.order.exception.BusinessException;
 import com.peakorder.order.exception.ErrorCode;
@@ -28,12 +30,23 @@ class AdminOrderControllerTest {
   private AdminOrderService service;
   private MockMvc mvc;
 
+  /** Gateway를 거치지 않은 것처럼 신원 헤더 없이 호출하는 MockMvc */
+  private MockMvc withoutIdentity;
+
   @BeforeEach
   void setUp() {
     service = mock(AdminOrderService.class);
+    // 기본 요청에 STORE_ADMIN 신원 헤더를 붙여 기존 테스트가 관리자로 호출하게 한다
     mvc =
         MockMvcBuilders.standaloneSetup(new AdminOrderController(service))
             .setControllerAdvice(new GlobalExceptionHandler())
+            .setCustomArgumentResolvers(new CurrentUserArgumentResolver())
+            .defaultRequest(get("/").header("X-User-Id", 1).header("X-User-Role", "STORE_ADMIN"))
+            .build();
+    withoutIdentity =
+        MockMvcBuilders.standaloneSetup(new AdminOrderController(service))
+            .setControllerAdvice(new GlobalExceptionHandler())
+            .setCustomArgumentResolvers(new CurrentUserArgumentResolver())
             .build();
   }
 
@@ -106,5 +119,29 @@ class AdminOrderControllerTest {
     mvc.perform(get("/api/v1/admin/orders/9"))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.errorCode").value("ORDER_NOT_FOUND"));
+  }
+
+  @Test
+  void both_apis_reject_missing_identity_with_401_and_never_call_the_service() throws Exception {
+    withoutIdentity
+        .perform(get("/api/v1/admin/orders"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
+    withoutIdentity.perform(get("/api/v1/admin/orders/9")).andExpect(status().isUnauthorized());
+    verifyNoInteractions(service);
+  }
+
+  @Test
+  void customer_cannot_use_the_admin_apis_403() throws Exception {
+    withoutIdentity
+        .perform(
+            get("/api/v1/admin/orders").header("X-User-Id", 7).header("X-User-Role", "CUSTOMER"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.errorCode").value("FORBIDDEN"));
+    withoutIdentity
+        .perform(
+            get("/api/v1/admin/orders/9").header("X-User-Id", 7).header("X-User-Role", "CUSTOMER"))
+        .andExpect(status().isForbidden());
+    verifyNoInteractions(service);
   }
 }
