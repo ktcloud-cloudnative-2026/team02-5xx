@@ -37,7 +37,7 @@ kubectl -n peakorder exec rabbitmq-0 -- rabbitmqctl ping
 kubectl -n peakorder exec rabbitmq-0 -- rabbitmqctl list_queues name messages consumers
 ```
 
-- **로그 형식은 서비스마다 다르다.** ECS JSON(한 줄에 JSON 하나): **Cooking**(#190). 그 외 서비스는 ECS 적용 전이라 Spring 기본 텍스트 로그다. ECS가 적용되면 이 줄을 갱신한다. JSON용 명령은 텍스트 로그에서 아무것도 찾지 못하므로 형식에 맞는 명령을 쓴다.
+- **로그 형식은 서비스마다 다르다.** ECS JSON(한 줄에 JSON 하나): **Cooking**(#190), **Order**(#271). 그 외 서비스는 ECS 적용 전이라 Spring 기본 텍스트 로그다. ECS가 적용되면 이 줄을 갱신한다. JSON용 명령은 텍스트 로그에서 아무것도 찾지 못하므로 형식에 맞는 명령을 쓴다.
 - 시각은 **UTC**라 한국 시간은 +9시간이다(ECS의 `@timestamp`).
 - `consumers`가 0인 업무 큐는 받는 서비스가 연결돼 있지 않다는 뜻이다(메시지가 쌓인다).
 - DB 접속 문제는 아래 [PostgreSQL](#postgresql-t2-db) 절의 "접속이 안 될 때"를 본다.
@@ -102,7 +102,7 @@ kubectl -n peakorder describe pod <파드> | tail -25
 **확인**
 ```bash
 kubectl -n peakorder exec rabbitmq-0 -- rabbitmqctl list_queues name messages consumers | grep -E 'dlq'
-kubectl -n peakorder logs deploy/<받는 서비스> --since=30m | grep -E '"level":"(WARN|ERROR)"' | tail -20   # ECS JSON 로그(Cooking)
+kubectl -n peakorder logs deploy/<받는 서비스> --since=30m | grep -E '"level":"(WARN|ERROR)"' | tail -20   # ECS JSON 로그(Cooking·Order)
 kubectl -n peakorder logs deploy/<받는 서비스> --since=30m | grep -E ' (WARN|ERROR) ' | tail -20          # 텍스트 로그(그 외)
 ```
 
@@ -138,8 +138,8 @@ sudo -u postgres psql -d cooking_dev -c "SELECT event_type, count(*), min(create
 
 원인 메시지(아래 표)가 찍히는 위치는 로그 형식에 따라 다르다. 그래서 위 명령은 `-A3`으로 다음 줄까지 본다.
 - Cooking: `이벤트 발행 실패 …` 같은 줄 끝에 원인 메시지가 붙는다.
-- 텍스트 로그(Order 등): 원인이 다음 줄의 예외 메시지에 있다(Order 코드 확인, #199 리뷰).
-- ECS JSON 로그에서 예외가 함께 찍히면 같은 줄의 `error.stack_trace`(`error.message`) 필드에 들어간다(dev 로그로는 아직 확인 전).
+- ECS JSON 로그에서 예외를 함께 남기는 경우(Order, #271): 같은 줄의 `error.message`(원인)·`error.type`·`error.stack_trace` 필드에 들어간다(로컬 실행으로 확인했고 dev 로그는 병합 후 확인한다).
+- 텍스트 로그(ECS 적용 전 서비스): 원인이 다음 줄의 예외 메시지에 있다.
 
 | 로그 메시지 (Cooking·Order 같음) | 원인 | 조치 |
 |---|---|---|
