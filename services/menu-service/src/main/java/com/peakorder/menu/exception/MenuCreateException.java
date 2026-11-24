@@ -18,7 +18,6 @@ public class MenuCreateException extends RuntimeException {
     return new MenuCreateException(404, "CATEGORY_NOT_FOUND", "Category not found");
   }
 
-
   public int status() {
     return status;
   }

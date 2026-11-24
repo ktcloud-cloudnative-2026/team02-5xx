@@ -66,7 +66,22 @@ class AdminMenuAuthorizationTests {
 
   @ParameterizedTest
   @NullAndEmptySource
-  @ValueSource(strings = {"0", "00", "01", "007", "00042", "-1", "+1", " 1", "1 ", "1.0", "1,2", "abc", "9223372036854775808"})
+  @ValueSource(
+      strings = {
+        "0",
+        "00",
+        "01",
+        "007",
+        "00042",
+        "-1",
+        "+1",
+        " 1",
+        "1 ",
+        "1.0",
+        "1,2",
+        "abc",
+        "9223372036854775808"
+      })
   void missingOrMalformedSubjectIs401OnlyAfterTrust(String id) {
     identity(id, "STORE_ADMIN");
     denied(401, "UNAUTHORIZED");

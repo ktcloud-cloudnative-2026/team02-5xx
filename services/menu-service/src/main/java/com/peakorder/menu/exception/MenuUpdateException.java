@@ -26,7 +26,6 @@ public class MenuUpdateException extends RuntimeException {
     return new MenuUpdateException(404, "OPTION_NOT_FOUND", "Option not found for menu");
   }
 
-
   public int status() {
     return status;
   }
