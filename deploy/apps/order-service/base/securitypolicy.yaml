@@ -1,0 +1,28 @@
+# Order HTTPRoute에 JWT 검증을 붙인다(#112 A안, #286).
+# - Auth JWKS로 서명·issuer·audience 검증, 실패하면 Gateway가 401.
+# - sub → X-User-Id, role → X-User-Role 로 Order에 전달한다.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: order-service-jwt
+  labels:
+    app: order-service
+    team: team02
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: order-service
+  jwt:
+    providers:
+      - name: peakorder-auth
+        issuer: http://10.10.22.100
+        audiences:
+          - peakorder-api-dev
+        remoteJWKS:
+          uri: http://auth-service.peakorder.svc.cluster.local:8080/api/v1/auth/jwks
+        claimToHeaders:
+          - header: X-User-Id
+            claim: sub
+          - header: X-User-Role
+            claim: role
