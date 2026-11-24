@@ -1,0 +1,36 @@
+# Gateway(peakorder-gateway)에서 Cooking으로 가는 길 안내.
+# - 공개 API 2개만 연다: CO-01 GET /api/v1/cooking/congestion, CO-02 POST /api/v1/cooking/estimates
+#   (Exact + 메서드 지정 — /api/v1/cooking 아래에 새 API가 생겨도 자동으로 공개되지 않게)
+# - /api/v1/admin/cooking/**(CO-03·04, STORE_ADMIN #99), /internal/**, /actuator/** 는 열지 않는다.
+# - 클라이언트가 보낸 신원 헤더(X-User-Id, X-User-Role)는 Gateway에서 지운다(auth-service와 같음, #112 확정 시 같이 변경).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: cooking-service
+  labels:
+    app: cooking-service
+    team: team02
+spec:
+  parentRefs:
+    - name: peakorder-gateway
+      namespace: envoy-gateway-system
+      sectionName: http
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /api/v1/cooking/congestion
+          method: GET
+        - path:
+            type: Exact
+            value: /api/v1/cooking/estimates
+          method: POST
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            remove:
+              - X-User-Id
+              - X-User-Role
+      backendRefs:
+        - name: cooking-service
+          port: 8080
