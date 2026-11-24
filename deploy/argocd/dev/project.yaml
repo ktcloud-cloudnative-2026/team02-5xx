@@ -25,3 +25,4 @@ spec:
       kind: HorizontalPodAutoscaler
     - group: gateway.envoyproxy.io
       kind: SecurityPolicy
+      
