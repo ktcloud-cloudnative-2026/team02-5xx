@@ -172,6 +172,7 @@ Cooking 담당(김지윤)과 2026-11-16에 아래 내용으로 합의했다. 모
 | 보관용 교환기 | `peakorder.dlx` (direct, durable, autoDelete=false). 양쪽 DLQ가 같은 교환기를 쓴다. 큐는 `x-dead-letter-exchange=peakorder.dlx`, `x-dead-letter-routing-key=<큐 이름>`으로 선언하고 DLQ(`<큐 이름>.dlq`)를 큐 이름 키로 바인딩한다 (Cooking과 확인 완료) |
 
 - **발행(OrderConfirmed)**: 주문 확정 트랜잭션이 `outbox_events`에 `PENDING`으로 저장한 이벤트를 1초 주기로 발행하고 `SENT`로 바꾼다. 브로커 확인(publisher confirm)을 받은 뒤에만 `SENT`로 바꾸며, 큐에 바인딩되지 않아 되돌아온(unroutable) 메시지도 실패로 보고 `PENDING`으로 남겨 다시 발행한다. 최소 한 번 전달이므로 받는 쪽이 `eventId`로 중복을 걸러야 한다.
+- **발행 지표**: `order_outbox_pending`(Gauge)이 발행 대기(`PENDING`) 이벤트 수를 `/actuator/prometheus`로 노출한다(이슈 #272, `docs/observability.md` 2-2). 정상이면 발행기가 1초 안에 비워 0이고, 계속 남아 있으면 OrderConfirmed 발행이 막혀 Cooking이 주문을 받지 못하는 것이다. 수집(scrape)마다 DB를 한 번 조회하며(부분 인덱스 `idx_outbox_events_pending` 사용), Pod마다 같은 DB를 세므로 알림·대시보드에서는 `max`로 본다. DB 조회가 실패하면 값이 NaN이 되는 한계는 문서 4-2 "감시 한계"의 후속 과제다. 모든 지표에는 `application="order-service"` 라벨이 붙고 `http_server_requests_seconds`는 p95용 히스토그램(`_bucket`)을 낸다(1-2). 알림 규칙(4-2의 5번)은 모니터링 담당과 정한다.
 - **수신(CookingCompleted)**: `processed_events`에 `eventId`를 저장하고 주문을 `COMPLETED`로 바꾸는 것을 한 트랜잭션에서 하며, 처리가 끝난 뒤에만 ack 한다. 이미 처리한 `eventId`는 무시한다.
 - **재시도·DLQ**: 일시적일 수 있는 오류(DB 연결 문제 등)는 최대 3회 시도(첫 시도 포함, 1초·2초 간격) 후 DLQ에 보관한다. 다시 시도해도 소용없는 오류(JSON 형식 오류, 필수값 누락, 존재하지 않는 주문, 취소·미확정 주문에 대한 완료 이벤트)는 재시도 없이 바로 DLQ에 보관한다. Cooking의 수신 정책도 같다.
 - **DLQ 알림**: Cooking(모니터링 담당)이 Grafana에서 "DLQ 메시지 수 > 0이 1분 지속" 알림을 구성한다(모니터링 인프라 준비 후).

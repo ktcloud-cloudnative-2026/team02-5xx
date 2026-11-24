@@ -113,7 +113,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 | Cooking | `cooking_order_confirmed_received_total{result="created"\|"duplicate"}` | Counter | OrderConfirmed(EV-01)가 끊기지 않고 들어오나. `duplicate` 증가는 재발행 신호 | 제안 |
 | Cooking | `cooking_outbox_pending` | Gauge | CookingCompleted(EV-02) 발행이 막혔나 (정상이면 1초 안에 0, 계속 남아 있으면 이상 — 4-2 5번) | 제안 (#52 후속) |
 | Order | `order_cancel_follow_up_manual_required` | Gauge | 사람이 확인해야 하는 취소 주문 수 | 구현 (#135) |
-| Order | `order_outbox_pending` | Gauge | OrderConfirmed(EV-01) 발행이 막혔나 (정상이면 1초 안에 0 — 4-2 5번) | 제안 (#52 후속, 김민규 님 제안) |
+| Order | `order_outbox_pending` | Gauge | OrderConfirmed(EV-01) 발행이 막혔나 (정상이면 1초 안에 0 — 4-2 5번) | 구현 (#272) |
 | RabbitMQ | `rabbitmq_detailed_queue_messages{queue=~".+\\.dlq"}` | Gauge (RabbitMQ) | 처리 못 한 이벤트가 있나 | 합의됨 (#52) |
 | Auth · Menu · Inventory · Payment | (담당자 기입) | | | |
 
