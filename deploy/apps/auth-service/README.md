@@ -24,6 +24,12 @@ dev 환경에서 아래 명령은 설정 검증에 사용한다.
 kubectl apply --dry-run=server -k deploy/apps/auth-service/overlays/dev
 ```
 
+## Pod 수 관리(HPA 준비) — Issue #344
+
+- Argo CD Application(`deploy/argocd/dev/auth-service.yaml`)은 Deployment의 `/spec/replicas`를 비교에서 제외하고 `RespectIgnoreDifferences=true`로 Sync가 그 값을 되돌리지 않게 한다(Order #204와 같은 방식, 자동 동기화 설정은 그대로). 이후 HPA가 Pod 수를 정하거나 2 Pod 시험을 위해 수동으로 늘려도 Sync가 Git의 `replicas: 1`로 되돌리지 않는다.
+- 이 파일은 Argo CD가 관리하지 않아, 바꾸면 dev에서 `kubectl apply -f deploy/argocd/dev/auth-service.yaml`로 다시 적용해야 반영된다.
+- 종료 보호(`preStop` 10초, `terminationGracePeriodSeconds` 50초)는 #325에서 반영돼 있다. HPA와 2 Pod 시험은 이슈 #344에서 이어서 진행한다.
+
 ## 이미지 갱신과 복구
 
 1. main GitHub Actions의 코드 검사·이미지 게시·CI Final 성공을 확인한다.
