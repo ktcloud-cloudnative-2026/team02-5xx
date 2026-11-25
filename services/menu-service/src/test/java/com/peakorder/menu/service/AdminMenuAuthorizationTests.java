@@ -14,15 +14,15 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 class AdminMenuAuthorizationTests {
-  private final AdminMenuGatewayTrust trust = mock(AdminMenuGatewayTrust.class);
-  private final AdminMenuAuthorization policy = new AdminMenuAuthorization(trust);
+  private final AdminMenuActivation activation = mock(AdminMenuActivation.class);
+  private final AdminMenuAuthorization policy = new AdminMenuAuthorization(activation);
   private final MockHttpServletRequest request = new MockHttpServletRequest();
 
   private void identity(String id, String role) {
     if (id != null) request.addHeader("X-User-Id", id);
     if (role != null) request.addHeader("X-User-Role", role);
     RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
-    when(trust.isVerified(request)).thenReturn(true);
+    when(activation.isEnabled()).thenReturn(true);
   }
 
   @AfterEach
@@ -41,9 +41,9 @@ class AdminMenuAuthorizationTests {
   }
 
   @Test
-  void noServletContextCannotEstablishTrust() {
+  void noServletContextCannotAuthorize() {
     denied(403, "FORBIDDEN");
-    verifyNoInteractions(trust);
+    verifyNoInteractions(activation);
   }
 
   @Test
@@ -52,15 +52,26 @@ class AdminMenuAuthorizationTests {
     request.addHeader("Authorization", "Bearer unverified.payload.signature");
     request.setUserPrincipal(() -> "42");
     request.addUserRole("STORE_ADMIN");
-    assertThat(new AdminMenuGatewayTrust().isVerified(request)).isFalse();
-    assertThatThrownBy(new AdminMenuAuthorization(new AdminMenuGatewayTrust())::requireStoreAdmin)
+    assertThat(new AdminMenuActivation(false).isEnabled()).isFalse();
+    assertThatThrownBy(
+            new AdminMenuAuthorization(new AdminMenuActivation(false))::requireStoreAdmin)
         .isInstanceOfSatisfying(
             AdminMenuAccessException.class, e -> assertThat(e.status()).isEqualTo(403));
   }
 
   @Test
-  void simulatedTrustedAdminPassesSharedPolicy() {
+  void enabledAdminPassesSharedPolicy() {
     identity("42", "STORE_ADMIN");
+    assertThatCode(policy::requireStoreAdmin).doesNotThrowAnyException();
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"x-user-id", "X-USER-ID"})
+  void headerNamesAreCaseInsensitiveWhileValuesRemainCanonical(String name) {
+    request.addHeader(name, "9223372036854775807");
+    request.addHeader("x-USER-role", "STORE_ADMIN");
+    RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+    when(activation.isEnabled()).thenReturn(true);
     assertThatCode(policy::requireStoreAdmin).doesNotThrowAnyException();
   }
 
@@ -82,7 +93,7 @@ class AdminMenuAuthorizationTests {
         "abc",
         "9223372036854775808"
       })
-  void missingOrMalformedSubjectIs401OnlyAfterTrust(String id) {
+  void missingOrMalformedSubjectIs401OnlyAfterActivation(String id) {
     identity(id, "STORE_ADMIN");
     denied(401, "UNAUTHORIZED");
   }

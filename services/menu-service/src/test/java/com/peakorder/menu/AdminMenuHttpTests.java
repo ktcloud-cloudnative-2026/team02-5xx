@@ -244,7 +244,7 @@ class AdminMenuHttpTests {
   }
 
   @Test
-  void openApiDescribesDisabledOperationsParametersSuccessAndErrorSchemas() throws Exception {
+  void openApiDescribesDeploymentGateParametersSuccessAndErrorSchemas() throws Exception {
     var response = get("/v3/api-docs");
     assertThat(response.statusCode()).isEqualTo(200);
     var document = mapper.readTree(response.body());
@@ -253,7 +253,8 @@ class AdminMenuHttpTests {
     assertThat(list.path("parameters").size()).isEqualTo(4);
     assertThat(list.path("parameters").toString())
         .contains("categoryId", "query", "status", "sort", "HIDDEN");
-    assertThat(list.path("description").asString()).contains("Default deny", "always 403");
+    assertThat(list.path("description").asString())
+        .contains("Disabled by default", "MENU_ADMIN_ENABLED=false", "STORE_ADMIN");
     for (var operation : List.of(list, detail)) {
       assertThat(operation.path("responses").has("200")).isTrue();
       for (String code : List.of("400", "401", "403", "500")) {

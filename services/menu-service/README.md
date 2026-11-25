@@ -52,8 +52,9 @@ java -jar build/libs/menu-service-0.0.1-SNAPSHOT.jar
 ### 관리자 ME-03~07 통합 (#245)
 
 기존 Draft #117·#119·#123·#127의 구현을 최신 main 기반으로 결합했습니다.
-아래 경로는 모두 공통 `AdminMenuAuthorization`을 거치며 **현재 제품 실행에서는 기본 403 차단**입니다.
-헤더·Bearer 문자열·Servlet 역할·환경 변수만으로 활성화할 수 없습니다.
+아래 경로는 모두 공통 `AdminMenuAuthorization`을 거치며 **기본값은 403 차단**입니다.
+#280에서 `MENU_ADMIN_ENABLED=false` 기본 활성화 정책을 추가했습니다. true는 배포 게이트이며
+Gateway 인증 증거가 아닙니다. 실제 JWT 보호 경로·NetworkPolicy·운영 통제 확인 후 dev에서만 켭니다.
 
 | 기능     | 경로                                                          | 보존한 계약                                         |
 | -------- | ------------------------------------------------------------- | --------------------------------------------------- |
@@ -63,9 +64,11 @@ java -jar build/libs/menu-service-0.0.1-SNAPSHOT.jar
 | ME-07    | `PATCH /api/v1/admin/menus/{menuId}/status`                   | ON_SALE/PAUSED/HIDDEN 전이, 같은 상태 시각 유지     |
 
 #112의 Gateway A안·신원 헤더·401/403 책임은 합의됐습니다. 실제 JWT 검증·claim 전달·위조/직접 접근 방어 검증은 별도입니다.
-현재 `AdminMenuGatewayTrust`는 항상 false이며 공개 활성화 설정이 없습니다.
-신뢰 경계 검증 이후에만 공통 정책이 헤더 누락/형식 오류 401, CUSTOMER 403, STORE_ADMIN 허용을 적용할 수 있습니다.
-로컬 테스트의 신뢰 경계 모의 허용은 실제 Gateway 인증 성공 증거가 아닙니다.
+`AdminMenuGatewayTrust` 대신 `AdminMenuActivation`을 사용합니다. 미설정/false는 403,
+true에서는 헤더 누락/형식 오류 401, CUSTOMER 403, 올바른 STORE_ADMIN 허용입니다.
+임의 Bearer·Servlet 신원만으로 허용하지 않습니다. 로컬 헤더 입력 테스트는 실제 JWT 검증이 아닙니다.
+허용된 내부 Pod의 헤더 사칭과 노드 수준 위험은 #112/#280의 합의된 잔여 위험입니다.
+별도 관리자 포트·서비스 JWT 검증·mTLS는 추가하지 않았습니다.
 
 - [공통 인증 경계·후속 검증](../../docs/api/menu-admin-auth-integration.md)
 - [통합·PostgreSQL 검증 결과](../../docs/api/menu-admin-postgresql-validation.md)
@@ -217,3 +220,16 @@ Service 단위 테스트와 실제 HTTP/OpenAPI 테스트는 Repository 모의 �
 공유 `menu_dev`로 테스트를 실행하지 않습니다.
 MI-01 세부 오류 코드/HTTP 상태 구분은 아직 서비스 간 합의가 필요합니다.
 현재는 기존 `INVALID_REQUEST`/`INTERNAL_ERROR`를 재사용하며 전용 코드를 추가하지 않았습니다.
+
+## #280 활성화와 검증 범위
+
+배포 property `menu.admin.enabled`는 `MENU_ADMIN_ENABLED`를 사용하며 기본 false다.
+base/prod는 명시적 false, dev overlay만 관리자 전용 Route/Policy와 true 패치를 갖는다.
+미설정·명시 false·true·잘못된 설정값과 모든 관리자 operation의 권한 선검사를 검증한다.
+기존 업무·DB 계약 및 ME-01/02·MI-01/02는 바꾸지 않는다.
+
+**현재 dev 이미지 태그는 이번 구현이 없는 과거 버전이다.** 이번 작업에서 태그는 바꾸지 않았다.
+또한 자동 Sync 상태로 활성화 패치를 먼저 병합하면 실제 정책 확인 전 켜질 수 있으므로,
+[인증 연동 문서의 단계적 GitOps 절차](../../docs/api/menu-admin-auth-integration.md)에 따라
+Gateway 보호와 네트워크 검증을 먼저 하고 활성화해야 한다. 실패하면 토글 off를 먼저 확인한 뒤
+관리자 Route/Policy를 정리한다. 실제 dev E2E·배포·원격 CI는 수행하지 않았다.

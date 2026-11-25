@@ -36,9 +36,9 @@ public class MenuStatusController {
   }
 
   @Operation(
-      summary = "ME-07: Change menu status (currently disabled)",
+      summary = "ME-07: Change menu status (disabled by default)",
       description =
-          "Actual default deny until Gateway trust is verified. Proposed contract allows every transition including HIDDEN recovery. Same-state requests succeed without timestamp change. Inventory is not checked.",
+          "Disabled by default (MENU_ADMIN_ENABLED=false); enabled access requires canonical identity headers and STORE_ADMIN. Proposed contract allows every transition including HIDDEN recovery. Same-state requests succeed without timestamp change. Inventory is not checked.",
       requestBody =
           @io.swagger.v3.oas.annotations.parameters.RequestBody(
               required = true,
@@ -57,7 +57,7 @@ public class MenuStatusController {
         content = @Content(schema = @Schema(implementation = ApiResponse.class))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "403",
-        description = "FORBIDDEN: actual default deny",
+        description = "FORBIDDEN: disabled or insufficient role",
         content = @Content(schema = @Schema(implementation = ApiResponse.class))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "404",

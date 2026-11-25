@@ -44,11 +44,11 @@ menu-service/
 별도로 준비해야 합니다. 다음은 이 배포 구성에서 사용하는 이름·키 계약이며,
 기존 Secret이 이미 존재한다는 뜻은 아닙니다.
 
-| 컨테이너 환경 변수 | Secret 이름 | Secret 키 | 용도 |
-| --- | --- | --- | --- |
-| `MENU_DB_URL` | `menu-service-db` | `MENU_DB_URL` | Menu PostgreSQL JDBC URL |
-| `MENU_DB_USERNAME` | `menu-service-db` | `MENU_DB_USERNAME` | Menu DB 사용자 |
-| `MENU_DB_PASSWORD` | `menu-service-db` | `MENU_DB_PASSWORD` | Menu DB 비밀번호 |
+| 컨테이너 환경 변수 | Secret 이름       | Secret 키          | 용도                     |
+| ------------------ | ----------------- | ------------------ | ------------------------ |
+| `MENU_DB_URL`      | `menu-service-db` | `MENU_DB_URL`      | Menu PostgreSQL JDBC URL |
+| `MENU_DB_USERNAME` | `menu-service-db` | `MENU_DB_USERNAME` | Menu DB 사용자           |
+| `MENU_DB_PASSWORD` | `menu-service-db` | `MENU_DB_PASSWORD` | Menu DB 비밀번호         |
 
 세 환경 변수 모두 `valueFrom.secretKeyRef`로 주입하며 `optional: false`입니다.
 Secret이나 키가 없으면 컨테이너를 시작할 수 없습니다.
@@ -169,10 +169,10 @@ Kubernetes 변경은 `CLAUDE.md` 6절의 필수 리뷰 대상입니다.
 base를 사용하는 dev/prod 렌더링에 모두 포함됩니다. 이미지·Deployment·Service는
 변경하지 않으며 실제 prod 적용은 수행하지 않습니다.
 
-| 메서드 | 경로 | 매칭 |
-| --- | --- | --- |
-| GET | `/api/v1/menus` | Exact (ME-01) |
-| GET | `/api/v1/menus/{menuId}` | RegularExpression `^/api/v1/menus/[^/]+$` (ME-02) |
+| 메서드 | 경로                     | 매칭                                              |
+| ------ | ------------------------ | ------------------------------------------------- |
+| GET    | `/api/v1/menus`          | Exact (ME-01)                                     |
+| GET    | `/api/v1/menus/{menuId}` | RegularExpression `^/api/v1/menus/[^/]+$` (ME-02) |
 
 상세는 비어 있지 않은 한 세그먼트만 허용합니다. 숫자로만 제한하지 않아
 `0`, `-1`, `abc`, `1.5`, Long 범위 초과 ID도 서비스에 도달하여
@@ -200,3 +200,31 @@ Auth #155·Cooking PR #266 선례 및
 위조/중복/대소문자 변형 헤더 제거, 다른 서비스의 실환경 회귀는 미검증입니다.
 server dry-run·실제 배포·Argo CD Sync는 실행하지 않았습니다.
 Gateway 담당자 리뷰 승인과 CI 성공 후 Git PR → Argo CD 절차로 후속 검증합니다.
+
+## dev 관리자 API 연동 (#280)
+
+`overlays/dev/`에 `admin-httproute.yaml`, `admin-securitypolicy.yaml`,
+`admin-enabled-patch.yaml`을 추가했다. ME-03~07 GET·POST·PATCH의 정확한 경로만
+별도 Route로 공개하며 Order dev와 같은 JWT provider를 사용한다.
+JWT Route에는 헤더 remove를 넣지 않고, 기존 공개 Route의 remove는 유지한다.
+base/prod는 `MENU_ADMIN_ENABLED=false`이며 관리자 Route/Policy를 포함하지 않는다.
+Service·포트·Secret·probe·이미지 태그·NetworkPolicy와 내부 호출 관계는 유지한다.
+#354 자원·Hikari·종료 보호 변경이나 HPA·모니터링은 포함하지 않는다.
+
+`MENU_ADMIN_ENABLED=true`는 Gateway 경유를 증명하지 않는다. 기존 #112/#280의
+Gateway JWT + NetworkPolicy + 서비스 신원/역할 검사와 운영 통제를 전제로 하는 활성화다.
+허용된 내부 Pod·노드 수준의 우회 위험은 남는다.
+
+### 적용 전 필수 게이트
+
+**true 패치를 자동 Sync 상태로 먼저 병합하지 않는다.** Kustomize의 파일 순서나
+단순 sync-wave로 JWT Policy의 실제 준비 완료를 보장할 수 없다.
+GitOps 담당이 자동 Sync 일시 보류 등 승인된 단계 적용을 준비한 뒤, 토글 false 상태에서
+Route/Policy와 NetworkPolicy·운영 통제를 먼저 확인한다. 이후 승인된 이미지·활성화 패치를 적용한다.
+현재 이미지 태그는 이번 정책이 없는 과거 이미지이며 별도 이미지 태그 변경 검토가 필요하다.
+이 작업에서 실제 클러스터나 Application을 변경하지 않았다.
+
+롤백은 **토글 false → 서비스 차단 확인 → 관리자 Route 비공개/Policy 정리** 순서다.
+활성 서비스·공개 Route를 남긴 채 Policy만 제거하지 않는다.
+세부 시험 목록과 실패 시 절차는
+[최신 Menu 인증 연동 문서](../../../docs/api/menu-admin-auth-integration.md)를 따른다.
