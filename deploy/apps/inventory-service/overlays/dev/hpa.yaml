@@ -1,0 +1,27 @@
+# Inventory Service dev HPA (이슈 #312, #186 합의: min 1, max 3, CPU 70%).
+# - CPU 목표는 requests(100m) 대비 사용률이다. 부하 측정 뒤 requests·목표값을 조정한다.
+# - 축소는 쿠버네티스 기본값(안정화 5분)을 따른다. Pod가 내려갈 때는 preStop과 정상 종료가 요청을 보호한다(#315).
+# - Pod 수는 HPA가 정한다. Application의 ignoreDifferences(/spec/replicas)가 Git의 replicas: 1로 되돌리지 않게 한다(#315).
+# - dev 전용이다. prod 적용은 별도 이슈에서 DB 연결 예산(max_connections)과 함께 결정한다.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: inventory-service
+  namespace: peakorder
+  labels:
+    app: inventory-service
+    team: team02
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: inventory-service
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

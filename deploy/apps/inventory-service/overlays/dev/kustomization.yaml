@@ -4,6 +4,7 @@ resources:
   - ../../base
   - admin-httproute.yaml
   - admin-securitypolicy.yaml
+  - hpa.yaml
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/inventory
     newTag: sha-d0bba3dd13a161b213f980f89a9fa077dc74b1b2
