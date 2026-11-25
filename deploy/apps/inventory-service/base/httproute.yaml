@@ -1,0 +1,32 @@
+# Gateway(peakorder-gateway)에서 Inventory로 가는 길 안내.
+# - 공개 API는 IN-01 하나만 연다: GET /api/v1/inventory/availability (쿼리 menuIds는 경로 일치에 영향 없음)
+#   (Exact + 메서드 지정 — /api/v1/inventory 아래에 새 API가 생겨도 자동으로 공개되지 않게)
+# - /api/v1/admin/inventory/**(IN-02~06, STORE_ADMIN #247), /internal/**, /actuator/** 는 열지 않는다.
+# - 클라이언트가 보낸 신원 헤더(X-User-Id, X-User-Role)는 Gateway에서 지운다(공개 Route는 remove 유지, #303).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: inventory-service
+  labels:
+    app: inventory-service
+    team: team02
+spec:
+  parentRefs:
+    - name: peakorder-gateway
+      namespace: envoy-gateway-system
+      sectionName: http
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /api/v1/inventory/availability
+          method: GET
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            remove:
+              - X-User-Id
+              - X-User-Role
+      backendRefs:
+        - name: inventory-service
+          port: 8080

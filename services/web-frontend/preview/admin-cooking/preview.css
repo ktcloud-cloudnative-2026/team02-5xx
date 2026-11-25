@@ -1,0 +1,181 @@
+.ac-preview-shell {
+  min-height: 100vh;
+  background: #f3f4f6;
+  font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+  color: #303030;
+}
+.ac-preview-shell * {
+  box-sizing: border-box;
+}
+.ac-preview-shell main {
+  margin-left: 120px;
+  padding: 30px 36px;
+  outline: none;
+}
+.ac-preview-notice {
+  background: #fff5df;
+  border: 1px solid #e8d5aa;
+  color: #755a22;
+  border-radius: 10px;
+  padding: 11px 14px;
+  font-size: 11px;
+  margin: 0 0 25px;
+}
+.ac-preview-sidebar {
+  width: 120px;
+  background: #fff;
+  position: fixed;
+  inset: 0 auto 0 0;
+  border-right: 1px solid #e7e8ec;
+  padding: 32px 10px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.ac-preview-logo {
+  font-size: 23px;
+  line-height: 1.04;
+  letter-spacing: -1px;
+  font-weight: 900;
+}
+.ac-preview-logo small {
+  display: block;
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 3px;
+  margin-top: 10px;
+}
+.ac-preview-sidebar nav {
+  display: grid;
+  gap: 14px;
+  margin-top: 42px;
+  width: 100%;
+}
+.ac-preview-sidebar nav > span {
+  text-align: center;
+  min-height: 60px;
+  border-radius: 15px;
+  padding: 12px 7px;
+  font-size: 12px;
+  color: #858890;
+}
+.ac-preview-sidebar nav small {
+  display: block;
+  font-size: 9px;
+  margin-top: 4px;
+}
+.ac-preview-sidebar nav .ac-preview-active {
+  background: #303030;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.ac-preview-active strong {
+  font-size: 11px;
+  font-weight: 500;
+}
+.ac-preview-admin {
+  margin-top: auto;
+  color: #73767d;
+  font-size: 10px;
+}
+.ac-preview-skip {
+  clip-path: inset(100%);
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  position: fixed;
+  z-index: 10;
+  top: 10px;
+  left: 140px;
+  transform: translateY(-180%);
+  background: #303030;
+  color: #fff;
+  padding: 12px;
+  border-radius: 8px;
+}
+.ac-preview-skip:focus {
+  clip-path: none;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  transform: none;
+}
+.ac-preview-controls {
+  border-top: 1px solid #e8d5aa;
+  padding: 24px;
+  background: #fff5df;
+  font:
+    12px/1.6 'Segoe UI',
+    'Malgun Gothic',
+    sans-serif;
+}
+.ac-preview-controls h2 {
+  font-size: 16px;
+  margin: 0;
+}
+.ac-preview-controls select {
+  font: inherit;
+  padding: 8px;
+  max-width: 100%;
+}
+.ac-preview-controls :focus-visible {
+  outline: 3px solid #5079ca;
+  outline-offset: 3px;
+}
+@media (max-width: 760px) {
+  .ac-preview-sidebar {
+    position: static;
+    width: auto;
+    flex-direction: row;
+    gap: 18px;
+    padding: 16px;
+    align-items: flex-start;
+    border-bottom: 1px solid #e7e8ec;
+  }
+  .ac-preview-logo {
+    font-size: 17px;
+    flex-shrink: 0;
+    padding-top: 6px;
+  }
+  .ac-preview-logo small {
+    font-size: 8px;
+    letter-spacing: 2px;
+    margin-top: 6px;
+  }
+  .ac-preview-sidebar nav {
+    display: flex;
+    overflow-x: auto;
+    margin: 0;
+    gap: 8px;
+    padding-bottom: 6px;
+  }
+  .ac-preview-sidebar nav > span {
+    flex-shrink: 0;
+    min-width: 75px;
+    font-size: 10px;
+    min-height: 58px;
+    border-radius: 10px;
+    padding: 8px;
+  }
+  .ac-preview-sidebar nav .ac-preview-active {
+    order: -1;
+  }
+  .ac-preview-admin {
+    display: none;
+  }
+  .ac-preview-shell main {
+    margin: 0;
+    padding: 22px 18px;
+  }
+  .ac-preview-skip {
+    left: 15px;
+  }
+}
+@media (max-width: 350px) {
+  .ac-preview-shell main {
+    padding: 18px 12px;
+  }
+}
