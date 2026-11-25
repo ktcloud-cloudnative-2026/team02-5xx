@@ -7,7 +7,7 @@ Order 서비스를 GHCR 이미지와 Argo CD에 연결하는 Kustomize 구성이
 - `base/`: Deployment 1개, ClusterIP Service 1개 (`order-service:8080`)
 - `overlays/dev/`, `overlays/prod/`: 환경별 이미지 태그
 - namespace `peakorder`, 라벨 `app: order-service`, `team: team02`
-- 이미지: `ghcr.io/ktcloud-cloudnative-2026/team02-5xx/order:sha-<머지 커밋 전체 번호>` (`latest` 금지). 현재 태그는 관리자 주문 조회(OR-08·09, #170) 병합 커밋 `b05b9c0`의 main CI 게시본이다. 이 이미지부터 Flyway V6(`idx_orders_ordered_at`)이 적용된다. 새 변경이 병합되면 overlay의 태그를 그 커밋으로 올린다.
+- 이미지: `ghcr.io/ktcloud-cloudnative-2026/team02-5xx/order:sha-<머지 커밋 전체 번호>` (`latest` 금지). dev 태그는 지표(#272) 병합 커밋 `5f38479`의 main CI 게시본이다(사용자 신원 헤더·역할 검증 #263 포함, 이슈 #300). base·prod는 관리자 주문 조회(OR-08·09, #170) 병합 커밋 `b05b9c0`를 그대로 두며 이 이미지부터 Flyway V6(`idx_orders_ordered_at`)이 적용된다. 새 변경이 병합되면 dev overlay의 태그를 그 커밋으로 올린다.
 
 ## 필요한 Secret (값은 Git에 올리지 않는다)
 
@@ -58,6 +58,16 @@ DB·RabbitMQ 상태는 Probe에 넣지 않는다. 잠깐 끊겨도 Pod가 재시
 ### Pod 수와 Argo CD
 
 `order-service-dev` Application은 이 Deployment의 `/spec/replicas`만 비교에서 제외하고(`ignoreDifferences`), Sync 때도 그 값을 보존한다(`RespectIgnoreDifferences=true`. 자동 동기화(`automated`, prune·selfHeal 끔)는 #210 설정을 그대로 유지). 이후 HPA가 Pod 수를 정하거나 2 Pod 시험을 위해 수동으로 늘려도 Sync가 Git의 `replicas: 1`로 되돌리지 않게 하기 위해서다(#186, 이태훈 제안). 이미지·환경 변수·자원 제한은 계속 Git과 맞춘다. Application 파일은 Argo CD가 관리하지 않아, 바꾸면 dev에서 `kubectl apply -f deploy/argocd/dev/order-service.yaml`로 다시 적용해야 반영된다.
+
+## 종료
+
+Pod가 내려갈 때(롤링 업데이트, 이후 HPA 축소) 진행 중인 요청이 끊기지 않게 하는 설정이다(이슈 #294, #186 하위).
+
+- 앱: Spring Boot 4.1.2의 `server.shutdown` 기본값이 `GRACEFUL`이라 종료 신호를 받으면 새 연결을 거절하고 진행 중인 요청을 끝낸 뒤 종료한다(기본 대기 `spring.lifecycle.timeout-per-shutdown-phase` 30초, 4.1.2 jar에서 확인). 별도 설정은 없다.
+- `preStop`: `sleep 10`. Pod가 종료를 시작해도 Service·Gateway가 엔드포인트에서 이 Pod를 빼기까지 시간이 걸려, 그 사이 새 요청이 올 수 있다. 앱이 새 연결을 바로 거절하므로(로컬 시험에서 종료 신호 직후 연결 거부 확인), 종료 신호를 10초 늦춰 그 시간을 번다. 이미지가 `eclipse-temurin:21-jre-alpine`이라 `sleep`을 쓸 수 있다.
+- `terminationGracePeriodSeconds: 50` = preStop 10초 + 앱 정상 종료 대기 30초 + 여유 10초. 이 시간이 지나면 강제 종료(SIGKILL)된다.
+- 로컬 시험(PostgreSQL 16, 임시 DB): 처리 중인 요청(DB 잠금으로 6초 지연)이 종료 신호를 받은 뒤에도 `200`으로 끝났고, 종료 신호 직후의 새 요청은 연결이 거부됐으며, 요청이 끝나자 프로세스가 종료됐다. 로그에 `Commencing graceful shutdown`과 `Graceful shutdown complete`가 남는다. 클러스터에서의 엔드포인트 제거 시간은 dev에서 확인한다.
+- 이 값을 바꾸면 Pod 템플릿이 바뀌어 Order Pod가 롤링 교체된다(replicas 1, 자동 동기화).
 
 ## 로그
 

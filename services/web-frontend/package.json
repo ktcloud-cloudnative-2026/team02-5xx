@@ -14,6 +14,7 @@
     "test:checkout:ui": "node tests/checkout-preview.mjs",
     "test:customer:ui": "node tests/customer-http-preview.mjs",
     "test:account:ui": "node tests/account-dev-preview.mjs",
+    "test:admin-orders:ui": "node tests/admin-orders-preview.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
