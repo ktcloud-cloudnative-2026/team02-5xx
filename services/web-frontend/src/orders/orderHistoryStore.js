@@ -142,7 +142,7 @@ export function createOrderHistoryStore({ api, sessionSource }) {
           review: false,
           detail: { phase: 'ready', data },
           notice:
-            '서버에서 주문 취소를 확인했어요. 환불과 재고 복원은 별도로 처리될 수 있습니다.',
+            '주문 취소를 확인했어요. 환불 완료까지 시간이 걸릴 수 있어요.',
         });
         await Promise.all([list(), detail()]);
       } catch (error) {

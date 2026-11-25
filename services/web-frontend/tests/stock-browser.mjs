@@ -58,7 +58,7 @@ async function fresh({ scenario = 'mixed', items = [], width = 1440 } = {}) {
   );
 }
 async function cart() {
-  await page.locator('.header-cart').click();
+  await page.locator('.sidebar > .cart-nav').click();
   await page.locator('.cart-modal .cart-line-total').first().waitFor();
   await page
     .locator('.cart-modal')
@@ -222,7 +222,7 @@ try {
         .getByRole('button', { name: '주문하기', exact: true })
         .click();
       await dialog
-        .locator('.action-notice')
+        .locator('.cart-feedback')
         .filter({ hasText: '재고 부족' })
         .waitFor();
       assert.equal(await page.locator('.checkout-page').count(), 0);
@@ -243,11 +243,11 @@ try {
         .getByRole('button', { name: '주문하기', exact: true })
         .dblclick();
       await page
-        .getByRole('button', { name: '임시 주문 만들기', exact: true })
+        .getByRole('button', { name: '결제 금액 확인', exact: true })
         .waitFor();
       assert.equal(fixture.stockControls.requests.length, before + 1);
       await page
-        .getByRole('button', { name: '임시 주문 만들기', exact: true })
+        .getByRole('button', { name: '결제 금액 확인', exact: true })
         .click();
       await page.getByRole('button', { name: /원 모의 결제$/ }).click();
       await page.locator('.mock-order-number').waitFor();

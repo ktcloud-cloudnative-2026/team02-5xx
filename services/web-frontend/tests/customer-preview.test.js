@@ -44,6 +44,41 @@ const raw = (path, session) =>
   fetch(fixture.url + path, {
     headers: session ? { Authorization: `Bearer ${session.token}` } : {},
   });
+
+test('preview PATCH /auth/me saves the nickname for GET and a new login without changing another user', async () => {
+  const changed = await fetch(fixture.url + '/api/v1/auth/me', {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${customer.token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ nickname: '피크 고객' }),
+  });
+  assert.equal(changed.status, 200);
+  assert.equal((await changed.json()).data.nickname, '피크 고객');
+  assert.equal(
+    (await (await raw('/api/v1/auth/me', customer)).json()).data.nickname,
+    '피크 고객',
+  );
+  const signedInAgain = await login('customer@example.test');
+  assert.equal(
+    (await (await raw('/api/v1/auth/me', signedInAgain)).json()).data.nickname,
+    '피크 고객',
+  );
+  assert.equal(
+    (await (await raw('/api/v1/auth/me', other)).json()).data.nickname,
+    null,
+  );
+  const denied = await fetch(fixture.url + '/api/v1/auth/me', {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${admin.token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ nickname: '권한 없는 변경' }),
+  });
+  assert.equal(denied.status, 403);
+});
 test('manual preview serves the actual App plus fixture-only controls and real fallback asset', async () => {
   const html = await (await raw('/')).text();
   assert.ok(html.includes('/__fixture/scenarios'));

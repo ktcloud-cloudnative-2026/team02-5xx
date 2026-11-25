@@ -13,14 +13,14 @@ export function passwordError(current, next, confirmation) {
 }
 export function accountError(error) {
   if (error.kind === 'account-retry')
-    return '인증이 갱신되었어요. 입력한 내용을 확인하고 다시 저장해 주세요.';
+    return '로그인을 다시 확인했어요. 입력한 내용을 확인하고 다시 저장해 주세요.';
   if (error.errorCode === 'CURRENT_PASSWORD_MISMATCH')
     return '현재 비밀번호가 일치하지 않아요.';
-  if (error.status === 401) return '인증이 만료됐어요. 다시 로그인해 주세요.';
+  if (error.status === 401) return '로그인이 만료됐어요. 다시 로그인해 주세요.';
   if (error.status === 403) return '회원정보를 변경할 권한이 없어요.';
   if (error.errorCode === 'INVALID_REQUEST')
-    return '입력값을 확인해 주세요. 서버의 입력 기준에 맞지 않아요.';
+    return '입력한 내용을 확인하고 다시 저장해 주세요.';
   if (error.kind === 'network')
-    return '서버 연결을 확인하지 못했어요. 변경 여부를 확인한 뒤 다시 시도해 주세요.';
+    return '연결이 끊겼어요. 변경 여부를 확인한 뒤 다시 시도해 주세요.';
   return '요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.';
 }

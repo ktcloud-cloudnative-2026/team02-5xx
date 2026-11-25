@@ -14,7 +14,7 @@ const results = [];
 let savedNickname = '';
 let page, context, main;
 const notice =
-  '인증이 갱신되었어요. 입력한 내용을 확인하고 다시 저장해 주세요.';
+  '로그인을 다시 확인했어요. 입력한 내용을 확인하고 다시 저장해 주세요.';
 const count = (ending) =>
   fixture.requests.filter((request) => request.path.endsWith(ending)).length;
 const writes = () =>
@@ -179,7 +179,7 @@ try {
         else fixture.controls.refreshStatus = status;
         await save('password').click();
         await main
-          .getByText('인증이 만료됐어요. 다시 로그인해 주세요.', {
+          .getByText('로그인이 만료됐어요. 다시 로그인해 주세요.', {
             exact: true,
           })
           .waitFor();
@@ -306,10 +306,10 @@ try {
   );
   await run('CUSTOMER 외 계정은 변경 입력·PATCH 진입 차단', async () => {
     await fresh('password', 'admin@example.test');
-    await main.getByRole('alert').filter({ hasText: 'CUSTOMER' }).waitFor();
+    await main.getByRole('alert').filter({ hasText: '고객용 계정' }).waitFor();
     const before = writes().length;
     await route('#account/password');
-    await main.getByRole('alert').filter({ hasText: 'CUSTOMER' }).waitFor();
+    await main.getByRole('alert').filter({ hasText: '고객용 계정' }).waitFor();
     assert.equal(await main.locator('input').count(), 0);
     assert.equal(writes().length, before);
   });
@@ -325,7 +325,7 @@ try {
       await save('password').click();
       await main.getByRole('alert').filter({ hasText: notice }).waitFor();
       await draft('password');
-      assert.match(await main.textContent(), /모든 기기.*자동 로그인 세션/s);
+      assert.match(await main.textContent(), /모든 기기.*자동 로그인/s);
       fixture.controls.status = 200;
       await save('password').click();
       await main

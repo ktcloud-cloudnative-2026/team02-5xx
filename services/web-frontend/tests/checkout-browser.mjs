@@ -55,12 +55,12 @@ async function fresh(
 async function checkout() {
   await page.getByRole('button', { name: '주문하기', exact: true }).click();
   await page
-    .getByRole('button', { name: 'Mock 임시 주문 만들기', exact: true })
+    .getByRole('button', { name: '모의 주문 금액 확인', exact: true })
     .waitFor({ state: 'visible' });
 }
 async function create() {
   const button = page.getByRole('button', {
-    name: 'Mock 임시 주문 만들기',
+    name: '모의 주문 금액 확인',
     exact: true,
   });
   await button.click();
@@ -195,7 +195,7 @@ try {
       await fresh();
       await checkout();
       await page
-        .getByRole('button', { name: 'Mock 임시 주문 만들기' })
+        .getByRole('button', { name: '모의 주문 금액 확인' })
         .isEnabled();
       assert.match(
         await page.locator('.checkout-summary').innerText(),
@@ -305,7 +305,7 @@ try {
       await page.locator('.mock-order-number').waitFor();
       assert.match(
         await page.locator('.mock-order-number').innerText(),
-        /^MOCK-/,
+        /^\d{6}-\d{4}$/,
       );
       await screenshot('success-1440');
       assert.deepEqual(
@@ -328,9 +328,7 @@ try {
       await checkout();
       await create();
       await page.getByRole('button', { name: /원 모의 결제$/ }).click();
-      await page
-        .getByRole('button', { name: '새 임시 주문으로 다시 확인' })
-        .waitFor();
+      await page.getByRole('button', { name: '주문 다시 확인' }).waitFor();
       await screenshot('declined-1440');
       assert.equal(
         await page.evaluate(() => localStorage.getItem('peak-order.cart.v1')),
@@ -344,9 +342,7 @@ try {
         await page.getByRole('button', { name: /원 모의 결제$/ }).count(),
         0,
       );
-      await page
-        .getByRole('button', { name: '새 임시 주문으로 다시 확인' })
-        .click();
+      await page.getByRole('button', { name: '주문 다시 확인' }).click();
       await create();
       assert.equal(
         await page.evaluate(() => window.__checkoutQA.calls.create),
@@ -415,7 +411,7 @@ try {
       await page.getByRole('button', { name: '예상시간 다시 조회' }).waitFor();
       assert.equal(
         await page
-          .getByRole('button', { name: 'Mock 임시 주문 만들기' })
+          .getByRole('button', { name: '모의 주문 금액 확인' })
           .isDisabled(),
         true,
       );
@@ -439,10 +435,8 @@ try {
     async () => {
       await fresh('scenario=create-failed');
       await checkout();
-      await page.getByRole('button', { name: 'Mock 임시 주문 만들기' }).click();
-      await page
-        .getByRole('button', { name: '새 임시 주문으로 다시 확인' })
-        .waitFor();
+      await page.getByRole('button', { name: '모의 주문 금액 확인' }).click();
+      await page.getByRole('button', { name: '주문 다시 확인' }).waitFor();
       assert.equal(await page.evaluate(() => window.__checkoutQA.calls.pay), 0);
       assert.equal(
         await page.evaluate(() => localStorage.getItem('peak-order.cart.v1')),
@@ -484,9 +478,7 @@ try {
       async () => {
         await fresh('delay=350');
         await checkout();
-        await page
-          .getByRole('button', { name: 'Mock 임시 주문 만들기' })
-          .click();
+        await page.getByRole('button', { name: '모의 주문 금액 확인' }).click();
         await page.evaluate(
           (action) =>
             action === 'logout'
@@ -495,7 +487,7 @@ try {
           action,
         );
         await page
-          .getByRole('heading', { name: '고객 세션이 변경됐어요' })
+          .getByRole('heading', { name: '로그인 상태가 변경됐어요' })
           .waitFor();
         await page.waitForTimeout(450);
         assert.equal(await page.locator('.login-modal[open]').count(), 0);
@@ -542,7 +534,7 @@ try {
       .getByRole('button', { name: '주문하기', exact: true })
       .click();
     await page
-      .getByText('주문·결제는 CUSTOMER 계정만 이용할 수 있어요.', {
+      .getByText('주문하려면 고객용 계정으로 로그인해 주세요.', {
         exact: true,
       })
       .waitFor();
@@ -708,7 +700,7 @@ try {
           window.__checkoutQA.releasePaidResponse();
         }, action);
         await page
-          .getByRole('heading', { name: '고객 세션이 변경됐어요' })
+          .getByRole('heading', { name: '로그인 상태가 변경됐어요' })
           .waitFor();
         assert.equal(
           await page.evaluate(() => localStorage.getItem('peak-order.cart.v1')),

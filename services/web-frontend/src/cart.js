@@ -71,6 +71,7 @@ export function describeItem(selection, getMenu, { allowPaused = false } = {}) {
     optionIds,
     quantity: selection.quantity,
     name: menu.name,
+    imageUrl: menu.imageUrl,
     optionNames: selectedOptions.map((option) => option.name),
     unitPrice,
     total,
