@@ -5,7 +5,8 @@ Inventory 서비스를 GHCR 이미지와 Argo CD에 연결하는 Kustomize 구�
 ## 구조
 
 - `base/`: Deployment 1개, ClusterIP Service 1개 (`inventory-service:8080`), Gateway HTTPRoute 1개
-- `overlays/dev/`, `overlays/prod/`: 환경별 이미지 태그. DB 주소는 각 클러스터 Secret의 `DB_URL`이 정하므로 환경별 패치는 없다.
+- `overlays/dev/`, `overlays/prod/`: 환경별 이미지 태그. DB 주소는 각 클러스터 Secret의 `DB_URL`이 정한다.
+- `overlays/dev/`에만 관리자 경로 구성이 있다: `admin-httproute.yaml`, `admin-securitypolicy.yaml`(JWT), `admin-enabled-patch.yaml`(관리자 API 켜기).
 - namespace `peakorder`, 라벨 `app: inventory-service`, `team: team02`
 - 이미지: `ghcr.io/ktcloud-cloudnative-2026/team02-5xx/inventory:sha-<머지 커밋 전체 번호>` (`latest` 금지). 태그는 `overlays/dev/kustomization.yaml` 기준이다. 새 변경이 병합되면 overlay의 태그를 그 커밋으로 올린다.
 
@@ -26,7 +27,7 @@ dev Secret은 2026-11-23 DB 담당이 만들었다(#112). prod Secret 생성 방
 | 환경 변수 | 값 | 비고 |
 |---|---|---|
 | `MENU_SERVICE_URL` | `http://menu-service:8080` | IN-05에서 MI-02(메뉴 존재 확인) 호출 |
-| `INVENTORY_ADMIN_ENABLED` | `"false"` | 관리자 API(IN-02~06)는 STORE_ADMIN 인가(#112) 확정 전까지 켜지 않는다. 켜면 인증 없이 누구나 재고를 바꿀 수 있다 |
+| `INVENTORY_ADMIN_ENABLED` | base·prod `"false"`, dev `"true"` | 관리자 API(IN-02~06) 켜기. dev는 Gateway JWT(#303 방식)와 서비스 STORE_ADMIN 검사(#247)가 모두 있어 overlay 패치(`admin-enabled-patch.yaml`)로 켠다. prod는 관리자 경로를 공개하지 않으므로 끈 채로 둔다 |
 | `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` | `"4"` | t2-db 한 대에 DB 12개(`max_connections` 100)라 연결 풀을 줄인다(#186) |
 | `SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE` | `"1"` | 위와 같음 |
 | `JAVA_TOOL_OPTIONS` | `-XX:MaxRAMPercentage=60.0` | Order와 같음 |
@@ -36,7 +37,9 @@ Inventory는 RabbitMQ를 쓰지 않으므로 RabbitMQ 변수는 없다. `enableS
 ## 네트워크·외부 노출
 
 - Gateway(`peakorder-gateway`) 경유 공개는 IN-01 `GET /api/v1/inventory/availability` 하나뿐이다(`base/httproute.yaml`, Exact·GET). 클라이언트가 보낸 `X-User-Id`·`X-User-Role`은 Gateway에서 지운다.
-- 관리자(`/api/v1/admin/inventory/**`, IN-02~06)·내부(`/internal/**`)·`/actuator/**` 경로는 공개하지 않는다.
+- 관리자 경로(`/api/v1/admin/inventory/**`, IN-02~06)는 **dev에서만** 공개하고 JWT가 필수다(`overlays/dev/admin-httproute.yaml`·`admin-securitypolicy.yaml`). 토큰이 없거나 잘못되면 Gateway가 401, CUSTOMER 토큰은 서비스가 403, STORE_ADMIN 토큰만 통과한다. JWT 경로라 헤더 remove는 두지 않는다(claimToHeaders가 토큰 값으로 덮어씀, #303).
+- prod는 관리자 경로를 공개하지 않고 관리자 API도 꺼 둔다.
+- 내부(`/internal/**`)·`/actuator/**` 경로는 공개하지 않는다.
 - NetworkPolicy는 `deploy/platform/network-policies.yaml`의 `allow-inventory-service`를 따른다. Gateway(`envoy-gateway-system`), Order Pod, `monitoring` namespace에서 8080으로만 들어올 수 있다. `deploy/platform`은 Argo CD 관리 밖이라 dev에 직접 적용한다.
 
 ## 자원·검사
