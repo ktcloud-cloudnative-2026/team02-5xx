@@ -37,7 +37,7 @@ kubectl apply --dry-run=server -k deploy/apps/auth-service/overlays/dev
 - 축소는 쿠버네티스 기본 안정화(5분)를 따른다. 줄어드는 Pod는 `preStop`(10초)과 `terminationGracePeriodSeconds`(50초)로 요청을 보호한다(#325).
 - 확대하면 Pod당 DB 연결이 최대 4개라 서비스당 최대 12개(3 × 4)이고, 롤링 중 임시 Pod를 포함한 전체 예산은 최대 96이다(일반 연결 97, #186). 여러 서비스를 동시에 롤링하지 않는다.
 - 2 Pod 시험(2026-11-25, dev, 시험용 계정, Pod마다 port-forward와 `Origin` 헤더로 직접 호출): 두 Pod의 JWKS가 같고(`kid auth-dev-01`, 응답 해시 동일), Pod A에서 로그인해 받은 토큰을 Pod B가 검증했으며(`/me` 200), 같은 갱신(refresh) 쿠키를 두 Pod에 동시에 보내면 `200`이 정확히 한 개이고 나머지는 `401`이었다(사용자 행 잠금과 재사용 감지로 세션 폐기, 설계된 동작). 결과는 이슈 #344 댓글에 있다.
-- 로그인(Argon2id 비밀번호 해시)은 CPU를 많이 쓰고 같은 사용자 행을 잠그므로, 같은 계정으로 부하를 주면 요청이 직렬화되어 CPU가 덜 오를 수 있다. 부하 시험으로 확대·축소와 requests·목표값을 조정하는 것은 아직 남아 있다.
+- 로그인(Argon2id 비밀번호 해시)은 CPU를 많이 쓴다. 코드상 비밀번호 검증은 사용자 행을 잠그기 전에 트랜잭션 밖에서 하므로 같은 계정으로 동시에 로그인해도 CPU 작업은 병렬로 돌고, 잠금은 그 뒤 토큰 저장 구간에만 걸린다. 부하 시험으로 확대·축소와 requests·목표값을 조정하는 것은 아직 남아 있다.
 - 확인: `kubectl -n peakorder get hpa auth-service`로 현재 사용률(TARGETS)과 Pod 수를 본다. 사용률이 `<unknown>`이면 CPU 지표(metrics-server) 문제다.
 
 ## 이미지 갱신과 복구
