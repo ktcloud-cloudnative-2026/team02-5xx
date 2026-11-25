@@ -311,6 +311,10 @@ export default function App({
         checkoutRef.current = null;
         setCheckout(null);
       }
+      // History navigation cancels login/order intent even when restoring a cart
+      // or detail entry. Clear the ref before any early return or late login.
+      pendingIntent.current = null;
+      setLoginIntent(null);
       const detailId = window.history.state?.peakOrderCartDetail;
       if (Number.isSafeInteger(detailId) && detailId > 0) {
         cartDetail.current = detailId;
@@ -349,10 +353,6 @@ export default function App({
           )
             setCartFeedback((current) => current || added.feedback);
         });
-      }
-      if (next !== 'cart') {
-        pendingIntent.current = null;
-        setLoginIntent(null);
       }
     };
     window.addEventListener('popstate', onHistory);
