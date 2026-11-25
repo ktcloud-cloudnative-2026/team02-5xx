@@ -12,6 +12,7 @@ import com.peakorder.order.client.InventoryClient.HoldLine;
 import com.peakorder.order.client.InventoryClient.StockHold;
 import com.peakorder.order.exception.BusinessException;
 import com.peakorder.order.exception.ErrorCode;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,12 +30,14 @@ class HttpInventoryClientTest {
 
   private MockRestServiceServer server;
   private HttpInventoryClient client;
+  private SimpleMeterRegistry registry;
 
   @BeforeEach
   void setUp() {
     RestClient.Builder builder = RestClient.builder().baseUrl("http://inventory");
     server = MockRestServiceServer.bindTo(builder).build();
-    client = new HttpInventoryClient(builder.build());
+    registry = new SimpleMeterRegistry();
+    client = new HttpInventoryClient(builder.build(), registry);
   }
 
   private ErrorCode codeOf(Runnable call) {
@@ -75,6 +78,58 @@ class HttpInventoryClientTest {
 
     assertThat(codeOf(() -> client.hold(1L, List.of(new HoldLine(1L, 2)))))
         .isEqualTo(ErrorCode.OUT_OF_STOCK);
+  }
+
+  private double rejected(String reason) {
+    var counter = registry.find("order.inventory.hold.rejected").tag("reason", reason).counter();
+    return counter == null ? 0 : counter.count();
+  }
+
+  private void holdConflict(String body) {
+    server
+        .expect(requestTo(HOLDS))
+        .andRespond(
+            withStatus(HttpStatus.CONFLICT)
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(body));
+  }
+
+  @Test
+  void hold_409_insufficient_stock_is_counted_separately_but_still_out_of_stock() {
+    holdConflict(
+        "{\"success\":false,\"message\":\"재고가 부족합니다.\",\"errorCode\":\"INSUFFICIENT_STOCK\"}");
+
+    assertThat(codeOf(() -> client.hold(1L, List.of(new HoldLine(1L, 2)))))
+        .isEqualTo(ErrorCode.OUT_OF_STOCK);
+    assertThat(rejected("insufficient_stock")).isEqualTo(1);
+    assertThat(rejected("stock_not_linked")).isZero();
+  }
+
+  @Test
+  void hold_409_stock_not_linked_is_counted_separately_but_still_out_of_stock() {
+    holdConflict("{\"success\":false,\"message\":\"연결 안 됨\",\"errorCode\":\"STOCK_NOT_LINKED\"}");
+
+    assertThat(codeOf(() -> client.hold(1L, List.of(new HoldLine(7L, 2)))))
+        .isEqualTo(ErrorCode.OUT_OF_STOCK);
+    assertThat(rejected("stock_not_linked")).isEqualTo(1);
+    assertThat(rejected("insufficient_stock")).isZero();
+  }
+
+  @Test
+  void hold_409_with_unknown_missing_or_unreadable_body_is_unknown_but_still_out_of_stock() {
+    for (String body :
+        new String[] {
+          "{\"success\":false,\"errorCode\":\"SOMETHING_NEW\"}",
+          "{\"success\":false}",
+          "not json",
+          ""
+        }) {
+      server.reset();
+      holdConflict(body);
+      assertThat(codeOf(() -> client.hold(1L, List.of(new HoldLine(1L, 2)))))
+          .isEqualTo(ErrorCode.OUT_OF_STOCK);
+    }
+    assertThat(rejected("unknown")).isEqualTo(4);
   }
 
   @Test
