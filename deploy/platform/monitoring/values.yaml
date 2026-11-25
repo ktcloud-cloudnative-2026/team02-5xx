@@ -240,6 +240,13 @@ grafana:
     limits:
       cpu: 500m
       memory: 512Mi
+  # Loki 데이터 소스(logging-dev, #323). 같은 monitoring namespace의 Loki Service(포트 3100)로 연결한다.
+  # 차트는 데이터 소스를 ConfigMap 파일로 만든다(datasourcesEnabled: false — CRD 아님).
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      access: proxy
+      url: http://loki.monitoring.svc.cluster.local:3100
 
 # --- kube-state-metrics (Kubernetes 객체 상태: 재시작 수, 복제본 등) ---
 kube-state-metrics:
