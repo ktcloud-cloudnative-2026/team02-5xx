@@ -37,6 +37,12 @@ kubectl -n peakorder exec rabbitmq-0 -- rabbitmqctl ping
 kubectl -n peakorder exec rabbitmq-0 -- rabbitmqctl list_queues name messages consumers
 ```
 
+- **지난 로그는 Loki에서 본다.** `kubectl logs`는 지금 있는 Pod(와 `--previous`로 직전 컨테이너 하나)만 보여 준다. 이미 교체·삭제된 Pod의 로그나 몇 시간 전 로그는 Grafana Explore → 데이터 소스 **Loki**에서 찾는다(접속 방법: `deploy/platform/logging/README.md` "확인").
+  ```logql
+  {namespace="peakorder", app="<서비스>"} | json | log_level=~"WARN|ERROR"   # ECS JSON 로그
+  {namespace="peakorder", app="<서비스>"} |~ " (WARN|ERROR) "               # 텍스트 로그
+  ```
+  안 보이면 시간 범위를 넓힌다(로그는 원래 찍힌 시각 기준).
 - **로그 형식은 서비스마다 다르다.** ECS JSON(한 줄에 JSON 하나): **Cooking**(#190), **Order**(#271). 그 외 서비스는 ECS 적용 전이라 Spring 기본 텍스트 로그다. ECS가 적용되면 이 줄을 갱신한다. JSON용 명령은 텍스트 로그에서 아무것도 찾지 못하므로 형식에 맞는 명령을 쓴다.
 - 시각은 **UTC**라 한국 시간은 +9시간이다(ECS의 `@timestamp`).
 - `consumers`가 0인 업무 큐는 받는 서비스가 연결돼 있지 않다는 뜻이다(메시지가 쌓인다).
