@@ -112,8 +112,10 @@ RabbitMQ Pod 안의 `rabbitmqadmin`(v2)을 쓴다. 계정은 Pod 안 환경 변�
 ```bash
 RA='RABBITMQADMIN_USERNAME="$RABBITMQ_DEFAULT_USER" RABBITMQADMIN_PASSWORD="$RABBITMQ_DEFAULT_PASS" rabbitmqadmin'
 kubectl -n peakorder exec rabbitmq-0 -- sh -c "$RA queues list"     # 큐별 메시지 수·소비자 수
-kubectl -n peakorder exec rabbitmq-0 -- sh -c "$RA get messages --queue cooking.order-confirmed.dlq --count 5 --ack-mode ack_requeue_true"
+Q=cooking.order-confirmed.dlq     # 알림의 queue 라벨에 맞춘다: cooking.order-confirmed.dlq 또는 order.cooking-completed.dlq
+kubectl -n peakorder exec rabbitmq-0 -- sh -c "$RA get messages --queue $Q --count 5 --ack-mode ack_requeue_true"
 ```
+- 어느 DLQ인지는 알림 `RabbitMQDeadLetterQueueNotEmpty`의 `queue` 라벨이나 위 `queues list`의 메시지 수로 정한다(위 표: Cooking 실패 / Order 실패).
 - ⚠️ **`get messages`는 반드시 `--ack-mode ack_requeue_true`로 실행한다.** 기본값(`ack_requeue_false`)은 꺼낸 메시지를 **큐에서 지운다.** 지운 DLQ 메시지는 되돌릴 수 없다.
 - 출력 열: `payload`(본문 — `eventId`·`orderId`), `properties`(헤더 — `x-death`), `redelivered`, `exchange`, `routing_key`, `message_count`(꺼낸 뒤 남은 수). `ack_requeue_true`로 본 메시지는 큐에 다시 들어가며 `redelivered`가 `true`로 바뀌거나 순서가 바뀔 수 있다(DLQ에서는 문제없다).
 - 명령 형식은 2026-11-25 dev에서 빈 DLQ로 확인했다(#336). **메시지가 있을 때 `x-death`가 `properties`에 어떻게 보이는지는 아직 확인하지 않았다.**
