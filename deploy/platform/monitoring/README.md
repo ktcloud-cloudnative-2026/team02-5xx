@@ -61,7 +61,7 @@ dev 노드(11/20): t2-dev-cp CPU 2·약 3.8Gi(실사용 78%), t2-dev-w1·w2 CPU 
 - 요청 합계 약 1.1Gi(node-exporter 3개 포함, sidecar·config-reloader 제외). 실제 사용량을 본 뒤 조정한다.
 - Grafana는 처음 128Mi / 256Mi였으나, 11/23 Prometheus 설치 뒤 접속하자 데이터 소스·기본 대시보드를 불러오며 256Mi를 넘어 OOMKilled(재시작 7회) → 256Mi / 512Mi로 올림(#238, Grafana 권장 최소 512MB).
 
-## 렌더링 결과 (108개)
+## 렌더링 결과 (109개)
 
 같은 결과를 다시 보려면:
 
@@ -75,11 +75,11 @@ helm template monitoring prometheus-community/kube-prometheus-stack --version 93
 | 범위 | 종류 (개수) |
 |---|---|
 | 클러스터 | CustomResourceDefinition (10), ClusterRole (3), ClusterRoleBinding (3) |
-| `monitoring` | PrometheusRule (32), ConfigMap (27), ServiceMonitor (11), Service (6), ServiceAccount (6), Deployment (3), Secret (2), DaemonSet (1), Prometheus (1), Alertmanager (1), Role (1), RoleBinding (1) |
+| `monitoring` | PrometheusRule (33), ConfigMap (27), ServiceMonitor (11), Service (6), ServiceAccount (6), Deployment (3), Secret (2), DaemonSet (1), Prometheus (1), Alertmanager (1), Role (1), RoleBinding (1) |
 
 - 개수는 실제로 적용되는 객체 기준이다. 차트는 추가 ServiceMonitor(`prometheus.additionalServiceMonitors`)를 `kind: List`로 감싸 출력하므로, 출력에서 `kind:`를 셀 때는 List 대신 안의 ServiceMonitor(3: rabbitmq·cooking-service·order-service)를 센다. Argo CD는 List를 풀어 안의 객체를 하나씩 적용한다.
 - 모든 namespace 리소스는 `monitoring`에 만들어진다. 다른 namespace에 만드는 리소스는 없다.
-- `app`·`team` 라벨은 CRD 10개를 뺀 98개 리소스와 Pod 템플릿(Deployment 3·DaemonSet 1)·Operator가 만들 Pod(`podMetadata`)에 모두 있다.
+- `app`·`team` 라벨은 CRD 10개를 뺀 99개 리소스와 Pod 템플릿(Deployment 3·DaemonSet 1)·Operator가 만들 Pod(`podMetadata`)에 모두 있다.
 - MutatingWebhookConfiguration·ValidatingWebhookConfiguration·Job·Pod(helm hook)는 없다.
 - AppProject 허용 목록은 위 종류와 정확히 같다(빠짐·남음 없음, 스크립트로 대조).
 - Prometheus·Alertmanager의 StatefulSet은 Operator가 실행 중에 만든다(Argo CD가 만드는 리소스가 아니라 AppProject 목록에 없다).
@@ -116,10 +116,14 @@ helm template monitoring prometheus-community/kube-prometheus-stack --version 93
 | `CookingOutboxPending` (4-2 5번, #289) | `max(cooking_outbox_pending) > 0` | 5분 | warning | [Outbox](../../../docs/runbook.md#outbox) |
 | `OrderOutboxPending` (4-2 5번, #289) | `max(order_outbox_pending) > 0` | 5분 | warning | [Outbox](../../../docs/runbook.md#outbox) |
 | `OrderCancelFollowUpManualRequired` (4-2 6번, #309) | `max(order_cancel_follow_up_manual_required) > 0` | 1분 | warning | [Order README 주문 취소(수동 확인 운영 방법)](../../../services/order-service/README.md#주문-취소-or-05) |
+| `PeakorderTargetDown` (4-2 2번, #339) | `up{namespace="peakorder"} == 0` | 1분 | critical | [공통 확인 순서](../../../docs/runbook.md#공통-확인-순서) |
+| `PeakorderContainerRestartingRepeatedly` (4-2 4번, #339) | `increase(kube_pod_container_status_restarts_total{namespace="peakorder"}[15m]) >= 3` | — (15분 집계 구간) | warning | [CrashLoopBackOff](../../../docs/runbook.md#crashloopbackoff) |
+| `PeakorderDeploymentNoAvailablePods` (4-2 7번, #339) | `kube_deployment_status_replicas_available{namespace="peakorder"} == 0 and on (namespace, deployment) kube_deployment_spec_replicas{namespace="peakorder"} > 0` | 1분 | critical | [공통 확인 순서](../../../docs/runbook.md#공통-확인-순서) |
 
 - 알림 채널(#138)이 정해지기 전까지는 Prometheus Alerts·Alertmanager 화면에서만 확인한다.
 - `OrderOutboxPending`·`OrderCancelFollowUpManualRequired`는 Order ServiceMonitor(#309)로 수집한다. Sync 전에는 값이 없어 울리지 않는다(Inactive). 6번은 Order 담당 의견(#292 리뷰)에 따라 `outbox-pending` 그룹에 함께 둔다(PrometheusRule 리소스 수는 그대로).
 - Outbox 알림은 DB 조회 실패로 지표 값이 NaN이면 울리지 않는다(`docs/observability.md` 4-2 감시 한계).
+- 2·4·7번(`service-health` 그룹)은 차트 기본 규칙 `TargetDown`(10분, warning)·`KubePodCrashLooping`(상태 15분)·`KubeDeploymentReplicasMismatch`(15분)와 겹친다. 기본 규칙은 그대로 두고 peakorder만 더 빠르게(critical) 본다. 같은 사고에 둘 다 울릴 수 있다. 2번은 수집 대상(현재 Cooking·Order·RabbitMQ)만, 7번은 peakorder의 모든 Deployment를 본다.
 
 ## dev 적용 (병합 후)
 

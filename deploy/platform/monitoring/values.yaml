@@ -96,6 +96,45 @@ additionalPrometheusRulesMap:
               summary: 사람이 확인해야 하는 취소 주문이 있습니다
               description: 취소 후 재고 복원 또는 환불이 자동으로 끝나지 않았습니다. Order README의 "수동 확인 운영 방법"으로 목록을 확인하세요.
               runbook_url: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/main/services/order-service/README.md#주문-취소-or-05
+  service-health:
+    groups:
+      - name: service-health
+        rules:
+          # 4-2 알림 2번(#339): 수집 대상(현재 Cooking·Order·RabbitMQ)이 죽었거나 지표를 못 가져옴.
+          # 기본 TargetDown(10분, warning)보다 빠르게 본다. namespace 라벨은 11/25 cooking_tickets 조회로 확인.
+          - alert: PeakorderTargetDown
+            expr: 'up{namespace="peakorder"} == 0'
+            for: 1m
+            labels:
+              severity: critical
+              team: team02
+            annotations:
+              summary: 'peakorder 수집 대상이 응답하지 않습니다 ({{ $labels.job }} {{ $labels.pod }})'
+              description: 서비스가 죽었거나 Prometheus가 지표를 가져오지 못하고 있습니다. 런북 공통 확인 순서로 Pod 상태·Events·로그를 확인하세요.
+              runbook_url: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/main/docs/runbook.md#공통-확인-순서
+          # 4-2 알림 4번(#339): 15분 동안 3번 이상 재시작. CrashLoopBackOff "상태"가 아니라 "횟수"로 본다(#238 같은 간헐 OOM).
+          # 15분 집계 구간이 지속 시간 역할을 하므로 for는 두지 않는다.
+          - alert: PeakorderContainerRestartingRepeatedly
+            expr: 'increase(kube_pod_container_status_restarts_total{namespace="peakorder"}[15m]) >= 3'
+            labels:
+              severity: warning
+              team: team02
+            annotations:
+              summary: 'peakorder 컨테이너가 재시작을 반복합니다 ({{ $labels.pod }}/{{ $labels.container }})'
+              description: 15분 동안 3번 이상 재시작했습니다. 메모리 초과(OOMKilled)나 기동 실패를 런북 CrashLoopBackOff 절차로 확인하세요.
+              runbook_url: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/main/docs/runbook.md#crashloopbackoff
+          # 4-2 알림 7번(#339): Deployment에 사용 가능한 Pod가 하나도 없음. Pod가 없으면 up 자체가 사라져 2번이 못 잡는다.
+          # 일부러 0개로 줄인 Deployment(spec_replicas 0)는 제외한다.
+          - alert: PeakorderDeploymentNoAvailablePods
+            expr: 'kube_deployment_status_replicas_available{namespace="peakorder"} == 0 and on (namespace, deployment) kube_deployment_spec_replicas{namespace="peakorder"} > 0'
+            for: 1m
+            labels:
+              severity: critical
+              team: team02
+            annotations:
+              summary: 'peakorder Deployment에 사용 가능한 Pod가 없습니다 ({{ $labels.deployment }})'
+              description: 원하는 Pod 수는 1개 이상인데 사용 가능한 Pod가 0개입니다. 런북 공통 확인 순서로 Pod 상태·Events·최근 배포를 확인하세요.
+              runbook_url: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/main/docs/runbook.md#공통-확인-순서
 
 # --- Prometheus Operator ---
 # admission webhook을 끄면 webhook 설정·인증서 생성 Job(hook)과 그 권한이 만들어지지 않는다.
