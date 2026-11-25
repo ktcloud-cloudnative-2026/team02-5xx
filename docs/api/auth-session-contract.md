@@ -1,6 +1,6 @@
 # Auth 인증 연동 계약 및 검증 현황
 
-> Issue #112 · 기준: main `24d4fc8` · 확인일: 2026-11-23
+> Issue #112 · 기준: main `8c319af` · 확인일: 2026-11-25 (최초 2026-11-23, 현황 갱신 #355)
 > 기존 Auth 담당 결정과 실제 구현을 정리한 문서다. Gateway·다른 서비스의 계약을 새로 정하거나 기존 API/ERD 원문을 변경하지 않는다.
 
 - [Auth 담당 결정안](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/112#issuecomment-7002438953)
@@ -13,12 +13,14 @@
 | 구분     | 확인 결과                                                                                                      |
 | -------- | -------------------------------------------------------------------------------------------------------------- |
 | 구현     | AU-01·02·03·04·09·10과 공개 JWKS 구현, main 병합                                                               |
-| 추가구현 | AU-05·06은 #221로 main 병합(`24d4fc8`). dev 배포 전                                                            |
+| 추가구현 | AU-05·06은 #221로 main 병합(`24d4fc8`). dev 반영(#249). 현재 dev 이미지는 #325 병합 커밋 `c782944`(#343)       |
 | 로컬     | 동일 Auth 이미지와 임시 PostgreSQL로 실제 동작 검사 24개 통과                                                  |
-| dev      | Argo CD 수동 Sync 완료, Synced·Healthy, 새 Pod Ready·재시작 0                                                  |
+| CI       | PR CI가 서비스 컨테이너 PostgreSQL로 Auth DB 통합 테스트 23개를 생략 없이 실행(#334)                           |
+| dev      | Argo CD 자동 Sync(prune·selfHeal 끔), Synced·Healthy. 2026-11-25 #343 반영 후 새 Pod Ready·재시작 0            |
+| Gateway  | Gateway 담당이 JWT 검증·신원 헤더 전달(SecurityPolicy claimToHeaders)을 적용(#286, Order 고객 API #303)        |
 | DB       | 실제 앱 기동 시 Flyway V1·V2 적용 성공                                                                         |
 | 공개키   | Gateway 및 직접 Auth JWKS 200, 같은 공개키·kid, 개인키 필드 없음                                               |
-| 미검증   | Gateway JWT 검증·신원 전달, 실제 HTTPS 브라우저·프론트 연동                                                    |
+| 미검증   | 실제 HTTPS 브라우저·프론트 연동(Secure Refresh 쿠키, Origin, #287)                                             |
 | 회원가입 | dev는 시연용 약관 버전 demo-v1로 가입 허용(#268). prod는 실제 약관 확정 전까지 REGISTRATION_UNAVAILABLE 유지   |
 | prod     | 이 문서 작성 작업에서 조회·변경하지 않음. 별도 사전 연결 확인은 SSH 호스트 키 검증에서 실패해 설치 상태 미확인 |
 
@@ -106,18 +108,18 @@ Gateway 담당의 [결정 기록](https://github.com/ktcloud-cloudnative-2026/te
 - Gateway 401 본문은 Envoy 기본 응답이며 공통 JSON이 아니다. 공통 응답 형식의 임시 예외로 두고, 프론트는 상태코드 401만으로 재발급·로그인 흐름을 처리한다. 공통 JSON화는 후속 구현 항목이다.
 - Auth의 JWT 비요구 경로: `POST /login`, `POST /register`, `GET /email-availability`, `GET /jwks`, `POST /refresh`, `POST /logout`. refresh·logout은 Access 없이 Refresh 쿠키로만 호출된다.
 - `/me`, `/me/password`는 Auth가 Bearer 토큰을 직접 검증하므로 Gateway 보호 경로 여부와 관계없이 동작이 같다.
-- 남는 신뢰 경계(허용된 Pod의 헤더 위조, hostNetwork 등)는 NetworkPolicy 기본 차단, Git PR → Argo CD 배포, 관리자 API 기본 차단 유지, `/internal/v1/**` 비노출을 전제로 수용한다.
+- 남는 신뢰 경계(허용된 Pod의 헤더 위조, hostNetwork 등)는 NetworkPolicy 기본 차단, Git PR → Argo CD 배포, prod 관리자 API 차단(dev는 Gateway JWT 경로로만 공개하고 서비스가 STORE_ADMIN을 검사), `/internal/v1/**` 비노출을 전제로 수용한다(#280에서 관리자 API 공개에도 같은 전제를 적용).
 
 | 남은 작업                                             | 담당·처리 기준                                                                                                             |
 | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Gateway JWT 검증·claimToHeaders·경로 분리 구현과 시험 | Gateway 담당 후속 Issue. Auth가 다른 담당자 정책을 임의 변경하지 않는다                                                    |
+| Gateway JWT 검증·claimToHeaders·경로 분리 구현과 시험 | 적용됨: Gateway 담당 #286, Order 고객 API #303. 다른 서비스도 같은 SecurityPolicy 방식을 쓴다. Auth가 다른 담당자 정책을 임의 변경하지 않는다 |
 | 실제 HTTPS origin, 쿠키·CORS·CSRF 브라우저 검증       | Gateway·프론트와 실제 환경에서 확인한다. Secure 쿠키를 임의로 완화하지 않는다                                              |
-| 관리자 API                                            | 각 서비스에서 STORE_ADMIN 검사. Gateway JWT 검증·신뢰 경계 연결 전 기존 차단 유지                                          |
+| 관리자 API                                            | 각 서비스에서 STORE_ADMIN 검사. dev는 Gateway JWT 경로로만 공개(2026-11-25 기준 Inventory #337 적용, Cooking #349 검토 중, Menu #280 협의 중, Order는 비공개). prod는 차단 유지 |
 | 실제 약관 버전                                        | dev는 프론트와 맞춘 시연용 demo-v1(#268). prod는 실제 약관 문구·버전 확정 후 활성화. 시연·테스트 버전을 prod에 넣지 않는다 |
 | 회원가입·로그인·갱신·로그아웃 최종 화면 연동          | 프론트 #156·#201과 협력. 페이지·장바구니 상태 유지                                                                         |
 
 ## Auth 원본 명세 대비 잔여 기능
 
-AU-05 회원정보 수정과 AU-06 비밀번호 변경은 #221로 main에 병합됐고 dev 배포 전이다. AU-07·08 비밀번호 재설정은 아직 구현되지 않았다. 본인 확인·재설정 전달 방식은 별도 구현 범위에서 구체화한다. 현재 문서 작업으로 새 메일 발송 도구나 API 정책을 추가하지 않는다.
+AU-05 회원정보 수정과 AU-06 비밀번호 변경은 #221로 main에 병합됐고 dev에 반영됐다(#249). AU-07·08 비밀번호 재설정은 아직 구현되지 않았다. 본인 확인·재설정 전달 방식은 별도 구현 범위에서 구체화한다. 현재 문서 작업으로 새 메일 발송 도구나 API 정책을 추가하지 않는다.
 
 따라서 Auth dev 서버 배포 완료와 Auth 전체 명세 완료는 구분한다. #112는 위 계약 결정으로 종료하고, Gateway·브라우저 구현과 검증은 후속 Issue로 추적한다.
