@@ -19,6 +19,10 @@ spec:
       # 같은 namespace의 Service 정보를 RABBITMQ_PORT=tcp://... 같은 환경 변수로
       # 자동 주입하지 않게 한다. 앱 설정 이름(RABBITMQ_PORT)과 겹쳐 시작이 실패한다(#161).
       enableServiceLinks: false
+      # 종료 시 진행 중인 요청이 끊기지 않게 한다(#313, Order #294와 같은 계산). preStop 대기 10초 + 앱의 정상 종료 대기
+      # (spring.lifecycle.timeout-per-shutdown-phase 기본 30초) + 여유 10초.
+      # 앱의 graceful shutdown은 Spring Boot 4.1.2 기본값(GRACEFUL)이라 별도 설정이 없다.
+      terminationGracePeriodSeconds: 50
       containers:
         - name: cooking-service
           image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/cooking:sha-8bb8c680af1b8e11e6e6c2179704a812b2935c6e
@@ -78,6 +82,12 @@ spec:
               value: "4"
             - name: SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE
               value: "1"
+          lifecycle:
+            preStop:
+              # Pod가 Service 엔드포인트에서 빠져 Gateway·Service가 새 요청 보내기를 멈출 때까지
+              # SIGTERM을 늦춘다. 이 사이에도 요청은 정상 처리된다. (이미지 eclipse-temurin:21-jre-alpine의 sleep 사용)
+              exec:
+                command: ["sh", "-c", "sleep 10"]
           resources:
             requests:
               cpu: 100m
