@@ -20,7 +20,7 @@ Cooking의 로컬 기본 포트는 8084(`application.yml`)다. 클러스터에�
 | 경로 | 권한 | 노출 |
 |---|---|---|
 | `GET /api/v1/cooking/congestion` (CO-01), `POST /api/v1/cooking/estimates` (CO-02) | 전체(비회원 포함) | **공개**(#266). 다른 메서드는 Gateway에서 404 |
-| `/api/v1/admin/cooking/**` (CO-03·04) | STORE_ADMIN | 연결하지 않음. 서비스는 신원 헤더로 STORE_ADMIN을 확인하지만(#99: 헤더 없음·형식 오류 401, 역할 부족 403) Gateway JWT 검증이 dev에서 확인되기 전까지 `COOKING_ADMIN_ENABLED=false`로 경로 자체를 없앤다(404, #112) |
+| `/api/v1/admin/cooking/**` (CO-03·04) | STORE_ADMIN | **dev만 연결**(`overlays/dev/admin-httproute.yaml`, `Exact` + GET, #348). Gateway JWT 필수(`admin-securitypolicy.yaml`, #303 방식) — 토큰 없음·잘못된 토큰 401(Gateway), 역할 부족 403(서비스, #99·#288). prod는 연결하지 않고 `COOKING_ADMIN_ENABLED=false`로 경로 자체를 없앤다(404, #112) |
 | `/internal/v1/cooking/**` (CI-02·03) | 호출자 Order | 연결하지 않음(클러스터 안에서만) |
 | `/actuator/**` | — | 연결하지 않음(Prometheus는 클러스터 안에서 수집) |
 
@@ -44,7 +44,7 @@ Cooking의 로컬 기본 포트는 8084(`application.yml`)다. 클러스터에�
 | `SERVER_PORT` | `8080` | 위 "포트" |
 | `RABBITMQ_HOST` / `RABBITMQ_PORT` | `rabbitmq` / `5672` | 플랫폼 Service 이름. 포트를 명시하고 `enableServiceLinks: false`로 자동 주입(`RABBITMQ_PORT=tcp://…`)을 막는다(#161) |
 | `MENU_SERVICE_URL` | `http://menu-service:8080` | CO-02가 Menu MI-01을 호출 |
-| `COOKING_ADMIN_ENABLED` | `false` | 관리자 API 비활성. 인증 확정 전 켜지 않는다 |
+| `COOKING_ADMIN_ENABLED` | base·prod `false`, dev `true` | 관리자 API(CO-03·04) 켜기. dev는 Gateway JWT(#303 방식)와 서비스 STORE_ADMIN 검사(#288)가 모두 있어 overlay 패치(`admin-enabled-patch.yaml`, #348)로 켠다. prod는 관리자 경로를 공개하지 않으므로 끈 채로 둔다 |
 | `JAVA_TOOL_OPTIONS` | `-XX:MaxRAMPercentage=60.0` | 메모리 제한 안에서 힙 비율. Order(#158)와 같은 기준 |
 | `LOGGING_STRUCTURED_FORMAT_CONSOLE` | `ecs` | 로그를 한 줄 JSON(ECS)으로 출력. K8s에서만 켜고 로컬은 텍스트 로그 유지(`docs/observability.md` 3-1, #189). `service.name`에 `cooking-service`가 자동으로 들어감 |
 | `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` / `SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE` | `4` / `1` | DB 연결 풀. t2-db 한 대에 DB 12개(max_connections 100)라 서비스마다 최대 4개, 한가할 때 1개만 유지(#186 예산: 6개 서비스 × 최대 3 Pod × 4 = 72, #222). 기본값은 Pod당 10개 |
