@@ -1,5 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { STATUSES, STATUS_LABELS } from '../../data/admin/adminMenuContract.js';
+import { createAdminMenuAccess } from '../../data/admin/adminMenuAccess.js';
 import AdminDialog from './AdminDialog.jsx';
 import AdminMenuEditor from './AdminMenuEditor.jsx';
 import './admin.css';
@@ -105,21 +112,57 @@ function StatusDialog({ menu, adapter, onSaved, onClose, returnFocusRef }) {
   );
 }
 
-export default function AdminMenuPage({ adapter, embedded = false }) {
+export default function AdminMenuPage({
+  adapter: providedAdapter,
+  embedded = false,
+}) {
+  const access = useMemo(
+    () => createAdminMenuAccess(providedAdapter),
+    [providedAdapter],
+  );
+  const permission = useSyncExternalStore(
+    access.subscribe,
+    access.getSnapshot,
+    access.getSnapshot,
+  );
+  const adapter = access.adapter;
+  useEffect(() => {
+    access.activate();
+    return () => access.dispose();
+  }, [access]);
   const [filters, setFilters] = useState({
     query: '',
     categoryId: '',
     status: '',
     sort: 'default',
   });
-  const [result, setResult] = useState({ categories: [], menus: [] });
+  const [cachedResult, setResult] = useState({ categories: [], menus: [] });
+  const result = permission.denied
+    ? { categories: [], menus: [] }
+    : cachedResult;
   const [phase, setPhase] = useState('loading');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [epoch, setEpoch] = useState(0);
-  const [modal, setModal] = useState(null);
+  const [storedModal, setModal] = useState(null);
+  const modal = permission.denied ? null : storedModal;
   const opener = useRef(null);
   const detailTicket = useRef(0);
+  const errorRegion = useRef(null);
+  const currentError = permission.denied ? permission.error.message : error;
+  useEffect(() => {
+    if (!permission.denied) return;
+    detailTicket.current++;
+    setResult({ categories: [], menus: [] });
+    setModal(null);
+    setNotice('');
+    setError(permission.error.message);
+    setPhase('error');
+    const frame = requestAnimationFrame(() =>
+      errorRegion.current?.focus({ preventScroll: true }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [permission]);
   useEffect(() => {
     let current = true;
     const controller = new AbortController();
@@ -141,7 +184,7 @@ export default function AdminMenuPage({ adapter, embedded = false }) {
         }
       })
       .catch((failure) => {
-        if (current) {
+        if (current && failure.name !== 'AbortError') {
           setError(`목록을 불러오지 못했습니다. ${failure.message}`);
           setPhase('error');
         }
@@ -176,11 +219,13 @@ export default function AdminMenuPage({ adapter, embedded = false }) {
     setModal(null);
   }
   function saved(id, message) {
+    if (access.getSnapshot().denied) return;
     setNotice(`${message} (메뉴 #${id})`);
     setModal(null);
     setEpoch((value) => value + 1);
   }
   async function open(menuId, type, event) {
+    if (access.getSnapshot().denied) return;
     opener.current = event.currentTarget;
     const ticket = ++detailTicket.current;
     setModal({ type: 'loading' });
@@ -189,7 +234,7 @@ export default function AdminMenuPage({ adapter, embedded = false }) {
       if (ticket === detailTicket.current)
         setModal({ type, menu: response.data });
     } catch (failure) {
-      if (ticket === detailTicket.current) {
+      if (ticket === detailTicket.current && failure.name !== 'AbortError') {
         setModal(null);
         setError(`메뉴를 불러오지 못했습니다. ${failure.message}`);
       }
@@ -241,14 +286,19 @@ export default function AdminMenuPage({ adapter, embedded = false }) {
             </div>
           )}
         </header>
-        {notice && (
+        {!permission.denied && notice && (
           <div className="am-notice" role="status">
             {notice}
           </div>
         )}
-        {error && (
-          <div className="am-alert am-list-error" role="alert">
-            <span>{error}</span>
+        {currentError && (
+          <div
+            className="am-alert am-list-error"
+            role="alert"
+            tabIndex={-1}
+            ref={errorRegion}
+          >
+            <span>{currentError}</span>
             <button
               type="button"
               className="am-text-button"
@@ -321,6 +371,7 @@ export default function AdminMenuPage({ adapter, embedded = false }) {
                 className="am-button am-create"
                 disabled={!result.categories.length}
                 onClick={(event) => {
+                  if (access.getSnapshot().denied) return;
                   opener.current = event.currentTarget;
                   setModal({ type: 'create' });
                 }}

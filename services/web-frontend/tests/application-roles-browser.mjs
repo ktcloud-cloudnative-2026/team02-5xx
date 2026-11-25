@@ -752,7 +752,7 @@ try {
     { sample: 'normal' },
   );
   await scenario(
-    'administrator PATCH plain 403 stays in the editor without refresh or automatic resubmit',
+    'administrator PATCH plain 403 revokes the editor and data without refresh or automatic resubmit',
     async (page) => {
       await page.goto(`${fixture.url}/#admin/menus`);
       await page.locator('.am-edit-button').first().click();
@@ -771,7 +771,10 @@ try {
       await dialog
         .getByRole('button', { name: '변경 저장', exact: true })
         .click();
-      await dialog.getByRole('alert').waitFor();
+      await dialog.waitFor({ state: 'detached' });
+      await page.locator('.am-list-error').waitFor();
+      assert.equal(await page.locator('.am-menu-row').count(), 0);
+      assert.equal(await page.locator('.am-create').isDisabled(), true);
       assert.equal(sends, 1);
       assert.equal(await page.locator('.admin-navigation').count(), 1);
       assert.equal(
@@ -779,8 +782,13 @@ try {
           .length,
         1,
       );
-      await page.keyboard.press('Escape');
       await admin(page, '#admin/menus');
+      await page.unroute('**/api/v1/admin/menus**');
+      await page
+        .getByRole('button', { name: '다시 불러오기', exact: true })
+        .click();
+      await page.locator('.am-menu-row').first().waitFor();
+      assert.equal(sends, 1);
     },
     { sample: 'normal' },
   );

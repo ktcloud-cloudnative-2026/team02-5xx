@@ -1,7 +1,6 @@
 import {
   lazy,
   Suspense,
-  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -9,6 +8,7 @@ import {
 } from 'react';
 import { useLocationHash } from './orders/ordersRoute.js';
 import { authSession } from './authSession.js';
+import { createLogoutRecovery } from './logoutRecovery.js';
 import {
   applicationRoute,
   replaceApplicationRoute,
@@ -41,7 +41,15 @@ export default function Application({
     sessionSource.getServerSnapshot ?? sessionSource.getSnapshot,
   );
   const [restored, setRestored] = useState(false);
-  const [logoutError, setLogoutError] = useState('');
+  const recovery = useMemo(
+    () => createLogoutRecovery(sessionSource),
+    [sessionSource],
+  );
+  const logoutState = useSyncExternalStore(
+    recovery.subscribe,
+    recovery.getSnapshot,
+    recovery.getSnapshot,
+  );
   const identity = sessionIdentity(session);
   const [boundary, setBoundary] = useState({
     identity,
@@ -68,28 +76,13 @@ export default function Application({
       active = false;
     };
   }, [sessionSource]);
-  const logout = useCallback(async () => {
-    setLogoutError('');
-    try {
-      await sessionSource.logout();
-    } catch (error) {
-      setLogoutError(
-        '로그아웃 요청을 확인하지 못했어요. 연결을 확인하고 다시 시도해 주세요.',
-      );
-      throw error;
-    }
-  }, [sessionSource]);
-  const login = useCallback(
-    async (...args) => {
-      const result = await sessionSource.login(...args);
-      setLogoutError('');
-      return result;
-    },
-    [sessionSource],
-  );
   const sharedSession = useMemo(
-    () => ({ ...sessionSource, login, logout }),
-    [sessionSource, login, logout],
+    () => ({
+      ...sessionSource,
+      login: recovery.login,
+      logout: recovery.logout,
+    }),
+    [sessionSource, recovery],
   );
   const decision = applicationRoute(session, hash, {
     restored,
@@ -109,7 +102,7 @@ export default function Application({
         <p>계정 권한을 확인하거나 다시 로그인해 주세요.</p>
         <button
           onClick={() => {
-            void logout().catch(() => {});
+            void recovery.logout().catch(() => {});
           }}
         >
           로그아웃
@@ -118,7 +111,24 @@ export default function Application({
     );
   return (
     <>
-      {logoutError && <p role="alert">{logoutError}</p>}
+      {!session.authenticated && logoutState.error && (
+        <div role="alert" className="logout-recovery">
+          <p>{logoutState.error}</p>
+          <button
+            className="text-button"
+            disabled={
+              logoutState.phase === 'pending' ||
+              session.phase === 'authenticating'
+            }
+            aria-busy={logoutState.phase === 'pending'}
+            onClick={() => {
+              void recovery.retry(logoutState.failureId).catch(() => {});
+            }}
+          >
+            로그아웃 다시 시도
+          </button>
+        </div>
+      )}
       <Suspense
         key={decision.screen}
         fallback={<p role="status">화면을 불러오는 중…</p>}

@@ -49,6 +49,63 @@ function Controls() {
           </select>
         </label>
       )}
+      {config && (
+        <div
+          style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}
+        >
+          {[
+            [
+              'logoutStatus',
+              '로그아웃 응답',
+              [
+                [204, '정상 204'],
+                [503, '실패 503 (쿠키 유지)'],
+              ],
+            ],
+            [
+              'menuListStatus',
+              '메뉴 목록 응답',
+              [
+                [200, '정상 200'],
+                [403, '권한 오류 403'],
+                [503, '장애 503'],
+              ],
+            ],
+            [
+              'menuWriteStatus',
+              '메뉴 저장 응답',
+              [
+                [200, '정상'],
+                [403, '권한 오류 403'],
+                [503, '장애 503'],
+              ],
+            ],
+          ].map(([key, label, values]) => (
+            <label key={key}>
+              {label}{' '}
+              <select
+                aria-label={label}
+                value={config[key]}
+                onChange={async (event) => {
+                  const response = await fetch('/__admin-integration', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [key]: Number(event.target.value) }),
+                  });
+                  const result = await response.json();
+                  setConfig(result.data);
+                }}
+              >
+                {values.map(([value, text]) => (
+                  <option key={value} value={value}>
+                    {text}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+      )}
       <p>
         로그인: admin@example.test / customer@example.test · 비밀번호:
         fixture-only-password

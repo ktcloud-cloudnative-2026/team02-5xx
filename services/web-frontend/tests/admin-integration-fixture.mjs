@@ -22,6 +22,7 @@ export const integrationScenarios = [
   ['slow', '조회 지연'],
   ['write-unknown', '변경 결과 불명'],
   ['unknown-role', '지원하지 않는 Auth 역할 응답'],
+  ['logout-failure', '로그아웃 실패 · 공통 홈에서 재시도'],
 ];
 
 export async function startAdminIntegrationFixture({
@@ -69,7 +70,14 @@ export async function startAdminIntegrationFixture({
     email: 'other@example.test',
     nickname: '다른 검수 고객',
   };
-  const controls = { restoreDelay: 0, apiDelay: 0 };
+  const controls = {
+    restoreDelay: 0,
+    apiDelay: 0,
+    logoutStatus: 204,
+    logoutDelay: 0,
+    menuListStatus: 200,
+    menuWriteStatus: 200,
+  };
   const tokens = new Map(),
     cookies = new Map(),
     requests = [];
@@ -82,6 +90,12 @@ export async function startAdminIntegrationFixture({
     if (!integrationScenarios.some(([id]) => id === next))
       throw new Error('Unknown scenario');
     scenario = next;
+    Object.assign(controls, {
+      logoutStatus: next === 'logout-failure' ? 503 : 204,
+      logoutDelay: 0,
+      menuListStatus: 200,
+      menuWriteStatus: 200,
+    });
     tokens.clear();
     cookies.clear();
     requests.length = 0;
@@ -147,13 +161,31 @@ export async function startAdminIntegrationFixture({
       if (path === '/__admin-integration') {
         if (req.method === 'POST') {
           const input = await body(req);
-          reset(input.scenario);
-          res.setHeader(
-            'Set-Cookie',
-            `${cookieName}=; HttpOnly; SameSite=Lax; Path=/api/v1/auth; Max-Age=0`,
-          );
+          if (input.scenario) {
+            reset(input.scenario);
+            res.setHeader(
+              'Set-Cookie',
+              `${cookieName}=; HttpOnly; SameSite=Lax; Path=/api/v1/auth; Max-Age=0`,
+            );
+          }
+          for (const key of [
+            'logoutStatus',
+            'menuListStatus',
+            'menuWriteStatus',
+          ])
+            if (Object.hasOwn(input, key)) {
+              if (![200, 204, 401, 403, 503].includes(input[key]))
+                return send(res, 400);
+              controls[key] = input[key];
+            }
         }
-        return send(res, 200, { scenario, scenarios: integrationScenarios });
+        return send(res, 200, {
+          scenario,
+          scenarios: integrationScenarios,
+          logoutStatus: controls.logoutStatus,
+          menuListStatus: controls.menuListStatus,
+          menuWriteStatus: controls.menuWriteStatus,
+        });
       }
       const user = tokens.get(
         req.headers.authorization?.replace(/^Bearer /, ''),
@@ -209,6 +241,12 @@ export async function startAdminIntegrationFixture({
         }
         if (path.endsWith('/me')) return send(res, user ? 200 : 401, user);
         if (path.endsWith('/logout')) {
+          if (controls.logoutDelay)
+            await new Promise((resolve) =>
+              setTimeout(resolve, controls.logoutDelay),
+            );
+          if (controls.logoutStatus !== 204)
+            return send(res, controls.logoutStatus);
           tokens.clear();
           cookies.clear();
           scenario = 'anonymous';
@@ -255,6 +293,12 @@ export async function startAdminIntegrationFixture({
       if (protectedApi && write && scenario === 'write-unknown')
         return send(res, 503);
       if (path.startsWith('/api/v1/admin/menus')) {
+        const forced = write
+          ? controls.menuWriteStatus
+          : path === '/api/v1/admin/menus'
+            ? controls.menuListStatus
+            : 200;
+        if (forced >= 400) return send(res, forced);
         try {
           const match = /^\/api\/v1\/admin\/menus(?:\/(\d+))?(\/status)?$/.exec(
             path,
