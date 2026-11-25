@@ -24,6 +24,8 @@
     "preview:admin": "node scripts/admin-preview.mjs",
     "preview:admin-dashboard": "node scripts/admin-dashboard-preview.mjs",
     "test:admin-dashboard:ui": "node tests/admin-dashboard-browser.mjs",
+    "preview:admin-cooking": "node scripts/admin-cooking-preview.mjs",
+    "test:admin-cooking:ui": "node tests/admin-cooking-browser.mjs",
     "check:admin-boundary": "node scripts/check-admin-boundary.mjs"
   },
   "dependencies": {
