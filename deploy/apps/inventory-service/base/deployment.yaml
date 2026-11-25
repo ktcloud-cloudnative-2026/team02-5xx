@@ -18,6 +18,10 @@ spec:
     spec:
       # 같은 namespace의 Service 정보를 환경 변수로 자동 주입하지 않는다(Order·Payment와 같음, #160).
       enableServiceLinks: false
+      # 종료 시 진행 중인 요청이 끊기지 않게 한다(#312, Order #294와 같은 계산). preStop 대기 10초 + 앱의 정상 종료 대기
+      # (spring.lifecycle.timeout-per-shutdown-phase 기본 30초) + 여유 10초.
+      # 앱의 graceful shutdown은 Spring Boot 4.1.2 기본값(GRACEFUL)이라 별도 설정이 없다.
+      terminationGracePeriodSeconds: 50
       containers:
         - name: inventory-service
           image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/inventory:sha-da8f058167176d7f472643f13426c678e883fbc1
@@ -53,6 +57,12 @@ spec:
             # 컨테이너 메모리 제한 안에서 힙이 차지할 비율(나머지는 메타스페이스·스레드용)
             - name: JAVA_TOOL_OPTIONS
               value: -XX:MaxRAMPercentage=60.0
+          lifecycle:
+            preStop:
+              # Pod가 Service 엔드포인트에서 빠져 Gateway·Service가 새 요청 보내기를 멈출 때까지
+              # SIGTERM을 늦춘다. 이 사이에도 요청은 정상 처리된다. (이미지 eclipse-temurin:21-jre-alpine의 sleep 사용)
+              exec:
+                command: ["sh", "-c", "sleep 10"]
           resources:
             requests:
               cpu: 100m
