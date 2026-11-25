@@ -22,6 +22,8 @@
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "preview:admin": "node scripts/admin-preview.mjs",
+    "preview:admin-dashboard": "node scripts/admin-dashboard-preview.mjs",
+    "test:admin-dashboard:ui": "node tests/admin-dashboard-browser.mjs",
     "check:admin-boundary": "node scripts/check-admin-boundary.mjs"
   },
   "dependencies": {
