@@ -34,6 +34,13 @@ export function emptyResult(service, reason) {
   };
 }
 
+// Issue #307: 외부 저장소의 일시적 네트워크 오류에 대비한 의존성 다운로드 재시도.
+// 이미지 빌드(.github/ci/docker/java.Dockerfile)와 같은 값을 사용한다.
+export const gradleRetryArgs = [
+  "-Dorg.gradle.internal.repository.max.retries=5",
+  "-Dorg.gradle.internal.repository.initial.backoff=2000",
+];
+
 export function requiredChecksPassed(result) {
   return (
     result.setup.status === "success" &&
@@ -165,7 +172,13 @@ export function runServices(root, kind, execute = runCommand) {
         const command = kind === "java" ? "sh" : "npm";
         const args =
           kind === "java"
-            ? ["./gradlew", "--no-daemon", "--console=plain", task]
+            ? [
+                "./gradlew",
+                "--no-daemon",
+                "--console=plain",
+                ...gradleRetryArgs,
+                task,
+              ]
             : task === "ci"
               ? ["ci"]
               : ["run", task];

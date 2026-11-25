@@ -22,6 +22,17 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+          # Issue #321(#186 하위): 다른 Spring 서비스와 같은 시작값. limit 768Mi 안에서 heap 상한을 60%로 둔다.
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: -XX:MaxRAMPercentage=60.0
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
           startupProbe:
             httpGet:
               path: /v3/api-docs

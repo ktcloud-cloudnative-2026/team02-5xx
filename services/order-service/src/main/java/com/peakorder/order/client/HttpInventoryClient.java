@@ -3,7 +3,10 @@ package com.peakorder.order.client;
 import com.peakorder.order.dto.ApiResponse;
 import com.peakorder.order.exception.BusinessException;
 import com.peakorder.order.exception.ErrorCode;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
@@ -14,10 +17,52 @@ import org.springframework.web.client.RestClientResponseException;
 @Component
 public class HttpInventoryClient implements InventoryClient {
 
-  private final RestClient restClient;
+  private static final Logger log = LoggerFactory.getLogger(HttpInventoryClient.class);
 
-  public HttpInventoryClient(@Qualifier("inventoryRestClient") RestClient restClient) {
+  /** Inventory II-01 409의 errorCode. 고객 응답은 같지만 원인이 달라 로그·지표로 구분한다(#270). */
+  static final String INSUFFICIENT_STOCK = "INSUFFICIENT_STOCK";
+
+  static final String STOCK_NOT_LINKED = "STOCK_NOT_LINKED";
+
+  private final RestClient restClient;
+  private final MeterRegistry meterRegistry;
+
+  public HttpInventoryClient(
+      @Qualifier("inventoryRestClient") RestClient restClient, MeterRegistry meterRegistry) {
     this.restClient = restClient;
+    this.meterRegistry = meterRegistry;
+  }
+
+  /**
+   * 409 본문의 errorCode로 원인을 구분한다. 읽을 수 없거나 모르는 값이면 {@code unknown}으로 두고, 어떤 경우에도 호출자에게는 기존처럼 재고 부족으로
+   * 처리한다(고객 응답 계약 유지).
+   */
+  private static String rejectionReason(RestClientResponseException e) {
+    String code = null;
+    try {
+      ApiResponse<?> body = e.getResponseBodyAs(ApiResponse.class);
+      code = body == null ? null : body.errorCode();
+    } catch (RuntimeException ignored) {
+      // 본문이 JSON이 아니거나 비어 있음 → unknown
+    }
+    if (INSUFFICIENT_STOCK.equals(code)) {
+      return "insufficient_stock";
+    }
+    if (STOCK_NOT_LINKED.equals(code)) {
+      return "stock_not_linked";
+    }
+    return "unknown";
+  }
+
+  private void recordRejection(Long orderId, List<HoldLine> lines, String reason) {
+    meterRegistry.counter("order.inventory.hold.rejected", "reason", reason).increment();
+    if ("stock_not_linked".equals(reason)) {
+      // 품절이 아니라 메뉴와 재고 항목의 연결 누락(운영 설정). 개인정보 없이 주문·메뉴 번호만 남긴다.
+      log.warn(
+          "재고 확보 거절: 재고가 연결되지 않은 메뉴 orderId={} menuIds={}",
+          orderId,
+          lines.stream().map(HoldLine::menuId).toList());
+    }
   }
 
   @Override
@@ -42,6 +87,7 @@ public class HttpInventoryClient implements InventoryClient {
       // 409: 재고 부족(INSUFFICIENT_STOCK) 또는 재고 미연결(STOCK_NOT_LINKED)로 주문할 수 없음이 확실한 경우.
       // 그 밖의 4xx는 우리 요청이 잘못되었다는 뜻이라 재고 부족으로 단정하지 않는다.
       if (e.getStatusCode().value() == 409) {
+        recordRejection(orderId, lines, rejectionReason(e));
         throw new BusinessException(ErrorCode.OUT_OF_STOCK);
       }
       if (e.getStatusCode().is4xxClientError()) {
