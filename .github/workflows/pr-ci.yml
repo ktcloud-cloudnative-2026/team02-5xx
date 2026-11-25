@@ -78,6 +78,18 @@ jobs:
           echo "JAVA_HOME=$java_home" >> "$GITHUB_ENV"
           echo "$java_home/bin" >> "$GITHUB_PATH"
 
+      # Issue #328: 공유 IP 러너의 Maven Central 429를 줄이려고 Gradle 의존성과 Wrapper 배포판만 캐시한다.
+      # main push 실행이 저장한 캐시를 PR 실행이 복원한다(PR 캐시는 그 PR 안에서만 보인다).
+      - name: Restore Gradle dependency cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper/dists
+          key: gradle-deps-${{ runner.os }}-${{ hashFiles('services/*/build.gradle', 'services/*/build.gradle.kts', 'services/*/settings.gradle', 'services/*/settings.gradle.kts', 'services/*/gradle/libs.versions.toml', 'services/*/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-deps-${{ runner.os }}-
+
       - name: Check registered Java services
         id: checks
         run: node .github/ci/run-services.mjs java

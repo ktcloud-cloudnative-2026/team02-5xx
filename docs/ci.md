@@ -224,13 +224,22 @@ try {
 
 Java는 GitHub 실행기의 사전 설치된 JDK 21을 사용합니다.
 제공 환경 변수는 [공식 실행기 이미지 문서](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md#java)에서 확인할 수 있습니다.
-새 외부 Action이나 런타임 라이브러리 추가 없이 아래 기존 도구를 사용합니다.
+런타임 라이브러리 추가 없이 아래 도구를 사용합니다. 외부 Action은 GitHub 공식 Action만 사용합니다.
 실제 JDK 패치 버전은 GitHub 실행 로그에 기록됩니다.
+
+Java 검사(`java_ci`)는 `actions/cache`로 Gradle 의존성(`~/.gradle/caches/modules-2`)과 Wrapper 배포판(`~/.gradle/wrapper/dists`)을 캐시합니다(#328).
+GitHub 호스트 실행기는 IP를 공유하기 때문에, 매번 Maven Central에서 전부 내려받으면 `429 Too Many Requests`로 실패할 수 있습니다.
+캐시 키는 서비스별 `build.gradle`·`settings.gradle`·`libs.versions.toml`·`gradle-wrapper.properties`의 해시입니다.
+빌드 설정이 바뀌면 새 키로 저장하고, 그 전까지는 `restore-keys`로 가장 최근 캐시를 복원해 바뀐 의존성만 내려받습니다.
+PR 실행은 main push 실행이 저장한 캐시를 읽을 수 있지만, PR 실행이 저장한 캐시는 해당 PR 안에서만 보이므로 main 캐시를 덮어쓰지 않습니다.
+빌드 결과물과 테스트 결과는 캐시하지 않으므로 검사는 매번 새로 실행됩니다.
+이미지 빌드(Dockerfile 안의 Gradle)는 이 캐시를 사용하지 않습니다.
 
 | 도구                 | 버전                                               | 사용 이유                                            |
 | -------------------- | -------------------------------------------------- | ---------------------------------------------------- |
 | `actions/checkout`   | 7.0.1 / `3d3c42e5aac5ba805825da76410c181273ba90b1` | 실행 대상 PR 코드 가져오기                           |
 | `actions/setup-node` | 7.1.0 / `949feb2413d6458794dcd2491c4babbbce0c15c1` | 팀 기준 Node.js 24 실행 환경 설정                    |
+| `actions/cache`      | 6.1.0 / `55cc8345863c7cc4c66a329aec7e433d2d1c52a9` | Java 검사의 Gradle 의존성·Wrapper 배포판 캐시        |
 | Node.js              | CI는 24 계열, 로컬 검증은 24.22.3                  | 내장 파일 API·테스트 실행기 사용                     |
 | actionlint           | 1.7.12                                             | 로컬에서 GitHub Actions YAML·표현식·작업 의존성 검사 |
 | Prettier             | 3.10.1                                             | 새 JavaScript·JSON·YAML·문서의 로컬 포맷 검사        |
