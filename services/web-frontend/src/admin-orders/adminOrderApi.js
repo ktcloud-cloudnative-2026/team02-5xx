@@ -249,6 +249,11 @@ export function createAdminOrderApi({
       );
     }
     signal?.throwIfAborted();
+    if (response.status === 401 || response.status === 403)
+      throw httpError(
+        response.status,
+        response.status === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN',
+      );
     let body;
     try {
       body = await response.json();

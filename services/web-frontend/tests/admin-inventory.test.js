@@ -456,22 +456,20 @@ test('read AbortSignal and same-origin credentials do not allow caller mutation 
   });
 });
 
-test('customer production bundle excludes independent admin UI, admin HTTP path and fixture controls', async () => {
+test('product includes admin HTTP integration but excludes fixture controls', async () => {
   const bundle = await build({ logLevel: 'error', build: { write: false } });
   const chunks = bundle.output.filter((file) => file.type === 'chunk');
   const modules = chunks.flatMap((file) => Object.keys(file.modules));
   assert.equal(
     modules.some((id) =>
-      /admin-inventory|\/tests\//.test(id.replaceAll('\\', '/')),
+      /\/tests\/|\/preview\/|mockAdminMenuAdapter|adminMenuFixtures/.test(
+        id.replaceAll('\\', '/'),
+      ),
     ),
     false,
   );
   const code = chunks.map((file) => file.code).join('\n');
-  for (const marker of [
-    '/api/v1/admin/inventory',
-    '/__fixture',
-    '시나리오 적용·초기화',
-  ])
+  for (const marker of ['/__fixture', '시나리오 적용·초기화'])
     assert.equal(code.includes(marker), false, marker);
 });
 

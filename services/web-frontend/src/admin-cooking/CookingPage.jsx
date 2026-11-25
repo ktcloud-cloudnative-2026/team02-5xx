@@ -67,7 +67,11 @@ function Metric({ title, value, unit = '', dark = false, children, testId }) {
 }
 
 /** Body-only surface for the future #304 AdminLayout. No routing or auth role fabrication. */
-export default function CookingPage({ api, store: providedStore }) {
+export default function CookingPage({
+  api,
+  store: providedStore,
+  embedded = false,
+}) {
   const store = useMemo(
     () => providedStore ?? createCookingStore(api ?? createCookingApi()),
     [api, providedStore],
@@ -358,10 +362,12 @@ export default function CookingPage({ api, store: providedStore }) {
           </p>
         </section>
       </div>
-      <footer className="ac-footer">
-        각 영역은 독립적으로 조회됩니다. 관리자 화면 간 탐색은 #304 공통
-        레이아웃에서 통합할 예정입니다.
-      </footer>
+      {!embedded && (
+        <footer className="ac-footer">
+          각 영역은 독립적으로 조회됩니다. 관리자 화면 간 탐색은 #304 공통
+          레이아웃에서 통합할 예정입니다.
+        </footer>
+      )}
     </section>
   );
 }

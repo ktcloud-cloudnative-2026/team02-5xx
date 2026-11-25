@@ -29,7 +29,7 @@ export default function AdminDialog({
     >
       <div className="am-dialog-heading">
         <div>
-          <span className="am-eyebrow">메뉴 관리 · Mock</span>
+          <span className="am-eyebrow">메뉴 관리</span>
           <h2 id="am-dialog-title">{title}</h2>
         </div>
         <button

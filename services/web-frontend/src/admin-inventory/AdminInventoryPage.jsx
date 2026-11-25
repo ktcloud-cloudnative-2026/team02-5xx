@@ -475,7 +475,11 @@ function DeleteConfirmation({ panel, mutation, busy, list, store }) {
     </dialog>
   );
 }
-function InventoryPageBody({ api = defaultApi, environmentNotice }) {
+function InventoryPageBody({
+  api = defaultApi,
+  environmentNotice,
+  embedded = false,
+}) {
   const store = useMemo(() => createInventoryAdminStore(api), [api]);
   const state = useSyncExternalStore(
     store.subscribe,
@@ -489,43 +493,48 @@ function InventoryPageBody({ api = defaultApi, environmentNotice }) {
   }, [store]);
   const listUnavailable = state.list.phase !== 'ready',
     locked = state.busy || listUnavailable;
+  const Content = embedded ? 'div' : 'main';
   return (
     <div className="ai-app">
-      <a
-        className="ai-skip"
-        href="#ai-main"
-        onClick={(e) => {
-          e.preventDefault();
-          document.getElementById('ai-main')?.focus();
-        }}
-      >
-        재고 목록으로 건너뛰기
-      </a>
-      <aside className="ai-sidebar" aria-label="관리자 메뉴">
-        <div className="ai-brand" aria-label="Peak Order">
-          P
-        </div>
-        <nav aria-label="매장 관리">
-          <span className="ai-inactive">
-            <Icon name="grid" />
-            대시보드
-          </span>
-          <span className="ai-active" aria-current="page">
-            <Icon name="stock" />
-            재고관리
-          </span>
-          <span className="ai-inactive">
-            <Icon name="menu" />
-            메뉴관리
-          </span>
-          <span className="ai-inactive">
-            <Icon name="order" />
-            주문 관리
-          </span>
-        </nav>
-        <span className="ai-admin-label">관리자</span>
-      </aside>
-      <main className="ai-main" id="ai-main" tabIndex={-1}>
+      {!embedded && (
+        <>
+          <a
+            className="ai-skip"
+            href="#ai-main"
+            onClick={(e) => {
+              e.preventDefault();
+              document.getElementById('ai-main')?.focus();
+            }}
+          >
+            재고 목록으로 건너뛰기
+          </a>
+          <aside className="ai-sidebar" aria-label="관리자 메뉴">
+            <div className="ai-brand" aria-label="Peak Order">
+              P
+            </div>
+            <nav aria-label="매장 관리">
+              <span className="ai-inactive">
+                <Icon name="grid" />
+                대시보드
+              </span>
+              <span className="ai-active" aria-current="page">
+                <Icon name="stock" />
+                재고관리
+              </span>
+              <span className="ai-inactive">
+                <Icon name="menu" />
+                메뉴관리
+              </span>
+              <span className="ai-inactive">
+                <Icon name="order" />
+                주문 관리
+              </span>
+            </nav>
+            <span className="ai-admin-label">관리자</span>
+          </aside>
+        </>
+      )}
+      <Content className="ai-main" id="ai-main" tabIndex={-1}>
         <header className="ai-page-heading">
           <div>
             <p className="ai-eyebrow">STORE MANAGEMENT</p>
@@ -735,7 +744,7 @@ function InventoryPageBody({ api = defaultApi, environmentNotice }) {
         <footer className="ai-page-footer">
           PEAK ORDER · 관리자 재고 관리
         </footer>
-      </main>
+      </Content>
       {state.panel &&
         (state.panel.kind === 'delete' ? (
           <DeleteConfirmation

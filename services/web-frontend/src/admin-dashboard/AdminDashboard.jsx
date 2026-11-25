@@ -75,6 +75,7 @@ export default function AdminDashboard({
   api,
   store: suppliedStore,
   navigation = {},
+  embedded = false,
   environmentNotice,
 }) {
   const store = useMemo(
@@ -132,45 +133,54 @@ export default function AdminDashboard({
     (r.menus.data ?? []).map((menu) => [menu.id, menu.name]),
   );
 
+  const Content = embedded ? 'div' : 'main';
   return (
     <div className="ad-shell">
-      <aside className="ad-sidebar" aria-label="관리자 탐색">
-        <a
-          className="ad-brand"
-          href="#dashboard"
-          aria-label="Peak Order 대시보드"
-        >
-          PEAK
-          <br />
-          ORDER<span>ADMIN</span>
-        </a>
-        <nav>
-          <a className="ad-nav-active" href="#dashboard" aria-current="page">
-            <span aria-hidden="true">▦</span>대시보드
-          </a>
-          {navigation.menu ? (
-            <a href={navigation.menu.href}>
-              <span aria-hidden="true">☷</span>
-              {navigation.menu.label ?? '메뉴 관리'}
+      {!embedded && (
+        <>
+          <aside className="ad-sidebar" aria-label="관리자 탐색">
+            <a
+              className="ad-brand"
+              href="#dashboard"
+              aria-label="Peak Order 대시보드"
+            >
+              PEAK
+              <br />
+              ORDER<span>ADMIN</span>
             </a>
-          ) : (
-            <span className="ad-nav-pending">
-              메뉴 관리<small>연결 환경 필요</small>
-            </span>
-          )}
-          <span className="ad-nav-pending">
-            주문 관리<small>연동 준비 중</small>
-          </span>
-          <span className="ad-nav-pending">
-            재고 관리<small>연동 준비 중</small>
-          </span>
-          <span className="ad-nav-pending">
-            조리 현황<small>연동 준비 중</small>
-          </span>
-        </nav>
-        <span className="ad-sidebar-foot">관리자 전용</span>
-      </aside>
-      <main id="dashboard" className="ad-main">
+            <nav>
+              <a
+                className="ad-nav-active"
+                href="#dashboard"
+                aria-current="page"
+              >
+                <span aria-hidden="true">▦</span>대시보드
+              </a>
+              {navigation.menu ? (
+                <a href={navigation.menu.href}>
+                  <span aria-hidden="true">☷</span>
+                  {navigation.menu.label ?? '메뉴 관리'}
+                </a>
+              ) : (
+                <span className="ad-nav-pending">
+                  메뉴 관리<small>연결 환경 필요</small>
+                </span>
+              )}
+              <span className="ad-nav-pending">
+                주문 관리<small>연동 준비 중</small>
+              </span>
+              <span className="ad-nav-pending">
+                재고 관리<small>연동 준비 중</small>
+              </span>
+              <span className="ad-nav-pending">
+                조리 현황<small>연동 준비 중</small>
+              </span>
+            </nav>
+            <span className="ad-sidebar-foot">관리자 전용</span>
+          </aside>
+        </>
+      )}
+      <Content id="dashboard" className="ad-main">
         {environmentNotice && (
           <div className="ad-environment" role="note">
             {environmentNotice}
@@ -517,15 +527,33 @@ export default function AdminDashboard({
                 메뉴 관리 <small>연결 환경 필요</small>
               </span>
             )}
-            <span>
-              주문 관리 <small>연동 준비 중</small>
-            </span>
-            <span>
-              재고 관리 <small>연동 준비 중</small>
-            </span>
-            <span>
-              조리 현황 <small>연동 준비 중</small>
-            </span>
+            {navigation.orders ? (
+              <a href={navigation.orders.href}>
+                주문 관리 <span>↗</span>
+              </a>
+            ) : (
+              <span>
+                주문 관리 <small>연동 준비 중</small>
+              </span>
+            )}
+            {navigation.inventory ? (
+              <a href={navigation.inventory.href}>
+                재고 관리 <span>↗</span>
+              </a>
+            ) : (
+              <span>
+                재고 관리 <small>연동 준비 중</small>
+              </span>
+            )}
+            {navigation.cooking ? (
+              <a href={navigation.cooking.href}>
+                조리 현황 <span>↗</span>
+              </a>
+            ) : (
+              <span>
+                조리 현황 <small>연동 준비 중</small>
+              </span>
+            )}
           </div>
           <p>
             현재 대시보드는 조회와 영업·접수 상태 변경만 제공합니다. 조리
@@ -535,7 +563,7 @@ export default function AdminDashboard({
         <footer className="ad-footer">
           PEAK ORDER ADMIN · 모든 시각은 KST · 각 영역은 독립적으로 조회됩니다.
         </footer>
-      </main>
+      </Content>
     </div>
   );
 }
