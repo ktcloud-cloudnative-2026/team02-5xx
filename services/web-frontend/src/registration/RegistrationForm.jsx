@@ -205,8 +205,7 @@ export default function RegistrationForm({
           />
         </label>
         <p id="registration-password-policy">
-          기본 정책: 12~64자. 공백과 Unicode 문자를 그대로 사용하며 최종 정책은
-          서버가 확인해요.
+          비밀번호는 12~64자로 입력해 주세요. 공백도 사용할 수 있어요.
         </p>
         <label>
           가입 비밀번호 확인

@@ -142,6 +142,8 @@ AUTH_TERMS_VERSION과 AUTH_PRIVACY_VERSION에 화면에서 제공하는 실제 �
 
 ## 격리된 PostgreSQL 검증
 
+PR CI는 `java_ci`의 서비스 컨테이너로 이 테스트를 실행한다(#333). 러너 안의 일회용 PostgreSQL에 임의 포트로 접속하며 trust 인증과 빈 테스트 비밀번호를 사용한다.
+
 Docker PostgreSQL 16을 로컬 루프백의 임시 포트에 실행하고 테스트 전용 DB auth_registration_test를 사용한다. 비밀번호는 프로세스 환경 변수로 전달하며 명령 기록과 파일에 값을 남기지 않는다.
 
 환경 변수 AUTH_DB_TEST_URL, AUTH_DB_TEST_USERNAME, AUTH_DB_TEST_PASSWORD를 준비한 뒤 아래 명령을 실행한다.

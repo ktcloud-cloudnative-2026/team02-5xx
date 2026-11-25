@@ -359,7 +359,7 @@ try {
       await page.route('**/api/v1/menus/2', (route) =>
         route.fulfill({ json: response(10000) }),
       );
-      await page.locator('.header-cart').click();
+      await page.locator('.cart-nav').click();
       const total = page.getByLabel('장바구니 전체 합계', { exact: true });
       await total.filter({ hasText: '10,000원' }).waitFor();
       await gate.release();
@@ -390,10 +390,7 @@ try {
       const { gate } = await pending(page, cleanups);
       await loginModal(page);
       await gate.release();
-      await page
-        .getByText('현재 담을 수 없는 메뉴입니다.', { exact: true })
-        .first()
-        .waitFor();
+      await page.getByText('판매 중지', { exact: true }).first().waitFor();
       assert.ok(details >= 2);
       assert.deepEqual(await stored(page), original);
       assert.equal(await writes(page), 0);

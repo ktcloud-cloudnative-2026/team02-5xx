@@ -1,0 +1,73 @@
+# dev Loki values (#323, #293 결정) — grafana-community/loki 21.3.1 (deploy/argocd/dev/logging.yaml에서 버전 고정)
+# 목표: Pod 1개(Monolithic), filesystem 저장, 보관 3일, CRD 0개, 외부 노출 없음
+deploymentMode: Monolithic
+
+loki:
+  auth_enabled: false            # 단일 테넌트(dev). 켜면 X-Scope-OrgID 헤더가 필요
+  commonConfig:
+    replication_factor: 1        # Pod 1개
+  storage:
+    type: filesystem             # 오브젝트 스토리지(S3) 없음 → PVC에 저장
+  schemaConfig:
+    configs:
+      - from: "2026-11-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  limits_config:
+    retention_period: 72h        # 보관 3일(#293). 하루 로그량 실측 후 확정. 삭제는 retention_delete_delay(기본 2h) 뒤
+  compactor:
+    retention_enabled: true      # retention_period를 실제로 지우게 함
+    delete_request_store: filesystem
+  podLabels:
+    app: loki
+    team: team02
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 5Gi                    # local-path는 hostPath 방식이라 실제 용량 한도가 아님(#293). 디스크는 노드 디스크 알림으로 감시
+    storageClass: local-path
+  resources:                     # 값은 사용량을 보고 조정(Grafana OOM #238 교훈 — 지정은 필수)
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+# 분산 모드 구성 요소 끔
+read: {replicas: 0}
+write: {replicas: 0}
+backend: {replicas: 0}
+
+# dev에 필요 없는 부가 구성 요소 끔
+gateway: {enabled: false}        # nginx 프록시. Grafana가 Loki Service로 직접 연결
+chunksCache: {enabled: false}    # memcached(메모리 많이 씀)
+resultsCache: {enabled: false}
+memcachedExporter: {enabled: false}
+lokiCanary: {enabled: false}     # 시험용 로그 생성기
+test: {enabled: false}           # helm test Pod
+rollout_operator: {enabled: false}
+
+# 팀 규칙: 모든 리소스에 app·team 라벨 (CLAUDE.md 8절)
+commonLabels:
+  app: loki
+  team: team02
+
+# Loki 알림 규칙을 ConfigMap·Secret에서 불러오는 사이드카 끔 →
+# 클러스터 전체 configmaps·secrets 읽기 ClusterRole이 없어짐(#185 kube-state-metrics Secret 권한 제거와 같은 판단)
+sidecar:
+  rules:
+    enabled: false
+
+# 차트 내장 memcached 끔(캐시를 쓰지 않음 → loki-memcached ServiceAccount 제거)
+memcached:
+  enabled: false
+
+# 사이드카를 끄면 ClusterRole 권한이 비므로(rules: []) 클러스터 단위 RBAC 자체를 만들지 않음 → 클러스터 리소스 0개
+rbac:
+  namespaced: true

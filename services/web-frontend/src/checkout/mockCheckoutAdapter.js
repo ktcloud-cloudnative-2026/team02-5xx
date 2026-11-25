@@ -126,7 +126,7 @@ export function createMockCheckoutAdapter({
       const paid = {
         ...order,
         status: 'PAID',
-        orderNo: `MOCK-${String(id).padStart(4, '0')}`,
+        orderNo: `${new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(clock())).replaceAll('-', '').slice(2)}-${String(id).padStart(4, '0')}`,
         holdExpiresAt: undefined,
         paidAt: new Date(clock()).toISOString(),
         cooking: { lookup: 'PENDING' },

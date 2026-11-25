@@ -54,9 +54,9 @@ export default function LoginModal({
           failure.status === 401
             ? '이메일 또는 비밀번호를 확인해 주세요.'
             : failure.kind === 'network'
-              ? '인증 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.'
+              ? '로그인에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.'
               : failure.status === 403
-                ? '로그인이 허용되지 않았어요. 계정 또는 요청 출처를 확인해 주세요.'
+                ? '로그인할 수 없어요. 계정 권한 또는 접속 주소를 확인해 주세요.'
                 : '로그인하지 못했어요. 잠시 후 다시 시도해 주세요.',
         );
     } finally {
@@ -84,7 +84,7 @@ export default function LoginModal({
           ×
         </button>
         <h2 id={registering ? 'registration-title' : 'login-title'}>
-          {registering ? '회원가입' : '로그인이 필요해요'}
+          {registering ? '회원가입' : '로그인'}
         </h2>
       </div>
       {registering ? (
@@ -108,7 +108,7 @@ export default function LoginModal({
         <div className="login-content">
           {registrationNotice && <p role="status">{registrationNotice}</p>}
           <p id="login-description">
-            장바구니와 주문은 로그인 후 이용할 수 있어요.
+            장바구니는 로그인 없이 이용할 수 있어요. 주문할 때 로그인해 주세요.
             <br />
             선택한 메뉴와 옵션, 수량은 그대로 유지됩니다.
           </p>
@@ -149,7 +149,7 @@ export default function LoginModal({
               로그인 유지
             </label>
             <p className="login-error" role={error ? 'alert' : 'status'}>
-              {error || (waiting ? '기존 로그인 세션을 확인하고 있어요.' : '')}
+              {error || (waiting ? '로그인 정보를 확인하고 있어요.' : '')}
             </p>
             <button
               className="pill-button"

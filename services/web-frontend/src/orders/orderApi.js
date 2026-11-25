@@ -107,8 +107,8 @@ export function validateDetail(data, orderId) {
   return order;
 }
 const messages = {
-  UNAUTHORIZED: '고객 인증이 만료됐어요. 다시 로그인해 주세요.',
-  FORBIDDEN: '주문 요청 권한 또는 요청 출처가 허용되지 않았어요.',
+  UNAUTHORIZED: '로그인이 만료됐어요. 다시 로그인해 주세요.',
+  FORBIDDEN: '이 계정으로 주문 내역을 확인할 수 없어요.',
   ORDER_NOT_FOUND: '주문을 찾을 수 없어요. 본인의 주문인지 확인해 주세요.',
   ORDER_NOT_CANCELABLE: '현재 취소할 수 없는 주문이에요.',
   ORDER_PAYMENT_PENDING:
@@ -119,7 +119,7 @@ const messages = {
   COOKING_ALREADY_DONE: '조리가 완료되어 취소할 수 없어요.',
   COOKING_ORDER_PENDING: '조리 접수 처리 중이에요. 잠시 후 다시 조회해 주세요.',
   COOKING_SERVICE_UNAVAILABLE:
-    '취소 요청 결과를 확인하지 못했어요. 서버가 처리를 이어갈 수 있으니 주문 상태를 다시 조회해 주세요.',
+    '취소 요청 결과를 확인하지 못했어요. 처리가 계속될 수 있으니 주문 상태를 다시 확인해 주세요.',
 };
 export function createOrderApi({
   sessionSource = authSession,

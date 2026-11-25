@@ -24,7 +24,14 @@ async function login(
   email = 'customer@example.test',
   password = 'fixture-only-password',
 ) {
-  await main.getByRole('button', { name: '다시 로그인' }).click();
+  const atHome = new URL(page.url()).hash === '#home';
+  await (
+    atHome
+      ? page
+          .locator('.customer-header')
+          .getByRole('button', { name: '로그인', exact: true })
+      : main.getByRole('button', { name: '다시 로그인' })
+  ).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('이메일', { exact: true }).fill(email);
   await dialog.getByLabel('비밀번호', { exact: true }).fill(password);
@@ -93,7 +100,7 @@ try {
     await main.getByLabel('닉네임', { exact: true }).fill('error');
     await main.getByRole('button', { name: '저장', exact: true }).click();
     await alert(
-      status === 400 ? '입력값' : status === 403 ? '권한' : '처리하지',
+      status === 400 ? '입력한 내용' : status === 403 ? '권한' : '처리하지',
     );
   }
   fixture.controls.status = 200;
@@ -102,7 +109,7 @@ try {
     else await r.continue();
   });
   await main.getByRole('button', { name: '저장', exact: true }).click();
-  await alert('서버 연결');
+  await alert('연결이 끊겼어요');
   await page.unroute('**/api/v1/auth/me');
   await main.getByRole('link', { name: '취소', exact: true }).click();
   await main.getByRole('link', { name: '비밀번호 변경', exact: true }).click();
@@ -166,7 +173,12 @@ try {
   await main
     .getByRole('button', { name: '비밀번호 변경', exact: true })
     .click();
-  await main.getByRole('heading', { name: '비밀번호를 변경했어요' }).waitFor();
+  await page.waitForURL('**/#home');
+  await page
+    .locator('.session-notice')
+    .filter({ hasText: '비밀번호를 변경했어요' })
+    .waitFor();
+  assert.equal(await main.count(), 0);
   assert.equal(
     fixture.requests.filter((r) => r.path.endsWith('/logout')).length,
     logoutBefore,
@@ -239,17 +251,25 @@ try {
     r.path.endsWith('/refresh'),
   ).length;
   await main.getByRole('button', { name: '저장', exact: true }).click();
-  await main
-    .getByText('인증이 만료됐어요. 다시 로그인해 주세요.', { exact: true })
+  await page.waitForURL('**/#home');
+  await page
+    .locator('.session-notice')
+    .filter({ hasText: '로그인이 만료됐어요' })
     .waitFor();
+  assert.equal(await main.count(), 0);
   assert.equal(
     fixture.requests.filter((r) => r.path.endsWith('/refresh')).length,
     refreshBefore + 1,
   );
   fixture.controls.status = 200;
   await login('admin@example.test', 'fixture-new-password');
-  await main.getByRole('alert').filter({ hasText: 'CUSTOMER' }).waitFor();
-  assert.equal(await main.locator('input').count(), 0);
+  await page.waitForURL('**/#admin');
+  await page.locator('.admin-navigation').waitFor();
+  const patchCount = patches();
+  await route('#account/password');
+  await page.waitForURL('**/#admin');
+  assert.equal(await main.count(), 0);
+  assert.equal(patches(), patchCount);
   assert.deepEqual(errors, []);
   console.log(
     'PASS: Chromium desktop/mobile, AU-02/05/06, validation, 400/401/403/503/network, single submission, session/header sync, 204/relogin/no logout, cart storage, keyboard, CUSTOMER guard.',

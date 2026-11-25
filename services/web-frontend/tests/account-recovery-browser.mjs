@@ -14,7 +14,7 @@ const results = [];
 let savedNickname = '';
 let page, context, main;
 const notice =
-  '인증이 갱신되었어요. 입력한 내용을 확인하고 다시 저장해 주세요.';
+  '로그인을 다시 확인했어요. 입력한 내용을 확인하고 다시 저장해 주세요.';
 const count = (ending) =>
   fixture.requests.filter((request) => request.path.endsWith(ending)).length;
 const writes = () =>
@@ -30,7 +30,14 @@ async function login(
   email = 'customer@example.test',
   password = 'fixture-only-password',
 ) {
-  await main.getByRole('button', { name: '다시 로그인', exact: true }).click();
+  const atHome = new URL(page.url()).hash === '#home';
+  await (
+    atHome
+      ? page
+          .locator('.customer-header')
+          .getByRole('button', { name: '로그인', exact: true })
+      : main.getByRole('button', { name: '다시 로그인', exact: true })
+  ).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('이메일', { exact: true }).fill(email);
   await dialog.getByLabel('비밀번호', { exact: true }).fill(password);
@@ -178,16 +185,18 @@ try {
           );
         else fixture.controls.refreshStatus = status;
         await save('password').click();
-        await main
-          .getByText('인증이 만료됐어요. 다시 로그인해 주세요.', {
-            exact: true,
-          })
+        await page.waitForURL('**/#home');
+        await page
+          .locator('.session-notice')
+          .filter({ hasText: '로그인이 만료됐어요' })
           .waitFor();
+        assert.equal(await main.count(), 0);
         assert.equal(writes().length, before + 1);
         if (status !== 'network') assert.equal(count('/refresh'), refresh + 1);
         await page.unroute('**/api/v1/auth/refresh');
         Object.assign(fixture.controls, { status: 200, refreshStatus: 200 });
         await login();
+        await route('#account/password');
         await field('현재 비밀번호').waitFor();
         await draft('password', true);
         assert.equal(await storage(), saved);
@@ -298,18 +307,21 @@ try {
         .first()
         .click();
       await until(() => count('/logout') > 0);
-      await main
-        .getByRole('button', { name: '다시 로그인', exact: true })
-        .waitFor();
-      assert.equal(await main.locator('input').count(), 0);
+      await page.waitForURL('**/#home');
+      await new Promise((done) => setTimeout(done, 600));
+      assert.equal(new URL(page.url()).hash, '#home');
+      assert.equal(await main.count(), 0);
+      assert.equal(await page.getByLabel('로그인 사용자').count(), 0);
     },
   );
   await run('CUSTOMER 외 계정은 변경 입력·PATCH 진입 차단', async () => {
     await fresh('password', 'admin@example.test');
-    await main.getByRole('alert').filter({ hasText: 'CUSTOMER' }).waitFor();
+    await page.waitForURL('**/#admin');
+    await page.locator('.admin-navigation').waitFor();
     const before = writes().length;
     await route('#account/password');
-    await main.getByRole('alert').filter({ hasText: 'CUSTOMER' }).waitFor();
+    await page.waitForURL('**/#admin');
+    assert.equal(await main.count(), 0);
     assert.equal(await main.locator('input').count(), 0);
     assert.equal(writes().length, before);
   });
@@ -325,12 +337,15 @@ try {
       await save('password').click();
       await main.getByRole('alert').filter({ hasText: notice }).waitFor();
       await draft('password');
-      assert.match(await main.textContent(), /모든 기기.*자동 로그인 세션/s);
+      assert.match(await main.textContent(), /모든 기기.*자동 로그인/s);
       fixture.controls.status = 200;
       await save('password').click();
-      await main
-        .getByRole('heading', { name: '비밀번호를 변경했어요', exact: true })
+      await page.waitForURL('**/#home');
+      await page
+        .locator('.session-notice')
+        .filter({ hasText: '비밀번호를 변경했어요' })
         .waitFor();
+      assert.equal(await main.count(), 0);
       assert.equal(writes().length, before + 2);
       assert.notEqual(
         writes().at(-1).accessVersion,
@@ -339,6 +354,7 @@ try {
       assert.equal(count('/logout'), logouts);
       assert.equal(await storage(), saved);
       await login('customer@example.test', 'fixture-recovery-new-password');
+      await route('#account/password');
       await field('현재 비밀번호').waitFor();
       await draft('password', true);
     },

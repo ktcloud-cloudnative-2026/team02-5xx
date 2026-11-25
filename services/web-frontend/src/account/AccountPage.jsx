@@ -111,8 +111,8 @@ function AccountForm({ route, user, sessionSource, onSaved }) {
             {visible ? '비밀번호 숨기기' : '비밀번호 표시'}
           </button>
           <p className="account-help">
-            변경하면 다시 로그인해야 해요. 모든 기기의 자동 로그인 세션은
-            종료되며, 이미 발급된 인증 정보는 만료 전까지 유효할 수 있어요.
+            변경하면 다시 로그인해야 해요. 모든 기기의 자동 로그인은 종료되며,
+            다른 기기의 로그아웃 반영에는 시간이 걸릴 수 있어요.
           </p>
         </>
       ) : (
@@ -153,22 +153,25 @@ function AccountForm({ route, user, sessionSource, onSaved }) {
 }
 
 function CustomerAccount({ route, sessionSource, session }) {
-  const [loading, setLoading] = useState(true);
+  const [loadedRoute, setLoadedRoute] = useState(null);
+  // Do not expose the previous route's ready state before the new effect runs:
+  // its follow-up GET would otherwise unmount a form the user just typed into.
+  const loading = loadedRoute !== route;
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
   const [notice, setNotice] = useState('');
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
+    setLoadedRoute(null);
     setError('');
     sessionSource
       .loadUser({ signal: controller.signal })
       .then(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) setLoadedRoute(route);
       })
       .catch((failure) => {
         if (!controller.signal.aborted) {
-          setLoading(false);
+          setLoadedRoute(route);
           setError(accountError(failure));
         }
       });
@@ -199,10 +202,6 @@ function CustomerAccount({ route, sessionSource, session }) {
           <dl className="account-details">
             <dt>이메일</dt>
             <dd>{user.email}</dd>
-            <dt>회원 ID</dt>
-            <dd>{user.id}</dd>
-            <dt>역할</dt>
-            <dd>{user.role}</dd>
           </dl>
           <div className="account-links">
             <a href="#account/profile">
@@ -280,7 +279,7 @@ export default function AccountPage({ route, sessionSource }) {
               {session.reason === 'password-changed'
                 ? '새 비밀번호로 다시 로그인해 주세요. 메뉴와 장바구니는 보존했어요.'
                 : session.reason === 'expired'
-                  ? '인증이 만료됐어요. 다시 로그인해 주세요.'
+                  ? '로그인이 만료됐어요. 다시 로그인해 주세요.'
                   : '내 정보를 보려면 고객 계정으로 로그인해 주세요.'}
             </p>
             <button className="pill-button" onClick={() => setLoginOpen(true)}>
@@ -288,7 +287,7 @@ export default function AccountPage({ route, sessionSource }) {
             </button>
           </>
         ) : !customer ? (
-          <p role="alert">마이페이지는 CUSTOMER 계정만 이용할 수 있어요.</p>
+          <p role="alert">마이페이지는 고객용 계정으로 이용해 주세요.</p>
         ) : (
           <CustomerAccount
             key={session.user.id}

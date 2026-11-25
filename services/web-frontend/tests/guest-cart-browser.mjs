@@ -155,10 +155,9 @@ try {
           button.click();
           button.click();
         });
-      await page
-        .locator('.cart-modal')
-        .getByText('장바구니에 담았어요.', { exact: false })
-        .waitFor();
+      await page.locator('.cart-modal .cart-items').waitFor();
+      assert.equal(await page.locator('.cart-feedback').count(), 0);
+      assert.equal(await page.locator('.action-notice').count(), 0);
       assert.equal(await page.locator('.login-modal').count(), 0);
       assert.deepEqual((await storage()).items, [...original.items, added]);
       assert.equal(await writes(), 1);
@@ -184,8 +183,8 @@ try {
         'cart-modal',
       );
       await closeCart();
-      assert.equal(await detail.getByLabel('선택 수량').innerText(), '2');
-      assert.equal(await detail.locator('input[value="2"]').isChecked(), true);
+      assert.equal(await page.locator('.detail-modal').count(), 0);
+      assert.deepEqual((await storage()).items, [...original.items, added]);
       assert.equal(await page.getByRole('searchbox').inputValue(), '버거');
       assert.equal(
         await page.getByRole('combobox', { name: '메뉴 정렬' }).inputValue(),
@@ -197,7 +196,7 @@ try {
     'guest can view/change quantity/delete without authentication',
     async () => {
       await fresh();
-      await page.locator('.header-cart').click();
+      await page.locator('.cart-nav').click();
       const cart = page.locator('.cart-modal');
       await cart
         .getByRole('button', { name: '더블 치즈 버거 수량 늘리기' })
@@ -262,7 +261,7 @@ try {
         .click();
       await login();
       await page
-        .getByRole('button', { name: '임시 주문 만들기', exact: true })
+        .getByRole('button', { name: '결제 금액 확인', exact: true })
         .click();
       await page
         .getByRole('button', { name: /원 모의 결제$/ })
@@ -311,7 +310,7 @@ try {
       await login();
       await page.getByRole('button', { name: '주문 확인으로 이동 →' }).click();
       await page
-        .getByRole('button', { name: '임시 주문 만들기', exact: true })
+        .getByRole('button', { name: '결제 금액 확인', exact: true })
         .click();
       assert.deepEqual(
         fixture.requests.find((r) => r.path === '/api/v1/orders').body,
@@ -337,12 +336,13 @@ try {
         .click();
       await page
         .locator('.cart-modal')
-        .getByText('주문·결제는 CUSTOMER 계정만 이용할 수 있어요.', {
+        .getByText('주문하려면 고객용 계정으로 로그인해 주세요.', {
           exact: true,
         })
         .waitFor();
       assert.equal(await page.locator('.login-modal').count(), 0);
       await closeCart();
+      await select();
       await detail
         .getByRole('button', { name: '이 메뉴만 바로 주문', exact: true })
         .click();
@@ -355,7 +355,7 @@ try {
     async () => {
       await fresh();
       await storeLogin();
-      await page.locator('.header-cart').click();
+      await page.locator('.cart-nav').click();
       await page
         .locator('.cart-modal')
         .getByLabel('장바구니 전체 합계')

@@ -147,7 +147,10 @@ const congestion = () => page.locator('.congestion-card');
 const publicCalls = () => calls.filter((c) => c.path.endsWith('/congestion'));
 async function login(email = 'customer@example.test') {
   if (!(await page.locator('.login-modal').count()))
-    await page.getByRole('button', { name: '로그인', exact: true }).click();
+    await page
+      .locator('.customer-header')
+      .getByRole('button', { name: '로그인', exact: true })
+      .click();
   await page.getByLabel('이메일', { exact: true }).fill(email);
   await page
     .getByLabel('비밀번호', { exact: true })
@@ -184,8 +187,8 @@ try {
       await fresh();
       await congestion().getByText('약 0초', { exact: true }).waitFor();
       assert.equal(
-        await home().getByRole('button', { name: '고객 로그인' }).count(),
-        1,
+        await home().getByRole('button', { name: '로그인' }).count(),
+        0,
       );
       assert.equal(calls.filter((c) => c.path === '/api/v1/orders').length, 0);
       await page.getByRole('link', { name: '메뉴 둘러보기' }).click();
@@ -424,9 +427,8 @@ try {
       await fresh();
       await login('admin@example.test');
       await home()
-        .getByText(
-          '주문·결제와 내 주문 조회는 CUSTOMER 계정만 이용할 수 있어요.',
-        )
+        .locator('.home-card')
+        .getByText('주문하려면 고객용 계정으로 로그인해 주세요.')
         .waitFor();
       assert.equal(calls.filter((c) => c.path === '/api/v1/orders').length, 0);
     },
@@ -499,14 +501,14 @@ try {
     async () => {
       await fresh();
       await page.getByRole('link', { name: '메뉴 둘러보기' }).click();
-      await page.locator('.header-cart').click();
+      await page.locator('.cart-nav').click();
       await page
         .locator('.cart-modal')
         .getByRole('button', { name: '주문하기', exact: true })
         .click();
       await login();
       await page
-        .getByRole('button', { name: '임시 주문 만들기', exact: true })
+        .getByRole('button', { name: '결제 금액 확인', exact: true })
         .click();
       await page.getByRole('button', { name: /원 모의 결제$/ }).click();
       await page

@@ -164,7 +164,11 @@ for (const [status, code, definitive] of [
       setHandler((req, res, send) => send(status, null, code));
       await assert.rejects(
         adapter.pay(11),
-        (e) => e.code === code && e.definitive === definitive,
+        (e) =>
+          e.code === code &&
+          e.definitive === definitive &&
+          (!['PAYMENT_FAILED', 'HOLD_EXPIRED'].includes(code) ||
+            e.message.includes('새 주문')),
       );
       assert.equal(requests.filter((r) => r.path.endsWith('/pay')).length, 1);
       assert.equal(
@@ -208,6 +212,110 @@ test('safe GET 401 rotates once, malformed responses and wrong order identity ar
     });
     await assert.rejects(adapter.create({ items }), (e) => !e.definitive);
   }));
+
+for (const status of [401, 403]) {
+  for (const operation of ['estimate', 'create', 'pay', 'get'])
+    test(`${operation} classifies ${status} before reading any response body`, async () => {
+      let reads = 0;
+      const response = {
+        status,
+        ok: false,
+        json() {
+          reads++;
+          throw new SyntaxError('Gateway text/plain');
+        },
+      };
+      const adapter = createCheckoutHttpAdapter({
+        sessionSource: {
+          getSnapshot: () => ({
+            authenticated: true,
+            user: { id: 1, role: 'CUSTOMER' },
+          }),
+          request: async () => response,
+        },
+        fetchImpl: async () => response,
+      });
+      await assert.rejects(
+        ['estimate', 'create'].includes(operation)
+          ? adapter[operation]({ items })
+          : adapter[operation](11),
+        (error) =>
+          error.code === (status === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN') &&
+          error.status === status &&
+          error.definitive === false,
+      );
+      assert.equal(reads, 0);
+    });
+}
+
+for (const status of [401, 403])
+  for (const operation of ['create', 'pay'])
+    test(`HTTP text/plain ${status} never repeats ${operation} or completes the cart`, () =>
+      fixture(async ({ adapter, session, requests, setHandler }) => {
+        let completions = 0;
+        const flow = createCheckoutFlow({
+          input: { items },
+          adapter,
+          sessionSource: session,
+          onPaid: () => completions++,
+        });
+        try {
+          await flow.estimate();
+          if (operation === 'pay') await flow.create();
+          setHandler((req, res) => {
+            res.writeHead(status, { 'Content-Type': 'text/plain' });
+            res.end('Gateway authentication failure');
+          });
+          await flow[operation]();
+          await flow[operation]();
+          const path =
+            operation === 'pay' ? '/api/v1/orders/11/pay' : '/api/v1/orders';
+          assert.equal(requests.filter((r) => r.path === path).length, 1);
+          assert.equal(
+            requests.filter((r) => r.path.endsWith('/refresh')).length,
+            0,
+          );
+          assert.equal(completions, 0);
+          assert.equal(session.getSnapshot().authenticated, status !== 401);
+          assert.equal(
+            flow.getSnapshot().stage,
+            status === 401
+              ? 'session-ended'
+              : operation === 'pay'
+                ? 'unknown'
+                : 'failed',
+          );
+        } finally {
+          flow.dispose();
+        }
+      }));
+
+for (const recover of [true, false])
+  test(`HTTP text/plain GET 401 refreshes once, recovery=${recover}`, () =>
+    fixture(async ({ adapter, session, requests, setHandler }) => {
+      let gets = 0;
+      setHandler((req, res, send) => {
+        if (++gets === 1 || !recover) {
+          res.writeHead(401, { 'Content-Type': 'text/plain' });
+          res.end('Jwt expired');
+        } else send(200, order);
+      });
+      if (recover) assert.equal((await adapter.get(11)).orderId, 11);
+      else
+        await assert.rejects(
+          adapter.get(11),
+          (error) =>
+            error.code === 'UNAUTHORIZED' &&
+            error.status === 401 &&
+            !error.definitive,
+        );
+      assert.equal(gets, 2);
+      assert.equal(
+        requests.filter((r) => r.path.endsWith('/refresh')).length,
+        1,
+      );
+      assert.equal(session.getSnapshot().authenticated, recover);
+    }));
 test('item limit and invalid IDs fail locally before any Order HTTP request', () =>
   fixture(async ({ adapter, requests }) => {
     for (const bad of [

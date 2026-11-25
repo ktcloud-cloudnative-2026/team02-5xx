@@ -97,7 +97,9 @@ test('signed-in UI is an injected test snapshot, not an implementation of authen
         }),
     }),
   });
-  assert.ok(html.includes('장바구니 (1)'));
+  assert.ok(html.includes('장바구니, 상품 1개'));
+  assert.ok(html.includes('cart-dot'));
+  assert.ok(!html.includes('장바구니 (1)'));
 });
 
 test('cart renders configured options, limits, totals and empty state', () => {
@@ -124,6 +126,21 @@ test('cart renders configured options, limits, totals and empty state', () => {
   }
 });
 
+test('cart feedback is local and quantity updates remain available to assistive technology', () => {
+  const view = cartView([{ menuId: 1, optionIds: [2], quantity: 2 }], getMenu);
+  const html = render(Cart, {
+    ...view,
+    feedback: '주문 내용을 다시 확인해 주세요.',
+  });
+  assert.ok(html.includes('class="cart-feedback"'));
+  assert.ok(html.includes('주문 내용을 다시 확인해 주세요.'));
+  assert.ok(html.includes('장바구니 상품 2개'));
+  assert.ok(html.includes('aria-live="polite"'));
+  assert.ok(!html.includes('action-notice'));
+  const app = render(App);
+  assert.ok(!app.includes('action-notice'));
+});
+
 test('menu detail retains radio defaults, inactive options, quantity and new entry actions', () => {
   const html = render(MenuDetail, { menu: getMenu(1), onClose: () => {} });
   assert.ok(html.includes('메뉴 상세 닫기'));
@@ -137,7 +154,7 @@ test('menu detail retains radio defaults, inactive options, quantity and new ent
 
 test('login modal provides real credential fields and a return path, without pretending to authenticate', () => {
   const html = render(LoginModal, { onClose: () => {} });
-  assert.ok(html.includes('로그인이 필요해요'));
+  assert.ok(html.includes('로그인'));
   assert.ok(html.includes('선택한 화면으로 돌아가기'));
   assert.ok(html.includes('disabled=""'));
   assert.ok(html.includes('type="password"'));

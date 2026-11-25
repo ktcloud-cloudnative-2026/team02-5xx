@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: logging-dev
+  namespace: argocd
+  labels:
+    app: logging
+    team: team02
+spec:
+  # #293: Application은 monitoring-dev와 분리(따로 Sync·롤백), AppProject는 monitoring-dev 공유
+  project: monitoring-dev
+  sources:
+    # Loki OSS 차트는 2026-03-16 grafana/helm-charts에서 grafana-community/helm-charts로 이전(grafana/loki 7.x는 Enterprise 전용)
+    - repoURL: https://grafana-community.github.io/helm-charts
+      chart: loki
+      targetRevision: 21.3.1
+      helm:
+        releaseName: loki
+        valueFiles:
+          - $values/deploy/platform/logging/loki-values.yaml
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: alloy
+      targetRevision: 1.15.0
+      helm:
+        releaseName: alloy
+        valueFiles:
+          - $values/deploy/platform/logging/alloy-values.yaml
+    - repoURL: https://github.com/ktcloud-cloudnative-2026/team02-5xx.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  # 수동 Sync(automated 없음, #293). 큰 CRD는 없지만 monitoring-dev와 같은 적용 방식을 쓴다.
+  syncPolicy:
+    syncOptions:
+      - ServerSideApply=true

@@ -1,0 +1,40 @@
+# Gateway(peakorder-gateway)에서 Inventory 관리자 API로 가는 길 안내. dev 전용(#335).
+# - 관리자 API IN-02~06 /api/v1/admin/inventory/** (GET·POST·PUT·DELETE)만 연다. /internal/**, /actuator/** 는 열지 않는다.
+# - JWT 필수: admin-securitypolicy.yaml(#303 방식)이 토큰을 검증하고, 서비스가 STORE_ADMIN을 확인한다(#247).
+# - JWT 필수 경로라 RequestHeaderModifier(remove)를 넣지 않는다.
+#   remove가 있으면 SecurityPolicy claimToHeaders가 넣은 X-User-Id·X-User-Role까지 지워진다(#286 dev 시험).
+#   클라이언트가 보낸 같은 이름의 헤더는 claimToHeaders가 토큰 값으로 덮어쓴다.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: inventory-service-admin
+  namespace: peakorder
+  labels:
+    app: inventory-service
+    team: team02
+spec:
+  parentRefs:
+    - name: peakorder-gateway
+      namespace: envoy-gateway-system
+      sectionName: http
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/v1/admin/inventory
+          method: GET
+        - path:
+            type: PathPrefix
+            value: /api/v1/admin/inventory
+          method: POST
+        - path:
+            type: PathPrefix
+            value: /api/v1/admin/inventory
+          method: PUT
+        - path:
+            type: PathPrefix
+            value: /api/v1/admin/inventory
+          method: DELETE
+      backendRefs:
+        - name: inventory-service
+          port: 8080

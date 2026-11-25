@@ -69,6 +69,15 @@ Pod가 내려갈 때(롤링 업데이트, 이후 HPA 축소) 진행 중인 요�
 - 로컬 시험(PostgreSQL 16, 임시 DB): 처리 중인 요청(DB 잠금으로 6초 지연)이 종료 신호를 받은 뒤에도 `200`으로 끝났고, 종료 신호 직후의 새 요청은 연결이 거부됐으며, 요청이 끝나자 프로세스가 종료됐다. 로그에 `Commencing graceful shutdown`과 `Graceful shutdown complete`가 남는다. 클러스터에서의 엔드포인트 제거 시간은 dev에서 확인한다.
 - 이 값을 바꾸면 Pod 템플릿이 바뀌어 Order Pod가 롤링 교체된다(replicas 1, 자동 동기화).
 
+## 자동 확장(HPA, dev)
+
+- `overlays/dev/hpa.yaml`의 HorizontalPodAutoscaler가 CPU 사용률 평균 70%(requests 100m 기준 약 70m)를 목표로 Pod를 1개에서 3개까지 조절한다(이슈 #225, #186 합의값). prod에는 없다.
+- Pod 수는 HPA가 정하고, Application의 `ignoreDifferences`(`/spec/replicas`)와 `RespectIgnoreDifferences`가 Sync가 Git의 `replicas: 1`로 되돌리지 않게 한다(#204). Git의 `replicas: 1`은 HPA가 없을 때의 값이다.
+- 축소는 쿠버네티스 기본 안정화(5분)를 따른다. 줄어드는 Pod는 `preStop`과 정상 종료 설정으로 요청을 보호한다(위 "종료").
+- 확대하면 Pod당 DB 연결이 최대 4개라 서비스당 최대 12개(3 × 4)이고, 롤링 중 임시 Pod를 포함한 전체 예산은 최대 96이다(일반 연결 97, #186). 여러 서비스를 동시에 롤링하지 않는다.
+- 2 Pod 시험(2026-11-25, dev): 같은 주문의 동시 결제 요청에서 결제는 한 번만 처리되고(나머지는 `409`), 주문번호도 한 번만 발급됐다. outbox는 모두 발행(`SENT`)됐고 Cooking의 중복 수신(`duplicate`)은 0이었으며, 취소 후 재고 복원은 한 번이었다. 결과는 이슈 #225 댓글에 있다.
+- 확인: `kubectl -n peakorder get hpa order-service`로 현재 사용률(TARGETS)과 Pod 수를 본다. 사용률이 `<unknown>`이면 CPU 지표(metrics-server) 문제다. 부하 시험으로 확대·축소와 requests·목표값을 조정하는 것은 아직 남아 있다.
+
 ## 로그
 
 - 환경 변수 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`로 로그를 한 줄에 JSON 하나(ECS) 형식으로 출력한다(이슈 #271, `docs/observability.md` 3-1, Cooking #190과 같은 방식). `application.yml`·코드는 바꾸지 않아 로컬 개발은 기존 텍스트 로그 그대로다. `service.name`에는 `order-service`가 자동으로 들어간다.

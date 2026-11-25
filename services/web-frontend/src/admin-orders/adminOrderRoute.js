@@ -9,6 +9,7 @@ const subscribe = (listener) => {
   };
 };
 export function parseAdminRoute(hash, now) {
+  hash = hash.replace(/^#admin\/orders(?=\?|$)/, '#admin-orders');
   if (!hash || hash === '#admin-orders')
     return { query: defaultSearch(now), selectedId: null };
   try {
@@ -67,7 +68,12 @@ export function parseAdminRoute(hash, now) {
 export function adminHref(query, selectedId = null) {
   const params = adminSearchParams(query);
   if (selectedId !== null) params.set('orderId', String(selectedId));
-  return `#admin-orders?${params}`;
+  const base =
+    typeof window !== 'undefined' &&
+    window.location.hash.startsWith('#admin/orders')
+      ? '#admin/orders'
+      : '#admin-orders';
+  return `${base}?${params}`;
 }
 export function navigateAdmin(query, selectedId = null, replace = false) {
   window.history[replace ? 'replaceState' : 'pushState'](
@@ -76,6 +82,7 @@ export function navigateAdmin(query, selectedId = null, replace = false) {
     adminHref(query, selectedId),
   );
   window.dispatchEvent(new Event('admin-orders-route'));
+  window.dispatchEvent(new Event('peak-order-route'));
 }
 export function useAdminRoute() {
   return useSyncExternalStore(

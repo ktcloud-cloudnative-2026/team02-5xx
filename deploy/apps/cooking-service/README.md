@@ -20,7 +20,7 @@ Cooking의 로컬 기본 포트는 8084(`application.yml`)다. 클러스터에�
 | 경로 | 권한 | 노출 |
 |---|---|---|
 | `GET /api/v1/cooking/congestion` (CO-01), `POST /api/v1/cooking/estimates` (CO-02) | 전체(비회원 포함) | **공개**(#266). 다른 메서드는 Gateway에서 404 |
-| `/api/v1/admin/cooking/**` (CO-03·04) | STORE_ADMIN | 연결하지 않음. 서비스는 신원 헤더로 STORE_ADMIN을 확인하지만(#99: 헤더 없음·형식 오류 401, 역할 부족 403) Gateway JWT 검증이 dev에서 확인되기 전까지 `COOKING_ADMIN_ENABLED=false`로 경로 자체를 없앤다(404, #112) |
+| `/api/v1/admin/cooking/**` (CO-03·04) | STORE_ADMIN | **dev만 연결**(`overlays/dev/admin-httproute.yaml`, `Exact` + GET, #348). Gateway JWT 필수(`admin-securitypolicy.yaml`, #303 방식) — 토큰 없음·잘못된 토큰 401(Gateway), 역할 부족 403(서비스, #99·#288). prod는 연결하지 않고 `COOKING_ADMIN_ENABLED=false`로 경로 자체를 없앤다(404, #112) |
 | `/internal/v1/cooking/**` (CI-02·03) | 호출자 Order | 연결하지 않음(클러스터 안에서만) |
 | `/actuator/**` | — | 연결하지 않음(Prometheus는 클러스터 안에서 수집) |
 
@@ -44,7 +44,7 @@ Cooking의 로컬 기본 포트는 8084(`application.yml`)다. 클러스터에�
 | `SERVER_PORT` | `8080` | 위 "포트" |
 | `RABBITMQ_HOST` / `RABBITMQ_PORT` | `rabbitmq` / `5672` | 플랫폼 Service 이름. 포트를 명시하고 `enableServiceLinks: false`로 자동 주입(`RABBITMQ_PORT=tcp://…`)을 막는다(#161) |
 | `MENU_SERVICE_URL` | `http://menu-service:8080` | CO-02가 Menu MI-01을 호출 |
-| `COOKING_ADMIN_ENABLED` | `false` | 관리자 API 비활성. 인증 확정 전 켜지 않는다 |
+| `COOKING_ADMIN_ENABLED` | base·prod `false`, dev `true` | 관리자 API(CO-03·04) 켜기. dev는 Gateway JWT(#303 방식)와 서비스 STORE_ADMIN 검사(#288)가 모두 있어 overlay 패치(`admin-enabled-patch.yaml`, #348)로 켠다. prod는 관리자 경로를 공개하지 않으므로 끈 채로 둔다 |
 | `JAVA_TOOL_OPTIONS` | `-XX:MaxRAMPercentage=60.0` | 메모리 제한 안에서 힙 비율. Order(#158)와 같은 기준 |
 | `LOGGING_STRUCTURED_FORMAT_CONSOLE` | `ecs` | 로그를 한 줄 JSON(ECS)으로 출력. K8s에서만 켜고 로컬은 텍스트 로그 유지(`docs/observability.md` 3-1, #189). `service.name`에 `cooking-service`가 자동으로 들어감 |
 | `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` / `SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE` | `4` / `1` | DB 연결 풀. t2-db 한 대에 DB 12개(max_connections 100)라 서비스마다 최대 4개, 한가할 때 1개만 유지(#186 예산: 6개 서비스 × 최대 3 Pod × 4 = 72, #222). 기본값은 Pod당 10개 |
@@ -72,6 +72,16 @@ Pod가 내려갈 때(롤링 업데이트, 이후 HPA 축소) 진행 중인 요�
 - `terminationGracePeriodSeconds: 50` = preStop 10초 + 앱 정상 종료 대기 30초 + 여유 10초. 이 시간이 지나면 강제 종료(SIGKILL)된다.
 - 이 값을 바꾸면 Pod 템플릿이 바뀌어 Pod가 롤링 교체된다(replicas 1, 자동 동기화). 여러 서비스를 동시에 롤링하지 않는다(DB 연결 예산, #186).
 - Application(`deploy/argocd/dev/cooking-service.yaml`)은 Deployment의 `/spec/replicas`를 비교에서 제외하고 `RespectIgnoreDifferences=true`로 Sync가 그 값을 되돌리지 않게 한다(Order #204와 같은 방식, 자동 동기화 설정은 그대로). 이 파일은 Argo CD가 관리하지 않아 바꾸면 dev에서 `kubectl apply -f deploy/argocd/dev/cooking-service.yaml`로 다시 적용해야 반영된다.
+
+## 자동 확장(HPA, dev)
+
+- `overlays/dev/hpa.yaml`의 HorizontalPodAutoscaler가 CPU 사용률 평균 70%(requests 100m 기준 약 70m)를 목표로 Pod를 1개에서 3개까지 조절한다(이슈 #313, #186 합의값). prod에는 없다.
+- Pod 수는 HPA가 정하고, Application의 `ignoreDifferences`(`/spec/replicas`)와 `RespectIgnoreDifferences`가 Sync가 Git의 `replicas: 1`로 되돌리지 않게 한다. Git의 `replicas: 1`은 HPA가 없을 때의 값이다.
+- 축소는 쿠버네티스 기본 안정화(5분)를 따른다. 줄어드는 Pod는 `preStop`과 정상 종료 설정으로 요청을 보호한다(위 "종료").
+- 확대하면 Pod당 DB 연결이 최대 4개라 서비스당 최대 12개(3 × 4)이고, 롤링 중 임시 Pod를 포함한 전체 예산은 최대 96이다(일반 연결 97, #186). 여러 서비스를 동시에 롤링하지 않는다.
+- 2 Pod 시험(2026-11-25, dev, 주문 3건): 조리 중 전표는 항상 1건 이하였고 각 전표는 한 번만 시작·완료됐다. 조리 중 Pod 하나를 지워도 전표가 끊기지 않고 예정 시각(200초)에 완료됐고, 대기 중 주문 취소는 `CANCELED`로 반영됐다. 완료 이벤트(CookingCompleted)는 모두 발행(`SENT`)되어 Order가 `COMPLETED`로 바꿨고, 중복 수신(`duplicate`)은 0이었다.
+- 알려진 동작: Pod가 2개 이상이면 거의 동시에 결제된 주문의 대기열 등록(`queued_at`) 순서가 결제 순서와 수십 ms 단위로 바뀔 수 있다(시험에서 120ms 간격으로 결제된 두 주문이 48ms 역전). FIFO 기준은 Cooking 등록 시각이라 합의된 규칙 안이다.
+- 확인: `kubectl -n peakorder get hpa cooking-service`로 현재 사용률(TARGETS)과 Pod 수를 본다. 사용률이 `<unknown>`이면 CPU 지표(metrics-server) 문제다. 부하 시험으로 확대·축소와 requests·목표값을 조정하는 것은 아직 남아 있다.
 
 ## 배포 전후 확인
 

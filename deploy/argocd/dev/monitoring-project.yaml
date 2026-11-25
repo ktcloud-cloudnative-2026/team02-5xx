@@ -11,6 +11,9 @@ spec:
   sourceRepos:
     - https://github.com/ktcloud-cloudnative-2026/team02-5xx.git
     - https://prometheus-community.github.io/helm-charts
+    # 로깅(logging-dev, #323): Loki OSS 차트(grafana-community), Alloy 차트(grafana)
+    - https://grafana-community.github.io/helm-charts
+    - https://grafana.github.io/helm-charts
   destinations:
     - server: https://kubernetes.default.svc
       namespace: monitoring
@@ -34,6 +37,9 @@ spec:
       kind: Deployment
     - group: apps
       kind: DaemonSet
+    # Loki(Monolithic)는 StatefulSet. PVC는 StatefulSet 컨트롤러가 만들어 따로 허용하지 않는다(#293 이태훈 님)
+    - group: apps
+      kind: StatefulSet
     - group: rbac.authorization.k8s.io
       kind: Role
     - group: rbac.authorization.k8s.io

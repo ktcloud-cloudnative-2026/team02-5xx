@@ -87,6 +87,37 @@ class AuthServiceApplicationTests {
     }
   }
 
+  @Test
+  void exposesKubernetesHealthProbes() throws Exception {
+    for (String path : new String[] {"/actuator/health/liveness", "/actuator/health/readiness"}) {
+      var response = get(path);
+      assertThat(response.statusCode()).as(path).isEqualTo(200);
+      assertThat(new ObjectMapper().readTree(response.body()).path("status").asString())
+          .as(path)
+          .isEqualTo("UP");
+    }
+  }
+
+  @Test
+  void exposesPrometheusMetricsWithApplicationTagAndHistogram() throws Exception {
+    get("/v3/api-docs");
+
+    var response = get("/actuator/prometheus");
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.body())
+        .contains("http_server_requests_seconds_count")
+        .contains("http_server_requests_seconds_bucket")
+        .contains("application=\"auth-service\"");
+  }
+
+  @Test
+  void keepsOtherActuatorEndpointsClosed() throws Exception {
+    for (String path : new String[] {"/actuator/env", "/actuator/beans", "/actuator/heapdump"}) {
+      assertThat(get(path).statusCode()).as(path).isEqualTo(404);
+    }
+  }
+
   private HttpResponse<String> get(String path) throws Exception {
     try (var client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build()) {
       var request =

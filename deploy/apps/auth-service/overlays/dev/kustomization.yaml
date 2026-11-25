@@ -2,8 +2,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+  - hpa.yaml
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/auth
-    newTag: sha-24d4fc85c9db0e2509e392abb718efccd86d018f
+    newTag: sha-c782944fbef4be7253240f0198cce4feab238da5
 patches:
   - path: session-patch.yaml

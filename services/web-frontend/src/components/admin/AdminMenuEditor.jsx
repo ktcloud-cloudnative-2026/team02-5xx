@@ -19,6 +19,8 @@ export default function AdminMenuEditor({
   const [errors, setErrors] = useState({});
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
+  const submitting = useRef(false);
   const nextKey = useRef(0);
   const formRef = useRef(null);
   const editing = Boolean(menu);
@@ -56,6 +58,8 @@ export default function AdminMenuEditor({
   );
   async function submit(event) {
     event.preventDefault();
+    if (submitting.current || uncertain) return;
+    submitting.current = true;
     setError('');
     setErrors({});
     try {
@@ -66,10 +70,11 @@ export default function AdminMenuEditor({
         : await adapter.create(request);
       onSaved(
         response.data.menuId,
-        editing ? '모의 메뉴를 수정했습니다.' : '모의 메뉴를 등록했습니다.',
+        editing ? '메뉴를 수정했습니다.' : '메뉴를 등록했습니다.',
       );
     } catch (failure) {
       setError(failure.message);
+      setUncertain(failure.uncertain === true);
       setErrors(failure.fields ?? {});
       requestAnimationFrame(() => {
         const name = Object.keys(failure.fields ?? {})[0];
@@ -79,6 +84,7 @@ export default function AdminMenuEditor({
         (target ?? formRef.current?.querySelector('[role="alert"]'))?.focus();
       });
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   }
@@ -100,7 +106,7 @@ export default function AdminMenuEditor({
           <p className="am-help">
             {editing
               ? '판매 상태는 목록의 ‘상태 변경’에서 관리합니다. 기존 옵션은 삭제하지 않고 비활성화할 수 있습니다.'
-              : '모의 데이터만 저장됩니다. 초기 판매 상태를 직접 선택해 주세요.'}
+              : '초기 판매 상태를 선택해 주세요.'}
           </p>
           {error && (
             <div className="am-alert" role="alert" tabIndex="-1">
@@ -294,7 +300,11 @@ export default function AdminMenuEditor({
           </fieldset>
         </div>
         <footer className="am-dialog-footer">
-          <span className="am-help">* 필수 항목 · 제안 API 계약 기반</span>
+          <span className="am-help">
+            {uncertain
+              ? '창을 닫고 목록을 새로 조회해 저장 결과를 확인해 주세요.'
+              : '* 필수 항목'}
+          </span>
           <div>
             <button
               type="button"
@@ -304,8 +314,12 @@ export default function AdminMenuEditor({
             >
               취소
             </button>
-            <button className="am-button" type="submit" disabled={saving}>
-              {saving ? '모의 저장 중…' : editing ? '변경 저장' : '메뉴 등록'}
+            <button
+              className="am-button"
+              type="submit"
+              disabled={saving || uncertain}
+            >
+              {saving ? '저장 중…' : editing ? '변경 저장' : '메뉴 등록'}
             </button>
           </div>
         </footer>

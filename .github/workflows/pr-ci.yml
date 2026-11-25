@@ -58,6 +58,21 @@ jobs:
     timeout-minutes: 45
     outputs:
       service_results: ${{ steps.checks.outputs.service_results }}
+    # Issue #333: Auth DB 통합 테스트를 러너 안의 일회용 PostgreSQL에서 실행한다.
+    services:
+      postgres:
+        image: postgres:16.16-alpine
+        env:
+          POSTGRES_DB: auth_registration_test
+          POSTGRES_USER: auth_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U auth_test -d auth_registration_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout PR
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -92,6 +107,10 @@ jobs:
 
       - name: Check registered Java services
         id: checks
+        env:
+          AUTH_DB_TEST_URL: jdbc:postgresql://127.0.0.1:${{ job.services.postgres.ports['5432'] }}/auth_registration_test
+          AUTH_DB_TEST_USERNAME: auth_test
+          AUTH_DB_TEST_PASSWORD: ""
         run: node .github/ci/run-services.mjs java
 
   react_ci:

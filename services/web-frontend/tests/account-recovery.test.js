@@ -57,7 +57,7 @@ for (const kind of ['profile', 'password']) {
       (error) =>
         error.kind === 'account-retry' &&
         accountError(error) ===
-          '인증이 갱신되었어요. 입력한 내용을 확인하고 다시 저장해 주세요.',
+          '로그인을 다시 확인했어요. 입력한 내용을 확인하고 다시 저장해 주세요.',
     );
     assert.equal(session.getSnapshot().authenticated, true);
     assert.equal(calls.refresh, 1);

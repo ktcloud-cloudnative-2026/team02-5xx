@@ -4,7 +4,7 @@ import { menus } from '../src/data/mockMenus.js';
 
 export const sampleCustomerOrder = (id) => ({
   orderId: id,
-  orderNo: `TEST-${id}`,
+  orderNo: `261123-${String(id).padStart(4, '0')}`,
   status: 'PAID',
   orderedAt: '2026-11-23T09:00:00+09:00',
   paidAt: '2026-11-23T09:01:00+09:00',
@@ -339,7 +339,7 @@ export async function startCustomerHttpFixture({
           const paid = {
             ...order,
             status: 'PAID',
-            orderNo: `HTTP-CONTRACT-${id}`,
+            orderNo: `261123-${String(id).padStart(4, '0')}`,
             holdExpiresAt: undefined,
             cooking: { lookup: 'PENDING' },
           };

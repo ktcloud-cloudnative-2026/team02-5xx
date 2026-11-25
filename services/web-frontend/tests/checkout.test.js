@@ -231,7 +231,7 @@ test('Mock happy path creates temporary ID first, then numbered PAID without mod
   assert.ok(flow.getSnapshot().order.holdExpiresAt);
   await flow.pay();
   assert.equal(flow.getSnapshot().stage, 'paid');
-  assert.match(flow.getSnapshot().order.orderNo, /^MOCK-/);
+  assert.match(flow.getSnapshot().order.orderNo, /^\d{6}-\d{4}$/);
   assert.equal(JSON.stringify(input), original);
   flow.dispose();
 });
@@ -328,7 +328,7 @@ test('create transport error or malformed response offers explicit new order wit
     await flow.create();
     assert.equal(flow.getSnapshot().stage, 'failed');
     assert.equal(flow.getSnapshot().order, null);
-    assert.match(flow.getSnapshot().error, /새 임시 주문/);
+    assert.match(flow.getSnapshot().error, /결제 전.*다시 확인/);
     assert.equal(calls, 1);
     await flow.create();
     assert.equal(calls, 1); // no automatic create retry

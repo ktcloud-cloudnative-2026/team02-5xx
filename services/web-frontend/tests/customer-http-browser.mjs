@@ -104,18 +104,18 @@ async function login(email = 'customer@example.test') {
 }
 async function enterCart() {
   await login();
-  await page.locator('.header-cart').click();
+  await page.locator('.cart-nav').click();
   await page
     .locator('.cart-modal')
     .getByRole('button', { name: '주문하기', exact: true })
     .click();
   await page
-    .getByRole('button', { name: '임시 주문 만들기', exact: true })
+    .getByRole('button', { name: '결제 금액 확인', exact: true })
     .waitFor();
 }
 async function create() {
   await page
-    .getByRole('button', { name: '임시 주문 만들기', exact: true })
+    .getByRole('button', { name: '결제 금액 확인', exact: true })
     .click();
   await page.getByRole('button', { name: /원 모의 결제$/ }).waitFor();
 }
@@ -282,14 +282,12 @@ try {
         await fresh(scenario);
         await enterCart();
         await page
-          .getByRole('button', { name: '임시 주문 만들기', exact: true })
+          .getByRole('button', { name: '결제 금액 확인', exact: true })
           .click();
         if (scenario === 'declined') {
           await page.getByRole('button', { name: /원 모의 결제$/ }).click();
         }
-        await page
-          .getByRole('button', { name: '새 임시 주문으로 다시 확인' })
-          .waitFor();
+        await page.getByRole('button', { name: '주문 다시 확인' }).waitFor();
         assert.deepEqual(await cart(), original);
       },
     );
@@ -301,10 +299,7 @@ try {
       await enterCart();
       await create();
       await page
-        .getByText(
-          '메뉴 가격이 변경되어 서버 확인 금액이 예상 금액과 달라요.',
-          { exact: false },
-        )
+        .getByText('메뉴 가격이 변경됐어요.', { exact: false })
         .waitFor();
       assert.match(
         await page.locator('.checkout-summary').innerText(),
@@ -325,9 +320,7 @@ try {
       true,
     );
     await page.getByRole('button', { name: '만료 상태 확인' }).click();
-    await page
-      .getByRole('button', { name: '새 임시 주문으로 다시 확인' })
-      .waitFor();
+    await page.getByRole('button', { name: '주문 다시 확인' }).waitFor();
     assert.deepEqual(await cart(), original);
     assert.equal(
       fixture.requests.filter((r) => r.path.endsWith('/pay')).length,
@@ -364,13 +357,13 @@ try {
   await check('STORE_ADMIN cannot enter checkout', async () => {
     await fresh();
     await login('admin@example.test');
-    await page.locator('.header-cart').click();
+    await page.locator('.cart-nav').click();
     await page
       .locator('.cart-modal')
       .getByRole('button', { name: '주문하기', exact: true })
       .click();
     await page
-      .getByText('주문·결제는 CUSTOMER 계정만 이용할 수 있어요.', {
+      .getByText('주문하려면 고객용 계정으로 로그인해 주세요.', {
         exact: true,
       })
       .waitFor();
@@ -390,7 +383,7 @@ try {
       };
       await fresh('success', false, large);
       await login();
-      await page.locator('.header-cart').click();
+      await page.locator('.cart-nav').click();
       await page
         .locator('.cart-modal')
         .getByRole('button', { name: '주문하기', exact: true })
@@ -504,11 +497,14 @@ try {
       await enterCart();
       await create();
       await pay();
-      await page.getByText('안내 코드: ORDER_PAY_IN_PROGRESS').waitFor();
+      await page
+        .getByText(
+          '같은 주문의 결제 처리가 진행 중이에요. 잠시 후 주문 상태를 확인해 주세요.',
+          { exact: true },
+        )
+        .waitFor();
       assert.equal(
-        await page
-          .getByRole('button', { name: '새 임시 주문으로 다시 확인' })
-          .count(),
+        await page.getByRole('button', { name: '주문 다시 확인' }).count(),
         0,
       );
       await page
@@ -517,7 +513,12 @@ try {
       await page
         .getByRole('button', { name: '같은 주문 처리 이어가기', exact: true })
         .click();
-      await page.getByText('안내 코드: ORDER_PAY_IN_PROGRESS').waitFor();
+      await page
+        .getByText(
+          '같은 주문의 결제 처리가 진행 중이에요. 잠시 후 주문 상태를 확인해 주세요.',
+          { exact: true },
+        )
+        .waitFor();
       assert.equal(
         await page
           .getByRole('button', { name: '같은 주문 처리 이어가기' })

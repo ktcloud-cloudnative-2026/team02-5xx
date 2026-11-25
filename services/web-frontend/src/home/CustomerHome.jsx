@@ -160,7 +160,6 @@ export default function CustomerHome({
   onLogin,
   onCart,
   authBusy,
-  notice,
   congestionApi = publicApi,
 }) {
   const owner = customerKey(session);
@@ -195,7 +194,6 @@ export default function CustomerHome({
           </button>
         </div>
       </header>
-      {notice && <p role="status">{notice}</p>}
       <div className="home-columns">
         <Congestion api={congestionApi} />
         {owner ? (
@@ -208,27 +206,18 @@ export default function CustomerHome({
             <h2>
               {session?.authenticated
                 ? '고객 주문 안내'
-                : '로그인하고 주문하세요'}
+                : '맛있는 메뉴를 만나보세요'}
             </h2>
             {session?.phase === 'restoring' ? (
-              <p role="status">고객 세션 확인 중…</p>
+              <p role="status">로그인 정보를 확인하고 있어요…</p>
             ) : session?.authenticated ? (
-              <p>
-                주문·결제와 내 주문 조회는 CUSTOMER 계정만 이용할 수 있어요.
-              </p>
+              <p>주문하려면 고객용 계정으로 로그인해 주세요.</p>
             ) : (
               <>
-                <p>
-                  메뉴와 장바구니는 비회원도 이용할 수 있어요. 주문·결제에는
-                  CUSTOMER 로그인이 필요해요.
-                </p>
-                <button
-                  className="pill-button"
-                  onClick={onLogin}
-                  disabled={authBusy}
-                >
-                  고객 로그인
-                </button>
+                <p>마음에 드는 메뉴를 장바구니에 담아 보세요.</p>
+                <a className="pill-button" href="#menu-list">
+                  메뉴 고르기
+                </a>
               </>
             )}
           </section>
