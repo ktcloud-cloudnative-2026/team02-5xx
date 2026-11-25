@@ -13,6 +13,7 @@
     "test:ui": "node tests/ui-fixture.mjs",
     "test:checkout:ui": "node tests/checkout-preview.mjs",
     "test:customer:ui": "node tests/customer-http-preview.mjs",
+    "test:admin-orders:ui": "node tests/admin-orders-preview.mjs",
     "test:admin-inventory:ui": "node tests/admin-inventory-preview.mjs",
     "dev": "vite",
     "build": "vite build",
