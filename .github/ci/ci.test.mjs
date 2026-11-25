@@ -1202,3 +1202,35 @@ test("등록된 종류의 작업이 모두 skipped면 최종 검사는 실패한
     });
   }
 });
+
+test("PR CI의 Java 검사는 일회용 PostgreSQL로 Auth DB 통합 테스트를 실행한다", () => {
+  const workflow = readFileSync(
+    new URL("../workflows/pr-ci.yml", import.meta.url),
+    "utf8",
+  ).replace(/\r\n/g, "\n");
+  const javaJob = workflow.match(/^  java_ci:\n[\s\S]*?(?=^  \w+:)/m)?.[0];
+  assert.ok(javaJob, "java_ci 작업이 있어야 한다");
+  const postgres = javaJob.match(
+    /^    services:\n      postgres:\n[\s\S]*?(?=^    \w+:)/m,
+  )?.[0];
+  assert.ok(postgres, "java_ci에 postgres 서비스가 있어야 한다");
+  assert.match(postgres, /^        image: postgres:16\.16-alpine$/m);
+  assert.match(postgres, /^          POSTGRES_DB: auth_registration_test$/m);
+  assert.match(postgres, /^          POSTGRES_USER: auth_test$/m);
+  assert.match(postgres, /^          POSTGRES_HOST_AUTH_METHOD: trust$/m);
+  assert.match(postgres, /^        ports:\n          - 5432\/tcp$/m);
+  assert.match(
+    postgres,
+    /--health-cmd "pg_isready -U auth_test -d auth_registration_test"\n          --health-interval 5s\n          --health-timeout 5s\n          --health-retries 10/,
+  );
+  const checks = javaJob.match(
+    /^      - name: Check registered Java services\n[\s\S]*?(?=^      - name:|(?![\s\S]))/m,
+  )?.[0];
+  assert.ok(checks, "Java 검사 단계가 있어야 한다");
+  assert.match(checks, /^        id: checks$/m);
+  assert.match(
+    checks,
+    /^        env:\n          AUTH_DB_TEST_URL: jdbc:postgresql:\/\/127\.0\.0\.1:\$\{\{ job\.services\.postgres\.ports\['5432'\] \}\}\/auth_registration_test\n          AUTH_DB_TEST_USERNAME: auth_test\n          AUTH_DB_TEST_PASSWORD: ""$/m,
+  );
+  assert.doesNotMatch(workflow, /POSTGRES_PASSWORD/);
+});
