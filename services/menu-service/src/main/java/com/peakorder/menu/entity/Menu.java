@@ -85,6 +85,24 @@ public class Menu {
     return id;
   }
 
+  /** Update information without altering identity, creation time or sales status. */
+  public void updateInformation(
+      Category category,
+      String name,
+      String description,
+      String imageUrl,
+      int basePrice,
+      int cookTimeSec) {
+    this.category = category;
+    this.name = name;
+    this.description = description;
+    this.imageUrl = imageUrl;
+    this.basePrice = basePrice;
+    this.cookTimeSec = cookTimeSec;
+    // Also dirty the parent for option-only updates.
+    this.updatedAt = Instant.now();
+  }
+
   public Category getCategory() {
     return category;
   }

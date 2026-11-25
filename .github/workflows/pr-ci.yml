@@ -11,6 +11,13 @@ on:
 permissions:
   contents: read
 
+# Issue #307: 같은 PR에서 새 실행(push·본문 수정·Ready 전환)이 시작되면 이전 실행을 자동 취소한다.
+# main push는 커밋마다 이미지를 게시해야 하므로 SHA별 그룹으로 두고 취소하지 않는다.
+# 취소된 실행에서도 CI Final은 always()로 실패를 남기므로, 취소 실행이 통과로 오인되지 않는다.
+concurrency:
+  group: pr-ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('push-{0}', github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   readiness:
     name: Service readiness
@@ -36,7 +43,7 @@ jobs:
           package-manager-cache: false
 
       - name: Test CI foundation
-        run: node --test .github/ci/ci.test.mjs .github/ci/image-ci.test.mjs
+        run: node --test .github/ci/ci.test.mjs .github/ci/image-ci.test.mjs .github/ci/dev-image-tags.test.mjs .github/ci/image-scope.test.mjs
 
       - name: Check service registration and required files
         id: services
@@ -105,6 +112,9 @@ jobs:
     if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.readiness.result == 'success' && needs.readiness.outputs.registered_count != '0' && needs.readiness.outputs.registered_count != '' && (needs.java_ci.result == 'success' || (needs.readiness.outputs.java_count == '0' && needs.java_ci.result == 'skipped')) && (needs.react_ci.result == 'success' || (needs.readiness.outputs.node_count == '0' && needs.react_ci.result == 'skipped')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    # Issue #307: PR에서는 병합 검증 커밋에서 바뀐 서비스만 이미지를 빌드한다(공통 파일 변경 시 전체).
+    env:
+      CI_IMAGE_SCOPE: changed
     outputs:
       image_results: ${{ steps.report.outputs.image_results }}
     steps:
@@ -112,6 +122,7 @@ jobs:
         id: checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 2
           persist-credentials: false
 
       - name: Set up Node.js 24
@@ -192,6 +203,7 @@ jobs:
       - name: Checkout PR
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 2
           persist-credentials: false
 
       - name: Set up Node.js 24
@@ -204,4 +216,44 @@ jobs:
         env:
           CI_NEEDS_JSON: ${{ toJSON(needs) }}
           CI_IMAGE_MODE: ${{ github.event_name == 'push' && 'main' || 'pr' }}
+          CI_IMAGE_SCOPE: changed
         run: node .github/ci/final-check.mjs
+
+  # Issue #281: main 게시 성공 후 소스가 바뀐 서비스만 dev 태그 갱신 PR을 만든다.
+  # PR 생성·push는 PEAKORDER_DEV_TAG_TOKEN으로만 하며, 토큰이 없으면 계획만 Summary에 남긴다.
+  dev_image_tags:
+    name: Dev image tag PR
+    needs: [image_publish]
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.image_publish.result == 'success' }}
+    permissions:
+      contents: read
+    concurrency:
+      group: dev-image-tags
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout merged commit with history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Plan dev image tag updates
+        id: plan
+        env:
+          IMAGE_RESULTS_JSON: ${{ needs.image_publish.outputs.image_results }}
+        run: node .github/ci/dev-image-tags.mjs plan
+
+      - name: Open dev image tag PR
+        if: ${{ steps.plan.outputs.changed == 'true' }}
+        env:
+          DEV_TAG_TOKEN: ${{ secrets.PEAKORDER_DEV_TAG_TOKEN }}
+          DEV_TAG_FILES: ${{ steps.plan.outputs.files }}
+        run: node .github/ci/dev-image-tags.mjs open

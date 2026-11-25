@@ -1,4 +1,9 @@
-import { evaluateImageJobs, imagePlan, imageSummary } from "./image-ci.mjs";
+import {
+  evaluateImageJobs,
+  imagePlan,
+  imageSummary,
+  scopedToChanges,
+} from "./image-ci.mjs";
 import { appendFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { inspectServices, loadServices } from "./service-config.mjs";
@@ -141,6 +146,7 @@ try {
       needs,
       imagePlan(root, process.env),
       process.env.CI_IMAGE_MODE,
+      { scoped: scopedToChanges(process.env) },
     );
     imageState.normalSkips.forEach((id) => normalSkips.add(id));
     imageReport = { results: imageState.results, error: "" };

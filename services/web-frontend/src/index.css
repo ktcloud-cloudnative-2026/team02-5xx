@@ -132,6 +132,25 @@ p {
   background: #2e2e2e;
   color: #fff;
 }
+@media (max-width: 400px) {
+  .app-shell .sidebar {
+    padding-inline: 12px;
+    gap: 8px;
+  }
+  .sidebar .brand {
+    flex-shrink: 0;
+    width: 40px;
+    height: 44px;
+  }
+  .app-shell .sidebar nav {
+    gap: 2px;
+  }
+  .app-shell .sidebar .nav-item {
+    padding-inline: 7px;
+    white-space: nowrap;
+    font-size: 10px;
+  }
+}
 .menu-page {
   width: 100%;
   min-width: 0;

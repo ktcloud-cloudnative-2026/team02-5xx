@@ -19,6 +19,10 @@ spec:
       # 같은 namespace의 Service 정보를 RABBITMQ_PORT=tcp://... 같은 환경 변수로
       # 자동 주입하지 않게 한다. 앱 설정 이름(RABBITMQ_PORT)과 겹쳐 시작이 실패한다(Payment #160).
       enableServiceLinks: false
+      # 종료 시 진행 중인 요청이 끊기지 않게 한다(#294). preStop 대기 10초 + 앱의 정상 종료 대기
+      # (spring.lifecycle.timeout-per-shutdown-phase 기본 30초) + 여유 10초.
+      # 앱의 graceful shutdown은 Spring Boot 4.1.2 기본값(GRACEFUL)이라 별도 설정이 없다.
+      terminationGracePeriodSeconds: 50
       containers:
         - name: order-service
           image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/order:sha-b05b9c0981ad9e12c60af8ab544dd9cd4da77c0b
@@ -72,6 +76,12 @@ spec:
             # 로그를 한 줄 JSON(ECS)으로 출력한다. K8s에서만 켜고 로컬은 텍스트 로그 유지 (docs/observability.md 3-1, #271)
             - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
               value: ecs
+          lifecycle:
+            preStop:
+              # Pod가 Service 엔드포인트에서 빠져 Gateway·Service가 새 요청 보내기를 멈출 때까지
+              # SIGTERM을 늦춘다. 이 사이에도 요청은 정상 처리된다. (이미지 eclipse-temurin:21-jre-alpine의 sleep 사용)
+              exec:
+                command: ["sh", "-c", "sleep 10"]
           resources:
             requests:
               cpu: 100m
