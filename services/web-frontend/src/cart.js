@@ -13,7 +13,7 @@ function validMoney(value) {
   return Number.isSafeInteger(value) && value >= 0;
 }
 
-export function describeItem(selection, getMenu) {
+export function describeItem(selection, getMenu, { allowPaused = false } = {}) {
   if (
     !selection ||
     !validId(selection.menuId) ||
@@ -32,7 +32,7 @@ export function describeItem(selection, getMenu) {
     menu.id !== selection.menuId ||
     typeof menu.name !== 'string' ||
     !menu.name.trim() ||
-    menu.status !== 'ON_SALE' ||
+    (menu.status !== 'ON_SALE' && !(allowPaused && menu.status === 'PAUSED')) ||
     !validMoney(menu.basePrice)
   ) {
     throw new CartError('현재 담을 수 없는 메뉴입니다.');
@@ -85,49 +85,54 @@ function entry(item) {
   };
 }
 
-export function cartView(items, getMenu) {
-  const rows = items.map((item) => describeItem(item, getMenu));
+export function cartView(items, getMenu, options) {
+  const rows = items.map((item) => describeItem(item, getMenu, options));
   const total = rows.reduce((sum, row) => sum + row.total, 0);
   if (!validMoney(total))
     throw new CartError('장바구니 금액을 확인할 수 없습니다.');
   return { rows, total };
 }
 
-export function addItem(items, selection, getMenu) {
-  const item = describeItem(selection, getMenu);
+export function addItem(items, selection, getMenu, options) {
+  const item = describeItem(selection, getMenu, options);
   const existing = items.find(
-    (candidate) => describeItem(candidate, getMenu).key === item.key,
+    (candidate) =>
+      describeItem(candidate, getMenu, { allowPaused: true }).key === item.key,
   );
   const requestedQuantity = (existing?.quantity ?? 0) + item.quantity;
   const quantity = Math.min(MAX_QUANTITY, requestedQuantity);
   const next = existing
     ? items.map((candidate) =>
-        describeItem(candidate, getMenu).key === item.key
+        describeItem(candidate, getMenu, { allowPaused: true }).key === item.key
           ? entry({ ...item, quantity })
           : candidate,
       )
     : [...items, entry(item)];
-  cartView(next, getMenu);
+  cartView(next, getMenu, { allowPaused: true });
   return { items: next, limited: requestedQuantity > MAX_QUANTITY };
 }
 
-export function changeQuantity(items, key, quantity, getMenu) {
+export function changeQuantity(items, key, quantity, getMenu, options) {
   const next = items.map((item) =>
-    describeItem(item, getMenu).key === key ? { ...item, quantity } : item,
+    describeItem(item, getMenu, options).key === key
+      ? { ...item, quantity }
+      : item,
   );
-  cartView(next, getMenu);
+  cartView(next, getMenu, options);
   return next;
 }
 
-export function removeItem(items, key, getMenu) {
-  return items.filter((item) => describeItem(item, getMenu).key !== key);
+export function removeItem(items, key, getMenu, options) {
+  return items.filter(
+    (item) => describeItem(item, getMenu, options).key !== key,
+  );
 }
 
 export function browserStorage() {
   return window.localStorage;
 }
 
-export function loadCart(storageProvider, getMenu) {
+export function loadCart(storageProvider, getMenu, options) {
   try {
     const raw = storageProvider().getItem(CART_STORAGE_KEY);
     if (raw === null) return { items: [], warning: '' };
@@ -139,7 +144,7 @@ export function loadCart(storageProvider, getMenu) {
     let discarded = false;
     for (const selection of data.items) {
       try {
-        const result = addItem(items, selection, getMenu);
+        const result = addItem(items, selection, getMenu, options);
         items = result.items;
         discarded ||= result.limited;
       } catch {
@@ -160,9 +165,9 @@ export function loadCart(storageProvider, getMenu) {
   }
 }
 
-export function saveCart(items, storageProvider, getMenu) {
+export function saveCart(items, storageProvider, getMenu, options) {
   try {
-    cartView(items, getMenu);
+    cartView(items, getMenu, options);
     storageProvider().setItem(
       CART_STORAGE_KEY,
       JSON.stringify({ version: CART_VERSION, items: items.map(entry) }),

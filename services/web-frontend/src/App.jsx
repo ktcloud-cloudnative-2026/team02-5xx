@@ -7,6 +7,12 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { menuApi as defaultMenuApi } from './data/menuApi.js';
+import { inventoryApi as defaultInventoryApi } from './data/inventoryApi.js';
+import {
+  stockStatus,
+  cartStock,
+  createStockGate,
+} from './stockAvailability.js';
 import RemoteMenuDetail from './components/RemoteMenuDetail.jsx';
 import MenuPhoto from './components/MenuPhoto.jsx';
 import { readPendingCart, validateCartCatalog } from './cartCatalog.js';
@@ -49,6 +55,7 @@ export default function App({
   sessionSource = authSession,
   storageProvider = browserStorage,
   menuApi = defaultMenuApi,
+  inventoryApi = defaultInventoryApi,
   checkoutAdapter,
   registrationApi,
   registrationTerms,
@@ -154,6 +161,37 @@ export default function App({
     [menuApi, categoryId, query, sort],
   );
   const menus = listing.data?.menus ?? [];
+  const stockIds = [
+    ...new Set([
+      ...menus.map((menu) => menu.id),
+      ...cart.items.map((item) => item.menuId),
+      ...(selectedId === null ? [] : [selectedId]),
+    ]),
+  ].sort((a, b) => a - b);
+  const stockKey = JSON.stringify([listKey, stockIds, selectedId, page]);
+  const stock = useMenuRequest(
+    stockKey,
+    (signal) => inventoryApi.availability(stockIds, { signal }),
+    [inventoryApi, stockKey],
+  );
+  const stockGate = useMemo(
+    () => createStockGate(inventoryApi),
+    [inventoryApi],
+  );
+  const stockFlight = useRef(null);
+  const [stockChecking, setStockChecking] = useState(false);
+  function cancelStockCheck() {
+    stockGate.cancel();
+    stockFlight.current = null;
+    setStockChecking(false);
+  }
+  useEffect(() => {
+    cancelStockCheck();
+    return () => {
+      stockGate.cancel();
+      stockFlight.current = null;
+    };
+  }, [stockGate, selectedId, page, authenticated, session?.user?.id]);
   const categories = useRef([]);
   if (listing.data) categories.current = listing.data.categories;
   const details = useRef(new Map());
@@ -170,7 +208,10 @@ export default function App({
   const catalog = useMenuRequest(
     catalogKey,
     async (signal) => {
-      const result = await validateCartCatalog(cart.items, menuApi, { signal });
+      const result = await validateCartCatalog(cart.items, menuApi, {
+        signal,
+        allowPaused: true,
+      });
       // A retry may clear the detail cache. Validate the waiting selection too,
       // without inserting it into the cart before the pending action executes.
       if (pendingMenuId !== null && !result.menus.has(pendingMenuId))
@@ -196,12 +237,13 @@ export default function App({
   let cartFailure = catalog.error?.message ?? '';
   if (catalog.data) {
     try {
-      view = cartView(validatedItems, getMenu);
+      view = cartView(validatedItems, getMenu, { allowPaused: true });
     } catch {
       cartFailure = '메뉴 정보가 변경됐어요. 장바구니를 다시 확인해 주세요.';
     }
   }
   const cartReady = Boolean(view) && !catalog.loading && !cartFailure;
+  const cartAvailability = cartStock(validatedItems, getMenu, stock);
 
   useEffect(() => {
     // The store owns restoration; StrictMode must not cancel or duplicate rotation.
@@ -219,6 +261,7 @@ export default function App({
         : null;
     return sessionSource.subscribe(() => {
       const next = sessionSource.getSnapshot();
+      if (identity(previous) !== identity(next)) cancelStockCheck();
       if (
         previous?.authenticated === true &&
         identity(previous) !== identity(next)
@@ -232,6 +275,7 @@ export default function App({
 
   useEffect(() => {
     const onHistory = () => {
+      cancelStockCheck();
       if (/^#(orders|account)/.test(window.location.hash)) setSelectedId(null);
       if (window.location.hash === '#checkout' && checkoutRef.current) return;
       const completed =
@@ -348,6 +392,7 @@ export default function App({
   }
 
   function closeCart() {
+    cancelStockCheck();
     restoreCartFocus.current = true;
     // Update React first: a pending popstate must not reopen anonymous login.
     pendingIntent.current = null;
@@ -368,13 +413,15 @@ export default function App({
   }
 
   function persist(items) {
-    const warning = saveCart(items, storageProvider, getMenu);
+    const warning = saveCart(items, storageProvider, getMenu, {
+      allowPaused: true,
+    });
     const next = { items, warning };
     cartRef.current = next;
     setCart(next);
   }
 
-  function executeIntent(intent) {
+  async function executeIntent(intent) {
     if (intent.type === 'order' && !signedIn) return;
     if (intent.type === 'login') {
       setNotice('로그인했어요.');
@@ -390,13 +437,39 @@ export default function App({
       return;
     }
     if (intent.type === 'order') {
-      if (checkoutRef.current) return;
+      if (checkoutRef.current || stockFlight.current) return;
+      const ticket = {};
+      stockFlight.current = ticket;
+      setStockChecking(true);
       try {
         const input = prepareCheckout(
           intent.selection ? [intent.selection] : validatedItems,
           getMenu,
         );
         const owner = customerKey(sessionSource.getSnapshot());
+        const cartItems = cartRef.current.items;
+        const route = window.location.hash;
+        const latestStock = await stockGate.check(
+          input.items.map((item) => item.menuId),
+        );
+        if (
+          stockFlight.current !== ticket ||
+          customerKey(sessionSource.getSnapshot()) !== owner ||
+          cartItems !== cartRef.current.items ||
+          route !== window.location.hash
+        )
+          return;
+        const checked = cartStock(input.items, getMenu, { data: latestStock });
+        const blocked = [...checked.states.values()].find(
+          (state) => state.blocked,
+        );
+        if (blocked) {
+          setNotice(
+            `${blocked.label} 상태예요. 수량과 재고를 다시 확인해 주세요.`,
+          );
+          stock.retry();
+          return;
+        }
         const baseline = captureCartStorage(storageProvider);
         const next = {
           source: intent.selection ? 'immediate' : 'cart',
@@ -428,11 +501,26 @@ export default function App({
         setCheckout(next);
         window.history.pushState({ peakOrderCheckout: true }, '', '#checkout');
       } catch (failure) {
-        setNotice(failure.message);
+        if (stockFlight.current === ticket && failure.name !== 'AbortError')
+          setNotice(failure.message);
+      } finally {
+        if (stockFlight.current === ticket) {
+          stockFlight.current = null;
+          setStockChecking(false);
+        }
       }
       return;
     }
     try {
+      const selected = intent.selection;
+      const total = validatedItems
+        .filter((item) => item.menuId === selected.menuId)
+        .reduce((sum, item) => sum + item.quantity, selected.quantity);
+      const status = stockStatus(getMenu(selected.menuId), stock, total);
+      if (status.blocked) {
+        setNotice(status.label);
+        return;
+      }
       const result = addItem(validatedItems, intent.selection, getMenu);
       persist(result.items);
       navigate('cart');
@@ -476,6 +564,7 @@ export default function App({
   }
 
   function closeLogin() {
+    cancelStockCheck();
     pendingIntent.current = null;
     setLoginIntent(null);
   }
@@ -503,8 +592,13 @@ export default function App({
 
   function updateCart(key, quantity) {
     if (!cartReady) return;
+    cancelStockCheck();
     try {
-      persist(changeQuantity(validatedItems, key, quantity, getMenu));
+      persist(
+        changeQuantity(validatedItems, key, quantity, getMenu, {
+          allowPaused: true,
+        }),
+      );
       setNotice('수량을 변경했어요.');
     } catch (failure) {
       setNotice(failure.message);
@@ -513,7 +607,8 @@ export default function App({
 
   function deleteCartItem(key) {
     if (!cartReady) return;
-    persist(removeItem(validatedItems, key, getMenu));
+    cancelStockCheck();
+    persist(removeItem(validatedItems, key, getMenu, { allowPaused: true }));
     setNotice('장바구니에서 삭제했어요.');
     requestAnimationFrame(() => document.getElementById('cart-title')?.focus());
   }
@@ -528,6 +623,7 @@ export default function App({
   }
 
   function closeMenu() {
+    cancelStockCheck();
     pendingIntent.current = null;
     setLoginIntent(null);
     setSelectedId(null);
@@ -817,6 +913,14 @@ export default function App({
             <p className="sr-only" role="status">
               메뉴 {menus.length}개
             </p>
+            {stock.error && (
+              <div className="stock-notice" role="alert">
+                <p>재고 확인 불가. 품절 여부를 확인하지 못했어요.</p>
+                <button className="text-button" onClick={stock.retry}>
+                  재고 다시 확인
+                </button>
+              </div>
+            )}
             {listing.loading ? (
               <p className="empty-state" role="status">
                 메뉴를 불러오는 중이에요.
@@ -836,7 +940,7 @@ export default function App({
                     data-menu-id={menu.id}
                     className="menu-card"
                     onClick={(event) => openMenu(menu.id, event)}
-                    aria-label={`${menu.name}, ${formatPrice(menu.basePrice)}${menu.status === 'PAUSED' ? ', 판매 중지' : ', 상세 보기'}`}
+                    aria-label={`${menu.name}, ${formatPrice(menu.basePrice)}${stockStatus(menu, stock).label ? `, ${stockStatus(menu, stock).label}` : ', 상세 보기'}`}
                   >
                     <span className="menu-photo" aria-hidden="true">
                       <MenuPhoto imageUrl={menu.imageUrl} />
@@ -845,8 +949,10 @@ export default function App({
                     <span className="menu-price">
                       {formatPrice(menu.basePrice)}
                     </span>
-                    {menu.status === 'PAUSED' && (
-                      <span className="status-badge">판매 중지</span>
+                    {stockStatus(menu, stock).label && (
+                      <span className="status-badge">
+                        {stockStatus(menu, stock).label}
+                      </span>
                     )}
                   </button>
                 ))}
@@ -900,6 +1006,12 @@ export default function App({
             .filter(Boolean)
             .join(' ')}
           notice={notice}
+          stockStates={cartAvailability.states}
+          stockBlocked={cartAvailability.blocked}
+          stockLoading={stock.loading}
+          stockError={stock.error}
+          onStockRetry={stock.retry}
+          stockChecking={stockChecking}
           onQuantity={updateCart}
           onRemove={deleteCartItem}
           onClose={closeCart}
@@ -914,6 +1026,12 @@ export default function App({
           menuId={selectedId}
           onLoaded={onDetailLoaded}
           adding={loginIntent?.type === 'add'}
+          stock={stock}
+          onStockRetry={stock.retry}
+          cartQuantity={validatedItems
+            .filter((item) => item.menuId === selectedId)
+            .reduce((sum, item) => sum + item.quantity, 0)}
+          stockChecking={stockChecking}
           onClose={closeMenu}
           feedback={[notice, cart.warning].filter(Boolean).join(' ')}
           onAdd={(selection) => requestIntent({ type: 'add', selection })}
