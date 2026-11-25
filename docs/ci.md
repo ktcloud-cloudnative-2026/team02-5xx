@@ -121,6 +121,17 @@ Gradle `test`의 `NO-SOURCE`·`SKIPPED`는 미실행으로 기록하며 필수 �
 `UP-TO-DATE`·`FROM-CACHE`는 `기존 결과 재사용`으로 구분하여 기록합니다.
 Gradle `build`에 연결된 테스트·포맷 작업은 해당 프로젝트의 기존 의존 관계에 따라 실행됩니다.
 
+#### Auth DB 통합 테스트용 PostgreSQL 서비스 컨테이너(#333)
+
+`java_ci`는 `postgres:16.16-alpine` 서비스 컨테이너로 `auth_registration_test` DB를 준비합니다.
+DB 환경 변수 누락으로 생략되던 Auth 회원가입·세션 PostgreSQL 통합 테스트 23개를 실행하기 위한 구성입니다.
+`pg_isready` 헬스체크 후 `checks` 단계에 `AUTH_DB_TEST_URL`, `AUTH_DB_TEST_USERNAME`, `AUTH_DB_TEST_PASSWORD`를 전달하며,
+URL은 `127.0.0.1`과 GitHub Actions가 할당한 임의 호스트 포트를 사용합니다. 서비스 실행기의 자식 Gradle 프로세스도 이 환경 변수를 상속합니다.
+
+러너 안에서만 사용하는 일회용 테스트 DB이므로 `POSTGRES_HOST_AUTH_METHOD: trust`와 빈 테스트 비밀번호를 사용하고,
+워크플로에 비밀번호를 기록하지 않습니다. 이 trust 인증은 해당 러너의 테스트 DB에만 한정하며 dev/prod DB에는 적용하지 않습니다.
+Menu DB 통합 테스트는 #333의 범위 밖입니다.
+
 ### React
 
 Node.js 24에서 서비스 등록 경로를 기준으로 실행합니다.

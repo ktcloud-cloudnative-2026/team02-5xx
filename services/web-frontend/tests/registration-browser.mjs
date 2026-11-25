@@ -509,7 +509,7 @@ try {
         .click();
       await modal()
         .getByText(
-          '서버 연결을 확인하지 못했어요. 가입 결과는 이메일 중복 확인 또는 로그인으로 확인해 주세요.',
+          '연결이 끊겼어요. 이메일 중복 확인이나 로그인으로 가입 결과를 확인해 주세요.',
           { exact: true },
         )
         .waitFor();
@@ -583,7 +583,7 @@ try {
     'signup does not consume pending cart order; explicit existing-account login resumes once',
     async () => {
       await fresh();
-      await page.locator('.header-cart').click();
+      await page.locator('.cart-nav').click();
       await page
         .locator('.cart-modal')
         .getByRole('button', { name: '주문하기', exact: true })
@@ -610,11 +610,11 @@ try {
         .fill('fixture-only-password');
       await modal().locator('.login-form button[type=submit]').click();
       await page
-        .getByRole('button', { name: '임시 주문 만들기', exact: true })
+        .getByRole('button', { name: '결제 금액 확인', exact: true })
         .waitFor();
       assert.equal(fixture.counts.login, 1);
       await page
-        .getByRole('button', { name: '임시 주문 만들기', exact: true })
+        .getByRole('button', { name: '결제 금액 확인', exact: true })
         .click();
       await page.getByRole('button', { name: /원 모의 결제$/ }).waitFor();
       assert.equal(
@@ -627,7 +627,7 @@ try {
     'History back during signup closes auth and preserves cart without delayed reopening',
     async () => {
       await fresh();
-      await page.locator('.header-cart').click();
+      await page.locator('.cart-nav').click();
       await page
         .locator('.cart-modal')
         .getByRole('button', { name: '주문하기', exact: true })

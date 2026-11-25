@@ -22,21 +22,18 @@ export default function PaymentFailureNotice({
           {unknown
             ? '결제·주문 결과 확인이 필요해요'
             : state.stage === 'session-ended'
-              ? '고객 세션이 변경됐어요'
+              ? '로그인 상태가 변경됐어요'
               : mock
                 ? 'Mock 주문을 진행하지 못했어요'
                 : '주문을 진행하지 못했어요'}
         </h2>
         <p>{state.error}</p>
-        {state.errorCode && (
-          <p className="checkout-caption">안내 코드: {state.errorCode}</p>
-        )}
         {unknown && (
           <>
             <p>
               먼저 주문 상태를 확인해 주세요. 아직 확정되지 않은 주문의 처리를
-              이어갈 수 있어요. 새 임시 주문은 만들지 않으며, 처리 재개도
-              자동으로 반복하지 않습니다.
+              이어갈 수 있어요. 중복 결제를 막기 위해 새 주문을 만들거나 결제를
+              반복하지 마세요.
             </p>
             {state.order ? (
               <button
@@ -52,8 +49,7 @@ export default function PaymentFailureNotice({
               </button>
             ) : (
               <p>
-                임시 주문 식별자를 받지 못해 이 화면에서는 결과를 조회할 수
-                없어요.
+                주문번호를 확인하지 못해 이 화면에서는 결과를 조회할 수 없어요.
               </p>
             )}
             {state.recoverable && (
@@ -69,7 +65,7 @@ export default function PaymentFailureNotice({
         )}
         {state.stage === 'failed' && (
           <button className="pill-button" onClick={onRestart}>
-            새 임시 주문으로 다시 확인
+            주문 다시 확인
           </button>
         )}
       </div>

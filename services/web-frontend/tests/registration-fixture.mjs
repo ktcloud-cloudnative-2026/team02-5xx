@@ -15,6 +15,7 @@ export async function startRegistrationFixture({ preview = false } = {}) {
   let sequence = 50;
   const protocol = [];
   const fixture = await startCustomerHttpFixture({
+    preview,
     input: resolve('tests/registration-entry.jsx'),
     async handleRequest(req, res) {
       const url = new URL(req.url, 'http://fixture');

@@ -106,11 +106,7 @@ try {
       await page.locator('.cart-modal[open]').waitFor();
       assert.equal(await page.locator('.login-modal').count(), 0);
       await page.keyboard.press('Escape');
-      assert.equal(
-        await detail.getByLabel('선택 수량', { exact: true }).textContent(),
-        '2',
-      );
-      await page.keyboard.press('Escape');
+      assert.equal(await page.locator('.detail-modal').count(), 0);
       await page.getByRole('button', { name: '로그인', exact: true }).click();
       await page.getByLabel('로그인 유지', { exact: true }).check();
       await login(page);
@@ -146,7 +142,7 @@ try {
         storage,
         /fixture-access|fixture-refresh|password|accessToken/,
       );
-      await page.locator('.header-cart').click();
+      await page.locator('.cart-nav').click();
       await page.locator('.cart-modal[open]').waitFor();
       assert.equal(
         await page
@@ -202,16 +198,17 @@ try {
         .getByRole('button', { name: '주문하기', exact: true })
         .click();
       assert.match(
-        await page.locator('.cart-modal .action-notice').textContent(),
-        /CUSTOMER/,
+        await page.locator('.cart-modal .cart-feedback').textContent(),
+        /고객용 계정/,
       );
       await page.keyboard.press('Escape');
+      await page.locator('[data-menu-id="1"]').click();
       await page
         .getByRole('button', { name: '이 메뉴만 바로 주문', exact: true })
         .click();
       assert.match(
         await page.locator('.detail-modal .selection-feedback').textContent(),
-        /CUSTOMER/,
+        /고객용 계정/,
       );
     },
   );
@@ -318,7 +315,10 @@ try {
       await page.unroute('**/api/v1/auth/login');
       fixture.controls.loginStatus = 403;
       await login(page);
-      await page.getByRole('alert').filter({ hasText: '허용' }).waitFor();
+      await page
+        .getByRole('alert')
+        .filter({ hasText: '계정 권한 또는 접속 주소' })
+        .waitFor();
       assert.equal(fixture.counts.refresh - before.refresh, 1);
       fixture.controls.loginStatus = 200;
       await login(page);
@@ -330,7 +330,7 @@ try {
     async (page) => {
       await page.getByRole('button', { name: '로그인', exact: true }).click();
       await login(page);
-      await page.locator('.header-cart').click();
+      await page.locator('.cart-nav').click();
       await page.locator('.cart-modal[open]').waitFor();
       assert.ok(
         await page

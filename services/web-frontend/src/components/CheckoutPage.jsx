@@ -73,9 +73,8 @@ export default function CheckoutPage({ flow, source, onClose, onOrders }) {
         aria-labelledby="checkout-title"
       >
         <div className="checkout-brand" aria-hidden="true">
-          PEAK
-          <br />
-          ORDER<span>주문 확인</span>
+          <img src="/images/brand/peakorder-logo-a.png" alt="" />
+          <span>주문 확인</span>
         </div>
         <div className="checkout-main">
           <header className="checkout-header">
@@ -108,8 +107,8 @@ export default function CheckoutPage({ flow, source, onClose, onOrders }) {
               </>
             ) : (
               <>
-                <strong>주문 확인</strong> 금액·판매 상태·재고는 임시 주문
-                단계에서 서버가 다시 확인합니다. 결제는 모의 결제입니다.
+                <strong>모의 결제 안내</strong> 실제 금액은 청구되지 않습니다.
+                주문 내용을 확인하고 진행해 주세요.
               </>
             )}
           </p>
@@ -139,9 +138,9 @@ export default function CheckoutPage({ flow, source, onClose, onOrders }) {
               <p>
                 {mock
                   ? '실제 주문번호가 아닙니다. 실제 재고 차감·조리 등록은 이루어지지 않았어요.'
-                  : 'Order 서버에서 확인한 결제 확정 결과입니다.'}
+                  : '결제가 완료되어 주문이 접수됐어요.'}
               </p>
-              <p>조리 전표 등록은 결제 확정 이후 비동기로 진행됩니다.</p>
+              <p>조리 상황은 주문 내역에서 확인해 주세요.</p>
               <button className="pill-button" onClick={onClose}>
                 메뉴로 돌아가기
               </button>
@@ -182,11 +181,9 @@ export default function CheckoutPage({ flow, source, onClose, onOrders }) {
                 <h2>주문 진행</h2>
                 <p>
                   {{
-                    review:
-                      '먼저 임시 주문을 만들고 검증된 금액을 확인해 주세요.',
-                    creating: '메뉴 검증·임시 주문 생성을 확인하고 있어요…',
-                    ready:
-                      '임시 주문 준비 완료. 아래 금액을 확인한 후 모의 결제를 진행해 주세요.',
+                    review: '주문 내용을 확인하고 결제 금액을 확인해 주세요.',
+                    creating: '주문 가능 여부와 금액을 확인하고 있어요…',
+                    ready: '아래 금액을 확인한 후 모의 결제를 진행해 주세요.',
                     paying:
                       '모의 결제 결과를 기다리고 있어요. 중복 제출하지 마세요.',
                   }[state.stage] ?? '상단 안내를 확인해 주세요.'}
@@ -195,11 +192,9 @@ export default function CheckoutPage({ flow, source, onClose, onOrders }) {
                   <p
                     className="hold-time"
                     role="timer"
-                    aria-label={
-                      mock ? 'Mock 임시 확보 남은 시간' : '임시 확보 남은 시간'
-                    }
+                    aria-label={mock ? 'Mock 결제 가능 시간' : '결제 가능 시간'}
                   >
-                    {mock ? 'Mock 임시 확보 남은 시간' : '임시 확보 남은 시간'}{' '}
+                    {mock ? 'Mock 결제 가능 시간' : '결제 가능 시간'}{' '}
                     <strong>
                       {Math.floor(remaining / 60)}:
                       {String(remaining % 60).padStart(2, '0')}
@@ -210,13 +205,13 @@ export default function CheckoutPage({ flow, source, onClose, onOrders }) {
                 {state.stage === 'ready' &&
                   state.order.totalAmount !== flow.input.total && (
                     <p role="status">
-                      메뉴 가격이 변경되어 서버 확인 금액이 예상 금액과 달라요.
-                      결제 전 주문 금액을 다시 확인해 주세요.
+                      메뉴 가격이 변경됐어요. 결제 전 주문 금액을 다시 확인해
+                      주세요.
                     </p>
                   )}
                 <p className="checkout-caption">
-                  화면 이동은 주문 취소나 재고 해제를 뜻하지 않아요. 실제 처리와
-                  최종 금액은 서버에서 확인해야 합니다.
+                  화면을 닫아도 주문이 취소되지는 않아요. 결제 결과가 불명확하면
+                  주문 상태를 먼저 확인해 주세요.
                 </p>
               </section>
             </>
@@ -251,14 +246,14 @@ export default function CheckoutPage({ flow, source, onClose, onOrders }) {
               onClick={state.stage === 'ready' ? flow.pay : flow.create}
             >
               {state.stage === 'creating'
-                ? '임시 주문 생성 중…'
+                ? '금액 확인 중…'
                 : state.stage === 'paying'
                   ? '모의 결제 진행 중…'
                   : state.stage === 'ready'
                     ? `${formatPrice(state.order.totalAmount)} 모의 결제`
                     : mock
-                      ? 'Mock 임시 주문 만들기'
-                      : '임시 주문 만들기'}
+                      ? '모의 주문 금액 확인'
+                      : '결제 금액 확인'}
             </button>
           )}
           {state.stage === 'ready' && remaining === 0 && (

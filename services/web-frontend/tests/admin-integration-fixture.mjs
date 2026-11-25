@@ -335,6 +335,7 @@ export async function startAdminIntegrationFixture({
       }
       const target =
         customerApi ||
+        path === '/api/v1/inventory/availability' ||
         path.startsWith('/api/v1/store/') ||
         path === '/api/v1/cooking/estimates'
           ? customerHttp.url

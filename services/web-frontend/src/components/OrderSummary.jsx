@@ -37,7 +37,7 @@ export default function OrderSummary({ input, order, mock = true }) {
             {order
               ? mock
                 ? 'Mock 주문 확인 금액'
-                : '서버 주문 확인 금액'
+                : '결제 금액'
               : '예상 주문 금액'}
           </dt>
           <dd>
@@ -47,10 +47,10 @@ export default function OrderSummary({ input, order, mock = true }) {
       </dl>
       <p className="checkout-caption">
         {order
-          ? '임시 주문 응답의 항목과 금액을 확인했어요.'
+          ? '결제할 메뉴와 금액을 확인해 주세요.'
           : mock
-            ? '현재 Mock 메뉴 기준입니다. 실제 금액은 Order 서버가 다시 계산합니다.'
-            : '메뉴 조회 기준 예상 금액입니다. 최종 금액은 Order 서버가 다시 계산합니다.'}
+            ? '미리보기 메뉴 기준의 예상 금액입니다.'
+            : '예상 금액이며 결제 전에 최종 금액을 확인할 수 있어요.'}
       </p>
     </section>
   );

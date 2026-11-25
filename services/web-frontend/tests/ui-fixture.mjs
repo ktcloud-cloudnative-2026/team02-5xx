@@ -1,11 +1,12 @@
 // Local, test-only browser fixture. This file is not imported by index.html or bundled into dist.
 // The injected session is a UI test double, not a login/JWT implementation.
 import http from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { build } from 'vite';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { menuApiHandler } from './menu-api-server.mjs';
+import { inventoryFixtureHandler } from './inventory-fixture.mjs';
 
 export async function startUiFixture({
   entryFile,
@@ -35,15 +36,25 @@ export async function startUiFixture({
     .filter((file) => file.fileName.endsWith('.css'))
     .map((file) => `<link rel="stylesheet" href="/${file.fileName}">`)
     .join('');
+  const imagePaths = new Set(
+    (await readdir(resolve('public/images'), { recursive: true }))
+      .filter((file) => /\.(svg|png|webp)$/.test(file))
+      .map((file) => `/images/${file.replaceAll('\\', '/')}`),
+  );
   const server = http.createServer(async (request, response) => {
     if (handleRequest && (await handleRequest(request, response))) return;
+    if (inventoryFixtureHandler(request, response)) return;
     if (menuApiHandler(request, response)) return;
     const url = new URL(request.url, 'http://127.0.0.1');
-    if (url.pathname === '/images/defaults/menu-placeholder.svg') {
-      response.writeHead(200, { 'Content-Type': 'image/svg+xml' });
-      response.end(
-        await readFile(resolve('public/images/defaults/menu-placeholder.svg')),
-      );
+    if (imagePaths.has(url.pathname)) {
+      response.writeHead(200, {
+        'Content-Type': url.pathname.endsWith('.svg')
+          ? 'image/svg+xml'
+          : url.pathname.endsWith('.png')
+            ? 'image/png'
+            : 'image/webp',
+      });
+      response.end(await readFile(resolve('public', `.${url.pathname}`)));
       return;
     }
     if (url.pathname === '/') {

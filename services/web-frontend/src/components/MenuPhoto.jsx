@@ -1,11 +1,11 @@
 import { useState } from 'react';
+import { menuImage, DEFAULT_MENU_IMAGE } from '../menuImages.js';
 
-export const DEFAULT_MENU_IMAGE = '/images/defaults/menu-placeholder.svg';
+export { DEFAULT_MENU_IMAGE } from '../menuImages.js';
 
-export default function MenuPhoto({ imageUrl }) {
+export default function MenuPhoto({ imageUrl, name }) {
   const [failedImageUrl, setFailedImageUrl] = useState(null);
-  const requestedImageUrl =
-    typeof imageUrl === 'string' && imageUrl.trim() ? imageUrl : null;
+  const requestedImageUrl = menuImage({ imageUrl, name });
   const source =
     requestedImageUrl && failedImageUrl !== requestedImageUrl
       ? requestedImageUrl

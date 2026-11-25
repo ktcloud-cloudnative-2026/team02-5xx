@@ -692,6 +692,7 @@ CO-04의 WAITING 대기열은 `queued_at, id` 오름차순입니다.
 - CI-03: 조리 대기(`WAITING`) 상태에서만 취소 버튼을 활성화하며, 취소 요청 시 Cooking Service가 현재 상태를 재확인하여 취소 가능 여부를 판단합니다.
 - 이벤트 중복 방지: `outbox_events`, `processed_events` 테이블을 활용합니다.
 - FIFO 기준: RabbitMQ에 메시지가 들어온 순서가 아니라 Cooking DB에 실제 등록된 순서를 사용합니다.
+  - Cooking Pod가 2개 이상일 때의 등록 순서는 [이벤트 명세 EV-01](../events/notion-draft.md#ev-01-orderconfirmed)을 따릅니다(#313·#332).
 
 #### 요약
 

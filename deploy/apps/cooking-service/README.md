@@ -73,6 +73,16 @@ Pod가 내려갈 때(롤링 업데이트, 이후 HPA 축소) 진행 중인 요�
 - 이 값을 바꾸면 Pod 템플릿이 바뀌어 Pod가 롤링 교체된다(replicas 1, 자동 동기화). 여러 서비스를 동시에 롤링하지 않는다(DB 연결 예산, #186).
 - Application(`deploy/argocd/dev/cooking-service.yaml`)은 Deployment의 `/spec/replicas`를 비교에서 제외하고 `RespectIgnoreDifferences=true`로 Sync가 그 값을 되돌리지 않게 한다(Order #204와 같은 방식, 자동 동기화 설정은 그대로). 이 파일은 Argo CD가 관리하지 않아 바꾸면 dev에서 `kubectl apply -f deploy/argocd/dev/cooking-service.yaml`로 다시 적용해야 반영된다.
 
+## 자동 확장(HPA, dev)
+
+- `overlays/dev/hpa.yaml`의 HorizontalPodAutoscaler가 CPU 사용률 평균 70%(requests 100m 기준 약 70m)를 목표로 Pod를 1개에서 3개까지 조절한다(이슈 #313, #186 합의값). prod에는 없다.
+- Pod 수는 HPA가 정하고, Application의 `ignoreDifferences`(`/spec/replicas`)와 `RespectIgnoreDifferences`가 Sync가 Git의 `replicas: 1`로 되돌리지 않게 한다. Git의 `replicas: 1`은 HPA가 없을 때의 값이다.
+- 축소는 쿠버네티스 기본 안정화(5분)를 따른다. 줄어드는 Pod는 `preStop`과 정상 종료 설정으로 요청을 보호한다(위 "종료").
+- 확대하면 Pod당 DB 연결이 최대 4개라 서비스당 최대 12개(3 × 4)이고, 롤링 중 임시 Pod를 포함한 전체 예산은 최대 96이다(일반 연결 97, #186). 여러 서비스를 동시에 롤링하지 않는다.
+- 2 Pod 시험(2026-11-25, dev, 주문 3건): 조리 중 전표는 항상 1건 이하였고 각 전표는 한 번만 시작·완료됐다. 조리 중 Pod 하나를 지워도 전표가 끊기지 않고 예정 시각(200초)에 완료됐고, 대기 중 주문 취소는 `CANCELED`로 반영됐다. 완료 이벤트(CookingCompleted)는 모두 발행(`SENT`)되어 Order가 `COMPLETED`로 바꿨고, 중복 수신(`duplicate`)은 0이었다.
+- 알려진 동작: Pod가 2개 이상이면 거의 동시에 결제된 주문의 대기열 등록(`queued_at`) 순서가 결제 순서와 수십 ms 단위로 바뀔 수 있다(시험에서 120ms 간격으로 결제된 두 주문이 48ms 역전). FIFO 기준은 Cooking 등록 시각이라 합의된 규칙 안이다.
+- 확인: `kubectl -n peakorder get hpa cooking-service`로 현재 사용률(TARGETS)과 Pod 수를 본다. 사용률이 `<unknown>`이면 CPU 지표(metrics-server) 문제다. 부하 시험으로 확대·축소와 requests·목표값을 조정하는 것은 아직 남아 있다.
+
 ## 배포 전후 확인
 
 - **V2 마이그레이션 조건**: V2 적용 전 `status = 'COOKING'` 전표가 1개 이하여야 한다. dev·prod Cooking DB는 새 DB라 V1~V3이 차례로 적용되므로 해당 없다.

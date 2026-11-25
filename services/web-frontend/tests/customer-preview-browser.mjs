@@ -95,7 +95,7 @@ try {
     'CUSTOMER HTTP login shows shared OR-03 sample and actual OR-04 detail with options/prices/Cooking',
     async () => {
       await login('customer@example.test');
-      await home().getByText('주문번호 TEST-21', { exact: true }).waitFor();
+      await home().getByText('주문번호 261123-0021', { exact: true }).waitFor();
       await home().getByRole('link', { name: '최근 주문 상세 보기' }).click();
       const detail = page.locator('.order-detail-modal');
       await detail.getByText('총 금액', { exact: true }).waitFor();
@@ -128,7 +128,7 @@ try {
         .getByRole('button', { name: '주문하기', exact: true })
         .click();
       await page
-        .getByRole('button', { name: '임시 주문 만들기', exact: true })
+        .getByRole('button', { name: '결제 금액 확인', exact: true })
         .click();
       await page.getByRole('button', { name: /원 모의 결제$/ }).click();
       await page
@@ -136,7 +136,7 @@ try {
         .click();
       const order = page.locator('.order-detail-modal');
       await order.getByText('총 금액', { exact: true }).waitFor();
-      assert.match(await order.innerText(), /HTTP-CONTRACT-/);
+      assert.match(await order.innerText(), /261123-\d{4}/);
       await order
         .getByRole('button', { name: '주문 상세 닫기', exact: true })
         .click();
@@ -144,7 +144,7 @@ try {
         .getByRole('link', { name: '피크오더 홈', exact: true })
         .click();
       await home()
-        .getByText(/주문번호 HTTP-CONTRACT-/)
+        .getByText(/주문번호 261123-\d{4}/)
         .waitFor();
       await page.screenshot({
         path: resolve(output, 'preview-home-after-checkout.png'),
@@ -155,8 +155,9 @@ try {
     'anonymous and STORE_ADMIN branches remain protected at the same manual URL',
     async () => {
       await page.getByRole('button', { name: '로그아웃', exact: true }).click();
-      await home()
-        .getByRole('button', { name: '고객 로그인', exact: true })
+      await page
+        .locator('.customer-header')
+        .getByRole('button', { name: '로그인', exact: true })
         .waitFor();
       assert.equal(
         await home()
@@ -165,15 +166,16 @@ try {
         0,
       );
       await login('admin@example.test');
-      await home()
-        .getByText(
-          '주문·결제와 내 주문 조회는 CUSTOMER 계정만 이용할 수 있어요.',
-          { exact: true },
-        )
-        .waitFor();
+      await page.getByLabel('로그인 사용자').waitFor();
+      assert.equal(
+        await home()
+          .getByRole('heading', { name: '최근 주문', exact: true })
+          .count(),
+        0,
+      );
       await page.getByRole('link', { name: '주문 내역', exact: true }).click();
       await page
-        .getByText('주문 내역은 CUSTOMER 계정만 확인할 수 있어요.', {
+        .getByText('주문 내역은 고객용 계정으로 확인해 주세요.', {
           exact: true,
         })
         .waitFor();

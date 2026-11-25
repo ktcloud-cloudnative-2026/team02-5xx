@@ -111,6 +111,15 @@ export default function Application({
     );
   return (
     <>
+      {!session.authenticated &&
+        hash === '#home' &&
+        ['password-changed', 'expired'].includes(session.reason) && (
+          <p role="status" className="session-notice">
+            {session.reason === 'password-changed'
+              ? '비밀번호를 변경했어요. 새 비밀번호로 다시 로그인해 주세요. 메뉴와 장바구니는 보존했어요.'
+              : '로그인이 만료됐어요. 다시 로그인해 주세요.'}
+          </p>
+        )}
       {!session.authenticated && logoutState.error && (
         <div role="alert" className="logout-recovery">
           <p>{logoutState.error}</p>

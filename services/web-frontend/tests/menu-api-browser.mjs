@@ -168,7 +168,7 @@ try {
       await page.goto(fixture.url + '#menu-list');
       await page.locator('[data-menu-id="1"]').waitFor();
       await page.locator('#test-sign-in').click();
-      await page.locator('.header-cart').click();
+      await page.locator('.cart-nav').click();
       const cart = page.locator('dialog.cart-modal[open]');
       await cart
         .getByText('장바구니를 확인하지 못했어요', { exact: true })
@@ -206,15 +206,15 @@ try {
       await page.keyboard.press('Escape');
       await page.waitForFunction(() => location.hash !== '#cart');
       await page.waitForFunction(() =>
-        document.activeElement?.classList.contains('header-cart'),
+        document.activeElement?.classList.contains('cart-nav'),
       );
       assert.equal(
         await page
-          .locator('.header-cart')
+          .locator('.cart-nav')
           .evaluate((element) => element === document.activeElement),
         true,
       );
-      await page.locator('.header-cart').click();
+      await page.locator('.cart-nav').click();
       await cart
         .getByLabel('장바구니 전체 합계')
         .filter({ hasText: '28,500원' })

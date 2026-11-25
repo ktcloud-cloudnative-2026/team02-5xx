@@ -323,7 +323,7 @@ try {
       await page.getByRole('dialog', { name: '바로 주문할까요?' }).waitFor();
       await page.getByRole('button', { name: '주문 확인으로 이동 →' }).click();
       await page
-        .getByRole('button', { name: '임시 주문 만들기', exact: true })
+        .getByRole('button', { name: '결제 금액 확인', exact: true })
         .click();
       await page.getByRole('button', { name: /원 모의 결제$/ }).click();
       await page.locator('.mock-order-number').waitFor();
@@ -353,7 +353,7 @@ try {
         .click();
       await login(page);
       await page
-        .getByRole('button', { name: '임시 주문 만들기', exact: true })
+        .getByRole('button', { name: '결제 금액 확인', exact: true })
         .waitFor();
       assert.match(await page.locator('.checkout-summary').innerText(), /× 2/);
       assert.deepEqual(
@@ -499,7 +499,7 @@ try {
         (r) => r.path === '/api/v1/auth/refresh',
       ).length;
       await page
-        .getByRole('button', { name: '임시 주문 만들기', exact: true })
+        .getByRole('button', { name: '결제 금액 확인', exact: true })
         .click();
       await home(page);
       assert.equal(writes, 1);

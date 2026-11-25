@@ -44,10 +44,7 @@ function CancelConfirmation({ onClose, onConfirm }) {
       aria-labelledby="order-confirm-title"
     >
       <h2 id="order-confirm-title">주문을 취소할까요?</h2>
-      <p>
-        최종 취소 가능 여부는 서버가 확인해요. 조리가 시작되면 취소가 거절될 수
-        있어요.
-      </p>
+      <p>조리가 시작된 주문은 취소가 어려울 수 있어요.</p>
       <div className="order-actions">
         <button className="text-button" onClick={close}>
           돌아가기
@@ -182,8 +179,8 @@ function Detail({ state, store, onClose }) {
             )}
             {order.status === 'CANCELED' && (
               <p className="orders-message">
-                서버에서 취소 상태를 확인했어요. 환불과 재고 복원 완료를
-                의미하지는 않습니다.
+                주문 취소를 확인했어요. 환불과 재고 복원 완료를 의미하지는
+                않습니다.
               </p>
             )}
             <section
@@ -232,7 +229,7 @@ function Detail({ state, store, onClose }) {
             )}
             {state.pending && (
               <p role="status">
-                취소 요청 중… 화면을 나가도 서버 처리는 계속될 수 있어요.
+                취소 요청 중… 화면을 닫아도 처리는 계속될 수 있어요.
               </p>
             )}
             <div className="order-actions">
@@ -260,7 +257,7 @@ function Detail({ state, store, onClose }) {
             </div>
             <p className="order-caption">
               취소는 결제 전 또는 조리 시작 전 확인된 주문에 요청할 수 있어요.
-              최종 판단은 서버가 합니다.
+              조리가 시작되면 취소가 어려울 수 있어요.
             </p>
           </>
         )}
@@ -495,14 +492,14 @@ export default function OrderHistoryPage({
         <div className="orders-message">
           <h1>주문 내역</h1>
           {session?.phase === 'restoring' ? (
-            <p role="status">고객 세션 확인 중…</p>
+            <p role="status">로그인 정보를 확인하고 있어요…</p>
           ) : session?.authenticated ? (
-            <p role="alert">주문 내역은 CUSTOMER 계정만 확인할 수 있어요.</p>
+            <p role="alert">주문 내역은 고객용 계정으로 확인해 주세요.</p>
           ) : (
             <>
               <p>본인의 주문을 확인하려면 로그인해 주세요.</p>
               <button className="pill-button" onClick={() => setLogin(true)}>
-                고객 로그인
+                로그인
               </button>
             </>
           )}

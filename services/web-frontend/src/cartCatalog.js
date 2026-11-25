@@ -43,7 +43,11 @@ export function readPendingCart(storageProvider) {
   }
 }
 
-export async function validateCartCatalog(items, api, { signal } = {}) {
+export async function validateCartCatalog(
+  items,
+  api,
+  { signal, allowPaused = false } = {},
+) {
   const menus = new Map(
     await Promise.all(
       [...new Set(items.map((item) => item.menuId))].map(async (menuId) => {
@@ -60,6 +64,7 @@ export async function validateCartCatalog(items, api, { signal } = {}) {
   const validated = loadCart(
     () => ({ getItem: () => JSON.stringify({ version: CART_VERSION, items }) }),
     getMenu,
+    { allowPaused },
   );
   return { ...validated, getMenu, menus, checkedAt: performance.now() };
 }

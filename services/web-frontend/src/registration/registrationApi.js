@@ -92,7 +92,7 @@ export function createRegistrationApi({
       } catch {
         throw new RegistrationError(
           'INVALID_RESPONSE',
-          '가입 서버 응답을 확인하지 못했어요.',
+          '가입 결과를 확인하지 못했어요. 이메일 중복 확인이나 로그인으로 결과를 확인해 주세요.',
         );
       }
       if (signal?.aborted)
@@ -121,7 +121,7 @@ export function createRegistrationApi({
       if (typeof json.message !== 'string' || !json.data)
         throw new RegistrationError(
           'INVALID_RESPONSE',
-          '가입 서버 응답을 확인하지 못했어요.',
+          '가입 결과를 확인하지 못했어요. 이메일 중복 확인이나 로그인으로 결과를 확인해 주세요.',
         );
       return json.data;
     } catch (error) {
@@ -135,7 +135,7 @@ export function createRegistrationApi({
       if (error instanceof RegistrationError) throw error;
       throw new RegistrationError(
         'NETWORK_ERROR',
-        '서버 연결을 확인하지 못했어요. 가입 결과는 이메일 중복 확인 또는 로그인으로 확인해 주세요.',
+        '연결이 끊겼어요. 이메일 중복 확인이나 로그인으로 가입 결과를 확인해 주세요.',
       );
     }
   }

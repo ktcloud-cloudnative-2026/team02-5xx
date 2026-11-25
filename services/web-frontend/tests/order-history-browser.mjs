@@ -178,7 +178,10 @@ async function fresh(hash = '#orders', mobile = false, clock = false) {
   );
 }
 async function login(email = 'customer@example.test') {
-  await page.getByRole('button', { name: '고객 로그인', exact: true }).click();
+  await page
+    .locator('.customer-header')
+    .getByRole('button', { name: '로그인', exact: true })
+    .click();
   await page.getByLabel('이메일', { exact: true }).fill(email);
   await page
     .getByLabel('비밀번호', { exact: true })
@@ -227,7 +230,7 @@ try {
       await page.screenshot({ path: resolve(output, 'orders-desktop.png') });
       await page.getByRole('button', { name: '다음 페이지' }).click();
       await page
-        .getByRole('heading', { name: '주문번호 TEST-1', exact: true })
+        .getByRole('heading', { name: '주문번호 261123-0001', exact: true })
         .waitFor();
       await page
         .locator('.order-card')
@@ -238,7 +241,7 @@ try {
       await modal().getByText('총 금액', { exact: true }).waitFor();
       await page.getByRole('button', { name: '주문 상세 닫기' }).click();
       await page
-        .getByRole('heading', { name: '주문번호 TEST-1', exact: true })
+        .getByRole('heading', { name: '주문번호 261123-0001', exact: true })
         .waitFor();
       assert.match(page.url(), /page=1/);
       await page.waitForFunction(
@@ -339,17 +342,17 @@ try {
       await fresh();
       await login('admin@example.test');
       await page
-        .getByText('주문 내역은 CUSTOMER 계정만 확인할 수 있어요.')
+        .getByText('주문 내역은 고객용 계정으로 확인해 주세요.')
         .waitFor();
       assert.equal(calls.length, 0);
       await fresh();
       controls.listStatus = 403;
       await login();
       await page
-        .getByText('주문 요청 권한 또는 요청 출처가 허용되지 않았어요.')
+        .getByText('이 계정으로 주문 내역을 확인할 수 없어요.')
         .waitFor();
       assert.equal(
-        await page.getByRole('button', { name: '고객 로그인' }).count(),
+        await page.getByRole('button', { name: '로그인' }).count(),
         0,
       );
     },
@@ -517,7 +520,10 @@ try {
           0,
         );
         if (action === 'logout')
-          await page.getByRole('button', { name: '고객 로그인' }).waitFor();
+          await page
+            .locator('.customer-header')
+            .getByRole('button', { name: '로그인' })
+            .waitFor();
         if (action === 'switch')
           await modal()
             .getByText('주문을 찾을 수 없어요.', { exact: false })
@@ -537,7 +543,7 @@ try {
         .getByRole('button', { name: '주문하기', exact: true })
         .click();
       await page
-        .getByRole('button', { name: '임시 주문 만들기', exact: true })
+        .getByRole('button', { name: '결제 금액 확인', exact: true })
         .click();
       await page.getByRole('button', { name: /원 모의 결제$/ }).click();
       await page
@@ -604,7 +610,8 @@ try {
       });
       await cancel();
       await page
-        .getByRole('button', { name: '고객 로그인', exact: true })
+        .locator('.customer-header')
+        .getByRole('button', { name: '로그인', exact: true })
         .waitFor();
       assert.equal(posts, 1);
       assert.equal(fixture.counts.refresh, before);
