@@ -23,3 +23,6 @@ spec:
       kind: HTTPRoute
     - group: autoscaling
       kind: HorizontalPodAutoscaler
+    - group: gateway.envoyproxy.io
+      kind: SecurityPolicy
+      

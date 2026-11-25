@@ -4,3 +4,4 @@ namespace: peakorder
 resources:
   - deployment.yaml
   - service.yaml
+  - httproute.yaml

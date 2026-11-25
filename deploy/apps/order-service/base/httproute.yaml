@@ -1,0 +1,30 @@
+# Gateway(peakorder-gateway)에서 Order로 가는 길 안내.
+# - 고객 API /api/v1/orders/** (GET·POST)만 연다. /api/v1/admin/**, /internal/** 은 열지 않는다.
+# - JWT 필수 경로라 RequestHeaderModifier(remove)를 넣지 않는다.
+#   remove가 있으면 SecurityPolicy claimToHeaders가 넣은 X-User-Id·X-User-Role까지 지워진다(#286 dev 시험).
+#   클라이언트가 보낸 같은 이름의 헤더는 claimToHeaders가 토큰 값으로 덮어쓴다.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: order-service
+  labels:
+    app: order-service
+    team: team02
+spec:
+  parentRefs:
+    - name: peakorder-gateway
+      namespace: envoy-gateway-system
+      sectionName: http
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/v1/orders
+          method: GET
+        - path:
+            type: PathPrefix
+            value: /api/v1/orders
+          method: POST
+      backendRefs:
+        - name: order-service
+          port: 8080
