@@ -79,7 +79,7 @@ curl --fail --silent --show-error --output /dev/null --write-out '%{http_code}\n
 
 ## 서비스 dev 자동 동기화 — Issue #209
 
-초기 배포 검증을 마친 서비스 dev Application은 다음 정책을 사용한다. 등록 대상은 Auth·Cooking·Order·Payment 4개이며, 미등록 서비스는 별도 배포 등록 작업에서 같은 정책을 적용한다. 모니터링 같은 플랫폼 Application과 prod는 이번 변경 대상이 아니다.
+초기 배포 검증을 마친 서비스 dev Application은 다음 정책을 사용한다. 등록 대상은 Auth·Cooking·Order·Payment 4개(#209)와 Inventory·Menu·web-frontend 3개(#290)로, dev 서비스 Application 7개 모두이다. 모니터링 같은 플랫폼 Application과 prod는 이번 변경 대상이 아니다.
 
 ```yaml
 spec:
@@ -107,6 +107,8 @@ Inventory #208, 향후 Menu·프론트 배포 등록 시에는 위 설정을 App
 ### 최초 정책 활성화
 
 Application 자체는 이 서비스 Application의 관리 대상에 포함되지 않는다. 따라서 이 파일들이 main에 병합됐다고 기존 Application의 자동 Sync 설정까지 스스로 바뀌지는 않는다. 승인·병합 후 dev 관리자가 정확한 병합 SHA의 **Application 4개만** 갱신한다. Deployment·Gateway 직접 apply나 자동 삭제는 하지 않는다. 일반 서비스 변경은 이후 Argo CD가 Git에서 반영한다.
+
+#290의 Inventory·Menu·web-frontend도 같은 방식으로 병합 SHA의 **Application 3개만** 갱신한다. Inventory는 활성화 시점에 OutOfSync였다면 Git의 desired 이미지가 즉시 배포되고 기동 시 Flyway 마이그레이션이 적용되므로, Inventory 담당 확인 후 활성화하고 Pod Ready·마이그레이션 적용을 확인한다.
 
 활성화 전에 각 Application이 올바른 main/서비스 dev 경로를 보는지, 현재 Diff가 예상한 승인 범위인지 확인한다. 예상하지 못한 미적용 변경이 있으면 정책 적용을 중단하고 원인을 확인한다. 적용 후에는 정책 값, Synced·Healthy, 진행 중 operation·오류와 실행 이미지를 확인한다. OutOfSync가 없는 상태에서 정책만 켠 것은 새로운 자동 배포 동작까지 검증한 결과가 아니므로, 이후 실제 서비스 배포 PR에서 자동 Sync를 확인한다. 검증만을 위한 서비스 이미지·리소스 변경은 만들지 않는다.
 

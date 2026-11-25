@@ -196,7 +196,7 @@ curl -s localhost:<포트>/actuator/prometheus | grep -E "http_server_requests_s
 | 3 | 5xx 비율(1-1) > 5% | 5분 | critical | 서비스가 요청을 처리하지 못함 | 제안 — 기준값은 성공 기준(plan.md 5절)이 정해지면 조정 | [runbook 공통 확인 순서](runbook.md#공통-확인-순서) |
 | 4 | `increase(kube_pod_container_status_restarts_total{namespace="peakorder"}[15m]) >= 3` | — (15분 집계 구간이 대신함) | warning | 재시작 반복(메모리 초과·기동 실패) | 제안 | [runbook `CrashLoopBackOff`](runbook.md#crashloopbackoff) |
 | 5 | `max(cooking_outbox_pending) > 0`, `max(order_outbox_pending) > 0` (서비스별 규칙) | 5분 | warning | 이벤트 발행이 막힘(정상이면 1초 안에 비워짐) | **구현 (#289)** — 규칙 `CookingOutboxPending`·`OrderOutboxPending`(`deploy/platform/monitoring/values.yaml`). Order는 ServiceMonitor 추가 후 값이 생김 | [runbook `Outbox`](runbook.md#outbox) |
-| 6 | `max(order_cancel_follow_up_manual_required) > 0` | 1분 | warning | 사람이 확인해야 하는 취소 주문이 있음 | 제안 (#135 리뷰) | `services/order-service/README.md` 수동 확인 운영 방법 |
+| 6 | `max(order_cancel_follow_up_manual_required) > 0` | 1분 | warning | 사람이 확인해야 하는 취소 주문이 있음 | **구현 (#309)** — 규칙 `OrderCancelFollowUpManualRequired`(`deploy/platform/monitoring/values.yaml`, `outbox-pending` 그룹) | `services/order-service/README.md` 수동 확인 운영 방법 |
 | 7 | `kube_deployment_status_replicas_available{namespace="peakorder"} == 0` (또는 `absent_over_time(up{…}[5m])`) | 1분 | critical | 서비스 Pod가 하나도 없음(수집 대상 자체가 사라짐 — 2번이 못 잡는 경우) | 미정 — 설치 후 어떤 방식이 동작하는지 검증 | [runbook 공통 확인 순서](runbook.md#공통-확인-순서) |
 
 - p95 응답 시간은 기준값(SLO)이 정해지기 전까지 **대시보드에서만** 본다.
