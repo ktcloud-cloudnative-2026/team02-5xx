@@ -234,12 +234,10 @@ try {
         await detail
           .getByRole('button', { name: '이 메뉴만 바로 주문', exact: true })
           .click();
-        await page
-          .getByRole('dialog', { name: '바로 주문할까요?' })
-          .waitFor();
-        await page
-          .getByRole('button', { name: '주문 확인으로 이동 →' })
-          .click();
+        const question = '바로 주문할까요?';
+        const confirm = '주문 확인으로 이동 →';
+        await page.getByRole('dialog', { name: question }).waitFor();
+        await page.getByRole('button', { name: confirm }).click();
         await page.locator('.checkout-page[open]').waitFor();
       };
       await enterCheckout();
