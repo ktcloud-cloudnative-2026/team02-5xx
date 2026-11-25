@@ -10,7 +10,6 @@ import OrderEstimateDialog, {
 } from './OrderEstimateDialog.jsx';
 import PaymentFailureNotice from './PaymentFailureNotice.jsx';
 import '../checkout/checkout.css';
-import { cancelTopDialog } from '../dialogFocus.js';
 
 export default function CheckoutPage({ flow, source, onClose, onOrders }) {
   const mock = flow.mode === 'mock';
@@ -27,8 +26,11 @@ export default function CheckoutPage({ flow, source, onClose, onOrders }) {
   const needsExitWarning = ['creating', 'ready', 'paying', 'unknown'].includes(
     state.stage,
   );
-  const requestClose = () => (needsExitWarning ? setLeaving(true) : onClose());
-  const { close: _close, ...dialog } = useDialog(requestClose);
+  const { close: requestClose, ...dialog } = useDialog(
+    () => (needsExitWarning ? setLeaving(true) : onClose()),
+    true,
+    { deferClose: true },
+  );
   useEffect(() => {
     setShowEstimate(source === 'immediate');
   }, [source]);
@@ -67,10 +69,6 @@ export default function CheckoutPage({ flow, source, onClose, onOrders }) {
     <>
       <dialog
         {...dialog}
-        onCancel={(event) => cancelTopDialog(event, requestClose)}
-        onClick={(event) => {
-          if (event.target === event.currentTarget) requestClose();
-        }}
         className="checkout-page"
         aria-labelledby="checkout-title"
       >
