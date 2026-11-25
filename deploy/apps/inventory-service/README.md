@@ -4,10 +4,10 @@ Inventory 서비스를 GHCR 이미지와 Argo CD에 연결하는 Kustomize 구�
 
 ## 구조
 
-- `base/`: Deployment 1개, ClusterIP Service 1개 (`inventory-service:8080`)
+- `base/`: Deployment 1개, ClusterIP Service 1개 (`inventory-service:8080`), Gateway HTTPRoute 1개
 - `overlays/dev/`, `overlays/prod/`: 환경별 이미지 태그. DB 주소는 각 클러스터 Secret의 `DB_URL`이 정하므로 환경별 패치는 없다.
 - namespace `peakorder`, 라벨 `app: inventory-service`, `team: team02`
-- 이미지: `ghcr.io/ktcloud-cloudnative-2026/team02-5xx/inventory:sha-<머지 커밋 전체 번호>` (`latest` 금지). 현재 태그는 IN-01·03·04·05(#143) 병합 커밋 `df30b94`의 main CI 게시본이며 Flyway V1까지 적용된다. 새 변경이 병합되면 overlay의 태그를 그 커밋으로 올린다.
+- 이미지: `ghcr.io/ktcloud-cloudnative-2026/team02-5xx/inventory:sha-<머지 커밋 전체 번호>` (`latest` 금지). 태그는 `overlays/dev/kustomization.yaml` 기준이다. 새 변경이 병합되면 overlay의 태그를 그 커밋으로 올린다.
 
 ## 필요한 Secret (값은 Git에 올리지 않는다)
 
@@ -35,8 +35,9 @@ Inventory는 RabbitMQ를 쓰지 않으므로 RabbitMQ 변수는 없다. `enableS
 
 ## 네트워크·외부 노출
 
-- `deploy/platform/network-policies.yaml`의 `allow-inventory-service`를 따른다. Order Pod와 `monitoring` namespace에서 8080으로만 들어올 수 있다.
-- Gateway `HTTPRoute`는 없다. IN-01(고객 품절 조회)의 외부 노출은 Gateway 구성 때 따로 정한다.
+- Gateway(`peakorder-gateway`) 경유 공개는 IN-01 `GET /api/v1/inventory/availability` 하나뿐이다(`base/httproute.yaml`, Exact·GET). 클라이언트가 보낸 `X-User-Id`·`X-User-Role`은 Gateway에서 지운다.
+- 관리자(`/api/v1/admin/inventory/**`, IN-02~06)·내부(`/internal/**`)·`/actuator/**` 경로는 공개하지 않는다.
+- NetworkPolicy는 `deploy/platform/network-policies.yaml`의 `allow-inventory-service`를 따른다. Gateway(`envoy-gateway-system`), Order Pod, `monitoring` namespace에서 8080으로만 들어올 수 있다. `deploy/platform`은 Argo CD 관리 밖이라 dev에 직접 적용한다.
 
 ## 자원·검사
 

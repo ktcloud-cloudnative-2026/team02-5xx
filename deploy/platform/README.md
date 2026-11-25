@@ -53,7 +53,8 @@ kubectl apply -f network-policies.yaml
 | auth-service, web-frontend, order-service | Gateway(`envoy-gateway-system`), 모니터링(`monitoring`) |
 | menu-service | Gateway, 모니터링, order-service, cooking-service, inventory-service |
 | cooking-service | Gateway, 모니터링, order-service |
-| inventory-service, payment-service | 모니터링, order-service |
+| inventory-service | Gateway, 모니터링, order-service |
+| payment-service | 모니터링, order-service |
 | rabbitmq (5672) | order-service, payment-service, cooking-service |
 | rabbitmq (15692) | 모니터링(`monitoring`) |
 | redis | 없음 (사용 서비스가 생기면 추가) |
