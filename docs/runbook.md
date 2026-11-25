@@ -106,10 +106,22 @@ kubectl -n peakorder logs deploy/<받는 서비스> --since=30m | grep -E '"leve
 kubectl -n peakorder logs deploy/<받는 서비스> --since=30m | grep -E ' (WARN|ERROR) ' | tail -20          # 텍스트 로그(그 외)
 ```
 
-**메시지 내용 확인 방법은 아직 정하지 않았다(미정).** 확인할 것은 본문의 `eventId`·`orderId`와 헤더 `x-death`(거절 이유·원래 큐·횟수·시각)다.
-- RabbitMQ 관리 화면(15672)은 dev에서 `rabbitmq-secret` 계정으로 로그인하면 `Not authorized`로 거부됐다(2026-11-23, 원인 미확인). 관리 화면 접속 계정·권한은 플랫폼 담당에게 확인한다.
-- 방법이 정해지기 전까지 **DLQ 메시지를 꺼내거나(get) 지우지 않는다.** 꺼내는 방식에 따라 메시지가 큐에서 사라질 수 있다.
-- 그 전까지는 위 로그(받는 서비스의 WARN·ERROR)로 실패한 `eventId`·`orderId`와 이유를 찾는다.
+**메시지 내용 확인** — 확인할 것은 본문의 `eventId`·`orderId`와 헤더 `x-death`(거절 이유·원래 큐·횟수·시각)다.
+
+RabbitMQ Pod 안의 `rabbitmqadmin`(v2)을 쓴다. 계정은 Pod 안 환경 변수로 넘겨 **비밀번호를 출력하거나 셸 기록에 남기지 않는다.**
+```bash
+RA='RABBITMQADMIN_USERNAME="$RABBITMQ_DEFAULT_USER" RABBITMQADMIN_PASSWORD="$RABBITMQ_DEFAULT_PASS" rabbitmqadmin'
+kubectl -n peakorder exec rabbitmq-0 -- sh -c "$RA queues list"     # 큐별 메시지 수·소비자 수
+Q=cooking.order-confirmed.dlq     # 알림의 queue 라벨에 맞춘다: cooking.order-confirmed.dlq 또는 order.cooking-completed.dlq
+kubectl -n peakorder exec rabbitmq-0 -- sh -c "$RA get messages --queue $Q --count 5 --ack-mode ack_requeue_true"
+```
+- 어느 DLQ인지는 알림 `RabbitMQDeadLetterQueueNotEmpty`의 `queue` 라벨이나 위 `queues list`의 메시지 수로 정한다(위 표: Cooking 실패 / Order 실패).
+- ⚠️ **`get messages`는 반드시 `--ack-mode ack_requeue_true`로 실행한다.** 기본값(`ack_requeue_false`)은 꺼낸 메시지를 **큐에서 지운다.** 지운 DLQ 메시지는 되돌릴 수 없다.
+- 출력 열: `payload`(본문 — `eventId`·`orderId`), `properties`(헤더 — `x-death`), `redelivered`, `exchange`, `routing_key`, `message_count`(꺼낸 뒤 남은 수). `ack_requeue_true`로 본 메시지는 큐에 다시 들어가며 `redelivered`가 `true`로 바뀌거나 순서가 바뀔 수 있다(DLQ에서는 문제없다).
+- 명령 형식은 2026-11-25 dev에서 빈 DLQ로 확인했다(#336). **메시지가 있을 때 `x-death`가 `properties`에 어떻게 보이는지는 아직 확인하지 않았다.**
+- 위 로그(받는 서비스의 WARN·ERROR)로도 실패한 `eventId`·`orderId`와 이유를 찾을 수 있다.
+
+**관리 화면(15672)**: 계정은 `rabbitmq-secret`의 `username`(dev는 `peakorder`, `administrator` 권한)이다. Secret 값은 **base64를 풀어서** 입력한다(`kubectl -n peakorder get secret rabbitmq-secret -o jsonpath='{.data.username}' | base64 -d`; 비밀번호도 같은 방법으로 보되 채팅·이슈에 붙이지 않는다). 2026-11-23의 `Not authorized`는 계정·권한 문제가 아니었다 — 같은 계정으로 관리 API(`rabbitmqadmin show overview`) 로그인이 되는 것을 2026-11-25에 확인했다(#336). 화면은 port-forward로만 보고, 공용 cp에서 이미 쓰이는 포트(3000·18082 등)와 겹치지 않는 번호를 쓴다.
 
 | 원인 | 조치 |
 |---|---|

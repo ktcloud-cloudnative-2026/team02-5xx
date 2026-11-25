@@ -70,6 +70,9 @@ Cooking 저장 규칙은 `cook_time_sec = cookTimeSec + Σ options.extraCookTime
 
 수신 트랜잭션은 ① processed_events에 eventId 삽입(중복이면 업무 처리 없이 종료) → ② 전표·항목 생성 → ③ 커밋 후 ack입니다. cooking_tickets.order_id UNIQUE가 두 번째 중복 방지 장치입니다. Cooking PR은 다른 eventId로 같은 orderId가 다시 오면 경고 후 무시합니다.
 
+**소비 순서(Cooking Pod 2개 이상)**: Cooking의 FIFO 기준은 Cooking DB 등록 순서(`queued_at`)다([API 명세](../api/notion-draft.md) Cooking 처리 규칙). Cooking Pod가 2개 이상이면(HPA, #332) 큐의 메시지를 여러 소비자가 나눠 받으므로, 같은 Outbox 발행 주기에 거의 동시에 들어온 OrderConfirmed의 등록 순서가 **큐에 들어온 순서와** 수십 ms 단위로 바뀔 수 있다(11/25 2 Pod 시험: 120ms 먼저 결제한 주문이 48ms 늦게 등록, #313). 기준에 맞는 동작이며 유지한다(#332 리뷰).
+- **결제 순서는 이 이벤트만으로 보장되지 않는다.** Order는 결제 뒤 재고 확정까지 끝난 주문 확정 트랜잭션에서 Outbox를 저장하므로(위 Publisher), 먼저 결제한 주문도 재고 확정이 늦으면 큐에 **나중에** 들어갈 수 있다. 큐를 단일 활성 소비자로 다시 만들면 **큐에 들어온 순서**까지만 지킨다. 결제 순서까지 보장하려면 Order 쪽 순서 보장이 함께 필요하며 별도 합의 대상이다.
+
 **DTO 확인:** [Order 발행 DTO `cfe5a88`](https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/cfe5a884d7d9b7133f0f99f1094d0000593f51fd/services/order-service/src/main/java/com/peakorder/order/messaging/OrderConfirmedEvent.java)의 Option은 `optionId`, `optionName`, `extraCookTimeSec`를 선언하며, 이벤트 생성 시 주문 옵션의 이름을 전달합니다. [Cooking 수신 DTO `16eb587`](https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/16eb58742a003bda9029f664020519691f00d996/services/cooking-service/src/main/java/com/peakorder/cooking/messaging/OrderConfirmedEvent.java)에도 같은 필드가 존재합니다. optionName 누락에 따른 DTO 불일치는 없습니다. 이는 지정한 커밋의 코드 확인 결과이며 main 병합이나 실제 종단 간 연동 완료를 의미하지 않습니다.
 
 ## EV-02 CookingCompleted
