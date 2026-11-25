@@ -16,6 +16,8 @@ spec:
         app: auth-service
         team: team02
     spec:
+      # Issue #324: preStop 10초 + 앱 정상 종료 대기 30초(Spring Boot 4.1.2 server.shutdown 기본 GRACEFUL) + 여유 10초.
+      terminationGracePeriodSeconds: 50
       containers:
         - name: auth-service
           image: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/auth:sha-317b6ee68bf4cba0f356b5ebdd19abfc02c715d0
@@ -26,6 +28,15 @@ spec:
           env:
             - name: JAVA_TOOL_OPTIONS
               value: -XX:MaxRAMPercentage=60.0
+            # docs/observability.md 3-1 (#324): Spring Boot 내장 ECS JSON 로그(라이브러리 추가 없음).
+            - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+              value: ecs
+          lifecycle:
+            preStop:
+              # Service·Gateway가 엔드포인트에서 이 Pod를 뺄 때까지 SIGTERM을 늦춘다(Order #295와 같음).
+              # 이미지 eclipse-temurin:21-jre-alpine의 sleep 사용.
+              exec:
+                command: ["sh", "-c", "sleep 10"]
           resources:
             requests:
               cpu: 100m
@@ -35,17 +46,17 @@ spec:
               memory: 768Mi
           startupProbe:
             httpGet:
-              path: /v3/api-docs
+              path: /actuator/health/liveness
               port: http
             periodSeconds: 5
             failureThreshold: 24
           readinessProbe:
             httpGet:
-              path: /v3/api-docs
+              path: /actuator/health/readiness
               port: http
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /v3/api-docs
+              path: /actuator/health/liveness
               port: http
             periodSeconds: 20
