@@ -15,12 +15,16 @@ const busy = () =>
 export function createAuthSession({ api = createAuthApi() } = {}) {
   let snapshot = ANONYMOUS;
   let accessToken = null; // Deliberately absent from snapshots, storage and URLs.
+  let accessRevision = 0;
   let generation = 0;
   let refreshAllowed = true;
   let refreshFlight = null;
+  let refreshContext = null;
   let loginFlight = null;
   let logoutFlight = null;
   let restoration = null;
+  let accountFlight = null;
+  let profileRevision = 0;
   const listeners = new Set();
   const publish = (next) => {
     snapshot = Object.freeze(next);
@@ -35,45 +39,125 @@ export function createAuthSession({ api = createAuthApi() } = {}) {
   const check = (epoch, signal) => {
     if (generation !== epoch || signal?.aborted) throw cancelled();
   };
-  async function verified(data, epoch, signal) {
+  async function verified(data, epoch, signal, verifyRecovery) {
     check(epoch, signal);
+    const revision = profileRevision;
     const user = await api.me(data.accessToken, { signal });
     check(epoch, signal);
     if (user.id !== data.user.id)
       throw new AuthError('인증 사용자 응답이 일치하지 않아요.', {
         kind: 'protocol',
       });
+    verifyRecovery?.(data.user, user);
     accessToken = data.accessToken;
+    accessRevision++;
     refreshAllowed = true;
     publish({
       authenticated: true,
       phase: 'authenticated',
-      user,
+      user:
+        revision === profileRevision
+          ? user
+          : Object.freeze({
+              ...user,
+              nickname: snapshot.user?.nickname ?? null,
+            }),
       role: user.role,
     });
     return snapshot;
   }
 
-  function refresh() {
+  function refresh(recovery = null) {
     if (logoutFlight || !refreshAllowed) return Promise.resolve(null);
     if (loginFlight) return loginFlight;
-    if (refreshFlight) return refreshFlight;
+    if (refreshFlight) {
+      if (recovery) refreshContext?.guards.add(recovery);
+      else if (refreshContext) refreshContext.accountOnly = false;
+      return refreshFlight;
+    }
     const epoch = generation;
+    const context = {
+      accountOnly: !!recovery,
+      guards: new Set(recovery ? [recovery] : []),
+    };
+    refreshContext = context;
     if (!snapshot.authenticated) publish({ ...ANONYMOUS, phase: 'restoring' });
     const operation = Promise.resolve()
       .then(async () => {
+        if (
+          context.accountOnly &&
+          [...context.guards].every((guard) => guard.signal?.aborted)
+        )
+          throw cancelled();
         const data = await api.refresh();
-        return verified(data, epoch);
+        return verified(data, epoch, undefined, (tokenUser, user) => {
+          for (const guard of context.guards) {
+            // An existing GET rotation keeps its own lifecycle if an account
+            // subscriber leaves. An account-owned rotation must not publish late.
+            if (!context.accountOnly && guard.signal?.aborted) continue;
+            check(guard.epoch, guard.signal);
+            if (
+              !sameCustomer(guard.owner) ||
+              tokenUser.id !== guard.owner ||
+              user.id !== guard.owner ||
+              tokenUser.role !== 'CUSTOMER' ||
+              user.role !== 'CUSTOMER'
+            )
+              throw new AuthError('인증 사용자 응답이 일치하지 않아요.', {
+                kind: 'protocol',
+              });
+          }
+        });
       })
       .catch((error) => {
-        if (generation === epoch) clear('expired');
+        if (
+          context.guards.size &&
+          (generation !== epoch ||
+            (context.accountOnly &&
+              [...context.guards].every((guard) => guard.signal?.aborted)))
+        )
+          throw cancelled();
+        if (
+          generation === epoch &&
+          !(context.accountOnly && error.kind === 'cancelled')
+        )
+          clear('expired');
         throw error;
       })
       .finally(() => {
-        if (refreshFlight === operation) refreshFlight = null;
+        if (refreshFlight === operation) {
+          refreshFlight = null;
+          refreshContext = null;
+        }
       });
     refreshFlight = operation;
     return operation;
+  }
+
+  const sameCustomer = (owner) =>
+    snapshot.authenticated &&
+    snapshot.user?.id === owner &&
+    snapshot.user.role === 'CUSTOMER';
+  async function recoverAccount401(originalRevision, epoch, owner, signal) {
+    check(epoch, signal);
+    if (!sameCustomer(owner)) {
+      clear('expired');
+      throw new AuthError('인증 사용자 응답이 일치하지 않아요.', {
+        kind: 'protocol',
+      });
+    }
+    // Join a rotating request, or reuse an already rotated token. Never PATCH again.
+    if (refreshFlight || !accessToken || accessRevision === originalRevision)
+      await refresh({ epoch, owner, signal });
+    check(epoch, signal);
+    if (!accessToken || !sameCustomer(owner)) {
+      clear('expired');
+      throw authFailure(401);
+    }
+    throw new AuthError(
+      '인증이 갱신되었어요. 입력한 내용을 확인하고 다시 저장해 주세요.',
+      { kind: 'account-retry', status: 401 },
+    );
   }
 
   function login(credentials, { signal } = {}) {
@@ -115,14 +199,15 @@ export function createAuthSession({ api = createAuthApi() } = {}) {
     return operation;
   }
 
-  async function authorized(operation, retryOn401) {
+  async function authorized(operation, retryOn401, signal) {
     const epoch = generation;
     const originalToken = accessToken;
     try {
       const result = await operation(originalToken);
-      check(epoch);
+      check(epoch, signal);
       return result;
     } catch (error) {
+      if (signal?.aborted) throw cancelled();
       if (error.status !== 401 || generation !== epoch) throw error;
       if (!retryOn401) {
         clear('expired');
@@ -130,17 +215,60 @@ export function createAuthSession({ api = createAuthApi() } = {}) {
       }
       // Another concurrent 401 may already have completed rotation.
       if (!accessToken || accessToken === originalToken) await refresh();
-      check(epoch);
+      check(epoch, signal);
       if (!accessToken) throw error;
       try {
         const result = await operation(accessToken);
-        check(epoch);
+        check(epoch, signal);
         return result;
       } catch (retryError) {
         if (retryError.status === 401 && generation === epoch) clear('expired');
         throw retryError;
       }
     }
+  }
+
+  function changeAccount(operation, { signal, password = false } = {}) {
+    if (accountFlight || loginFlight || logoutFlight || !snapshot.authenticated)
+      return Promise.reject(busy());
+    if (snapshot.user.role !== 'CUSTOMER')
+      return Promise.reject(authFailure(403));
+    const epoch = generation;
+    const owner = snapshot.user.id;
+    profileRevision++;
+    const flight = Promise.resolve()
+      .then(async () => {
+        check(epoch, signal);
+        const originalToken = accessToken;
+        const originalRevision = accessRevision;
+        let result;
+        try {
+          result = await operation(originalToken);
+        } catch (error) {
+          check(epoch, signal);
+          if (error.status === 401)
+            return recoverAccount401(originalRevision, epoch, owner, signal);
+          throw error;
+        }
+        check(epoch);
+        if (password) {
+          clear('password-changed');
+        } else {
+          check(epoch, signal);
+          if (result.id !== owner || result.role !== 'CUSTOMER')
+            throw new AuthError('회원정보 응답이 일치하지 않아요.', {
+              kind: 'protocol',
+            });
+          profileRevision++;
+          publish({ ...snapshot, user: result, role: result.role });
+        }
+        return result;
+      })
+      .finally(() => {
+        if (accountFlight === flight) accountFlight = null;
+      });
+    accountFlight = flight;
+    return flight;
   }
 
   return Object.freeze({
@@ -157,11 +285,31 @@ export function createAuthSession({ api = createAuthApi() } = {}) {
     },
     login,
     logout,
-    refresh,
-    async loadUser() {
+    refresh: () => refresh(),
+    updateProfile(nickname, { signal } = {}) {
+      return changeAccount(
+        (token) => api.updateProfile(token, nickname, { signal }),
+        { signal },
+      );
+    },
+    changePassword(input, { signal } = {}) {
+      // Let a dispatched password change finish even if its screen is left:
+      // a successful 204 must always invalidate local authentication.
+      return changeAccount((token) => api.changePassword(token, input), {
+        password: true,
+        signal,
+      });
+    },
+    async loadUser({ signal } = {}) {
       const epoch = generation;
-      const user = await authorized((token) => api.me(token), true);
-      check(epoch);
+      const revision = profileRevision;
+      const user = await authorized(
+        (token) => api.me(token, { signal }),
+        true,
+        signal,
+      );
+      check(epoch, signal);
+      if (revision !== profileRevision) throw cancelled();
       if (!snapshot.authenticated || user.id !== snapshot.user.id) {
         clear('expired');
         throw new AuthError('인증 사용자 응답이 일치하지 않아요.', {

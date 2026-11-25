@@ -170,7 +170,7 @@ Node.js 24에서 저장소 루트 기준으로 실행합니다.
 
 ```powershell
 node --version
-node --test .github/ci/ci.test.mjs .github/ci/image-ci.test.mjs .github/ci/dev-image-tags.test.mjs
+node --test .github/ci/ci.test.mjs .github/ci/image-ci.test.mjs .github/ci/dev-image-tags.test.mjs .github/ci/image-scope.test.mjs
 node .github/ci/check-services.mjs
 ```
 
@@ -344,7 +344,7 @@ GHCR은 이미지를 하나씩 업로드하므로 중간 실패 시 일부 이�
 ### 검증 방법과 현재 한계
 
 ```sh
-node --test .github/ci/ci.test.mjs .github/ci/image-ci.test.mjs .github/ci/dev-image-tags.test.mjs
+node --test .github/ci/ci.test.mjs .github/ci/image-ci.test.mjs .github/ci/dev-image-tags.test.mjs .github/ci/image-scope.test.mjs
 node .github/ci/check-services.mjs
 ```
 
@@ -395,4 +395,34 @@ inventory·menu·web-frontend처럼 Argo CD 자동 Sync가 아닌 서비스는 P
 
 `.github/ci/dev-image-tags.test.mjs`가 sha 태그 읽기·교체, `latest`·짧은 태그 거부, 게시 성공 이미지만 선택, 소스 변경 유무와
 알 수 없는 이전 커밋 구분, 변경 없음 시 미수정, 토큰 없음 시 PR 미생성, 대체 PR 정리 범위, 워크플로 실행 조건과 권한을 재현합니다.
-기존 211개와 함께 총 227개를 실행합니다.
+기존 211개와 함께 총 227개를 실행합니다. Issue #307의 `.github/ci/image-scope.test.mjs` 12개를 더해 총 239개입니다.
+
+## 외부 다운로드 실패 줄이기 — Issue #307
+
+Maven Central `429 Too Many Requests`와 Gradle 배포본 다운로드 timeout으로 코드와 무관한 CI 실패가 반복되어, 새 도구 없이 두 가지를 적용합니다.
+
+### PR에서는 바뀐 서비스만 이미지 빌드
+
+- PR의 `Image build`와 `CI Final`은 `CI_IMAGE_SCOPE=changed`로 실행합니다.
+- PR 병합 검증 커밋(`HEAD`)과 첫 번째 부모(병합 대상 main) 사이에서 바뀐 파일을 보고, `services/<서비스>/` 아래가 바뀐 서비스만 빌드합니다. 이를 위해 두 작업은 `fetch-depth: 2`로 checkout합니다.
+- 이미지 빌드 공통 파일(`.github/ci/docker/`, `image-ci.mjs`, `service-config.mjs`, `services.json`, `pr-ci.yml`)이 바뀌었거나, 병합 커밋이 아니어서 판단할 수 없으면 전체를 빌드합니다.
+- 바뀐 서비스가 없으면(예: 배포 YAML·문서만 변경) Docker를 실행하지 않고 성공하며, Summary에 생략한 서비스를 표시합니다.
+- **main push는 지금처럼 등록 서비스 전체를 빌드·게시합니다.** dev 태그 자동 PR(#281)이 해당 main SHA로 게시된 이미지를 기준으로 동작하기 때문입니다.
+- Java·React 서비스 CI(코드 검사)는 이번 변경과 관계없이 지금처럼 전체를 실행합니다.
+
+### 다운로드 대기·재시도
+
+- 각 Java 서비스의 `gradle/wrapper/gradle-wrapper.properties` `networkTimeout`을 10초에서 60초로 늘렸습니다.
+- Java 서비스 CI(코드 검사)와 Docker 이미지 빌드의 Gradle 실행에 `-Dorg.gradle.internal.repository.max.retries=5`, `-Dorg.gradle.internal.repository.initial.backoff=2000`을 지정해, 의존성 저장소의 일시적 네트워크 오류 재시도를 늘렸습니다(Gradle 기본값 3회·125ms). 429 응답이 재시도 대상인지는 실제 실행 결과로 확인합니다.
+
+### 겹치는 실행 자동 취소
+
+워크플로 수준 `concurrency`로 같은 PR의 이전 실행을 새 실행이 시작될 때 자동 취소합니다. 커밋 push, PR 본문 수정(`edited`), Ready 전환이 연달아 일어나도 마지막 실행 하나만 끝까지 돕니다. main push는 커밋마다 이미지를 게시해야 하므로 SHA별 그룹으로 두고 취소하지 않습니다. 취소된 실행에서도 `CI Final`은 `always()` 조건으로 실행되어 실패를 남기므로, 취소된 실행이 통과로 오인되지 않습니다.
+
+### 로그 정리
+
+이미지 빌드 컨텍스트를 만들 때 `git ls-files` 결과(서비스 파일 목록)를 로그에 그대로 출력하지 않고, 복사한 파일 개수만 남깁니다. 파일 목록은 전체 로그의 약 11~20%를 차지했고, 파일 이름(`ErrorCode.java` 등) 때문에 로그에서 `error`를 검색하면 실제 오류보다 먼저 걸렸습니다.
+
+### 다음 단계 후보
+
+Java CI에서 만든 jar를 이미지 빌드에서 재사용하는 방식, Gradle 의존성 캐시, Java·React 서비스 CI의 변경 범위 실행은 새 Action 추가나 구조 변경이 따르므로 별도 제안·승인 후 진행합니다.
