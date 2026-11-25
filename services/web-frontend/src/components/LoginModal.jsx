@@ -56,7 +56,7 @@ export default function LoginModal({
             : failure.kind === 'network'
               ? '로그인에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.'
               : failure.status === 403
-                ? '이 계정으로 로그인할 수 없어요. 다른 계정을 확인해 주세요.'
+                ? '로그인할 수 없어요. 계정 권한 또는 접속 주소를 확인해 주세요.'
                 : '로그인하지 못했어요. 잠시 후 다시 시도해 주세요.',
         );
     } finally {

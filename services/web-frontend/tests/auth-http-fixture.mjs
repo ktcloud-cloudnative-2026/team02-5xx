@@ -26,7 +26,7 @@ export async function startAuthFixture({
     role: 'CUSTOMER',
   };
   const admin = { id: 2, email: 'admin@example.test', role: 'STORE_ADMIN' };
-  const send = (response, status, data) => {
+  const send = (response, status, data, errorCode = 'MOCK_AUTH_ERROR') => {
     response.writeHead(status, { 'Content-Type': 'application/json' });
     response.end(
       status === 204
@@ -35,7 +35,7 @@ export async function startAuthFixture({
             success: status === 200,
             data: data ?? null,
             message: status === 200 ? '테스트 응답' : '테스트 오류',
-            ...(status === 200 ? {} : { errorCode: 'MOCK_AUTH_ERROR' }),
+            ...(status === 200 ? {} : { errorCode }),
           }),
     );
   };
@@ -119,7 +119,7 @@ export async function startAuthFixture({
               body.currentPassword !==
               (passwords.get(user.id) ?? 'fixture-only-password')
             )
-              send(response, 400);
+              send(response, 400, null, 'CURRENT_PASSWORD_MISMATCH');
             else if (
               passwordError(
                 body.currentPassword,

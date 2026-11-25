@@ -294,21 +294,7 @@ export default function App({
     const onHistory = () => {
       cancelStockCheck();
       clearActionFeedback();
-      const detailId = window.history.state?.peakOrderCartDetail;
-      if (Number.isSafeInteger(detailId) && detailId > 0) {
-        cartDetail.current = detailId;
-        cartOpen.current = false;
-        setPage('menu');
-        setSelectedId(detailId);
-        return;
-      }
-      const returningFromCartDetail = cartDetail.current !== null;
-      if (cartDetail.current !== null) {
-        cartReturnFocus.current = cartDetail.current;
-        cartDetail.current = null;
-        setSelectedId(null);
-      }
-      if (/^#(orders|account)/.test(window.location.hash)) setSelectedId(null);
+      // Leaving Checkout must dispose its flow before restoring a detail entry.
       if (window.location.hash === '#checkout' && checkoutRef.current) return;
       const completed =
         checkoutRef.current?.flow.getSnapshot().stage === 'paid';
@@ -325,6 +311,21 @@ export default function App({
         checkoutRef.current = null;
         setCheckout(null);
       }
+      const detailId = window.history.state?.peakOrderCartDetail;
+      if (Number.isSafeInteger(detailId) && detailId > 0) {
+        cartDetail.current = detailId;
+        cartOpen.current = false;
+        setPage('menu');
+        setSelectedId(detailId);
+        return;
+      }
+      const returningFromCartDetail = cartDetail.current !== null;
+      if (cartDetail.current !== null) {
+        cartReturnFocus.current = cartDetail.current;
+        cartDetail.current = null;
+        setSelectedId(null);
+      }
+      if (/^#(orders|account)/.test(window.location.hash)) setSelectedId(null);
       const next = window.location.hash === '#cart' ? 'cart' : 'menu';
       if (
         next === 'cart' &&

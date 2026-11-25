@@ -250,7 +250,8 @@ export function createCheckoutFlow({
       emit({
         stage: 'failed',
         order,
-        error: '이 주문은 종료됐어요. 주문 내용을 확인하고 새 주문을 진행해 주세요.',
+        error:
+          '이 주문은 종료됐어요. 주문 내용을 확인하고 새 주문을 진행해 주세요.',
       });
     else
       emit({

@@ -211,6 +211,54 @@ try {
     },
   );
   await check(
+    'cart detail immediate Checkout Back disposes the old flow and permits a new Checkout',
+    async () => {
+      await fresh();
+      await page.getByRole('button', { name: '로그인', exact: true }).click();
+      await page
+        .locator('.login-form input[type=email]')
+        .fill('customer@example.test');
+      await page
+        .locator('.login-form input[type=password]')
+        .fill('fixture-only-password');
+      await page.locator('.login-form button[type=submit]').click();
+      await page.locator('.login-modal').waitFor({ state: 'detached' });
+      await open();
+      await addTwice();
+      const before = await items();
+      const count = await writes();
+      await page.locator('.cart-photo').click();
+      const detail = page.locator('.detail-modal[open]');
+      await detail.waitFor();
+      const enterCheckout = async () => {
+        await detail
+          .getByRole('button', { name: '이 메뉴만 바로 주문', exact: true })
+          .click();
+        await page
+          .getByRole('dialog', { name: '바로 주문할까요?' })
+          .waitFor();
+        await page
+          .getByRole('button', { name: '주문 확인으로 이동 →' })
+          .click();
+        await page.locator('.checkout-page[open]').waitFor();
+      };
+      await enterCheckout();
+      await page.goBack();
+      await page.locator('.checkout-page').waitFor({ state: 'detached' });
+      await page.locator('.estimate-modal').waitFor({ state: 'detached' });
+      await detail.waitFor();
+      assert.equal(await page.locator('dialog[open]').count(), 1);
+      await enterCheckout();
+      await page.goBack();
+      await page.locator('.checkout-page').waitFor({ state: 'detached' });
+      await detail.waitFor();
+      await page.goBack();
+      await page.locator('.cart-modal[open]').waitFor();
+      assert.deepEqual(await items(), before);
+      assert.equal(await writes(), count);
+    },
+  );
+  await check(
     'detail loading failure and failed/cancelled login never pretend an add succeeded or discard selection',
     async () => {
       await fresh();

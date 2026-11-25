@@ -317,7 +317,7 @@ try {
       await login(page);
       await page
         .getByRole('alert')
-        .filter({ hasText: '로그인할 수 없어요' })
+        .filter({ hasText: '계정 권한 또는 접속 주소' })
         .waitFor();
       assert.equal(fixture.counts.refresh - before.refresh, 1);
       fixture.controls.loginStatus = 200;
