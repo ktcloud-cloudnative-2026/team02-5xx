@@ -100,8 +100,16 @@ export function createAuthApi({
       signal,
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    if (response.status !== status)
-      throw authFailure(response.status, response);
+    if (response.status !== status) {
+      const error = authFailure(response.status, response);
+      try {
+        const failure = await response.clone().json();
+        error.errorCode = failure?.errorCode;
+      } catch {
+        /* Preserve HTTP status for non-JSON failures. */
+      }
+      throw error;
+    }
     if (status === 204) return; // Logout has no JSON body.
     let envelope;
     try {
@@ -139,6 +147,30 @@ export function createAuthApi({
         await call('me', { ...options, method: 'GET', accessToken }),
         { profile: true },
       );
+    },
+    async updateProfile(accessToken, nickname, options = {}) {
+      return validateAuthUser(
+        await call('me', {
+          ...options,
+          method: 'PATCH',
+          accessToken,
+          body: { nickname },
+        }),
+        { profile: true },
+      );
+    },
+    async changePassword(
+      accessToken,
+      { currentPassword, newPassword },
+      options = {},
+    ) {
+      await call('me/password', {
+        ...options,
+        method: 'PATCH',
+        accessToken,
+        body: { currentPassword, newPassword },
+        status: 204,
+      });
     },
     async refresh(options = {}) {
       return tokenData(await call('refresh', options));

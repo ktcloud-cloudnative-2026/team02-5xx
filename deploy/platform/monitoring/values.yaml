@@ -57,6 +57,45 @@ additionalPrometheusRulesMap:
               summary: DLQ에 처리하지 못한 이벤트가 있습니다
               description: 받는 서비스가 이벤트를 처리하지 못해 DLQ로 옮겨졌습니다. 메시지를 지우거나 다시 넣지 말고 런북 절차로 원인을 확인하세요.
               runbook_url: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/main/docs/runbook.md#dlq
+  outbox-pending:
+    groups:
+      - name: outbox-pending
+        rules:
+          # 4-2 알림 5번(#52 후속, #289): 이벤트 발행이 5분 넘게 막힘(정상이면 발행기가 1초 안에 비워 0).
+          # Pod마다 같은 DB를 세므로 max로 본다(2-1). DB 조회 실패로 값이 NaN이면 울리지 않는다(4-2 감시 한계).
+          - alert: CookingOutboxPending
+            expr: 'max(cooking_outbox_pending) > 0'
+            for: 5m
+            labels:
+              severity: warning
+              team: team02
+            annotations:
+              summary: Cooking 이벤트(CookingCompleted) 발행이 막혔습니다
+              description: 조리 완료가 Order에 전달되지 않고 있습니다. 런북 Outbox 절차로 RabbitMQ 연결과 Cooking 로그를 확인하세요.
+              runbook_url: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/main/docs/runbook.md#outbox
+          # Order 지표는 ServiceMonitor order-service(#309)로 수집한다.
+          - alert: OrderOutboxPending
+            expr: 'max(order_outbox_pending) > 0'
+            for: 5m
+            labels:
+              severity: warning
+              team: team02
+            annotations:
+              summary: Order 이벤트(OrderConfirmed) 발행이 막혔습니다
+              description: 결제된 주문이 Cooking에 전달되지 않고 있습니다. 런북 Outbox 절차로 RabbitMQ 연결과 Order 로그를 확인하세요.
+              runbook_url: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/main/docs/runbook.md#outbox
+          # 4-2 알림 6번(#135, #309): 자동 재시도를 멈추고 사람이 확인해야 하는 취소 주문이 있음.
+          # Order 담당 의견(#292 리뷰)에 따라 같은 그룹에 둔다. DB를 세는 Gauge라 max로 본다(2-1).
+          - alert: OrderCancelFollowUpManualRequired
+            expr: 'max(order_cancel_follow_up_manual_required) > 0'
+            for: 1m
+            labels:
+              severity: warning
+              team: team02
+            annotations:
+              summary: 사람이 확인해야 하는 취소 주문이 있습니다
+              description: 취소 후 재고 복원 또는 환불이 자동으로 끝나지 않았습니다. Order README의 "수동 확인 운영 방법"으로 목록을 확인하세요.
+              runbook_url: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/main/services/order-service/README.md#주문-취소-or-05
 
 # --- Prometheus Operator ---
 # admission webhook을 끄면 webhook 설정·인증서 생성 Job(hook)과 그 권한이 만들어지지 않는다.
@@ -79,7 +118,7 @@ prometheusOperator:
 
 # --- Prometheus ---
 prometheus:
-  # 차트 밖 수집 대상 (#187, #278)
+  # 차트 밖 수집 대상 (#187, #278, #309)
   additionalServiceMonitors:
     # RabbitMQ 큐별 지표: peakorder의 rabbitmq Service 포트 prometheus(15692, #206).
     # 큐 이름(queue) 라벨이 붙은 묶음만 가져온다 → DLQ 메시지 수(docs/observability.md 4-2 알림 1번)
@@ -104,6 +143,19 @@ prometheus:
       selector:
         matchLabels:
           app: cooking-service
+      namespaceSelector:
+        matchNames:
+          - peakorder
+      endpoints:
+        - port: http
+          path: /actuator/prometheus
+          interval: 30s
+    # Order 서비스 지표(#276·#135): order_outbox_pending, order_cancel_follow_up_manual_required, HTTP histogram, Hikari, JVM.
+    # NetworkPolicy allow-order-service가 monitoring → 8080 허용(#166). /actuator는 Gateway에 열지 않는다.
+    - name: order-service
+      selector:
+        matchLabels:
+          app: order-service
       namespaceSelector:
         matchNames:
           - peakorder

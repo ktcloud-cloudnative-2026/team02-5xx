@@ -1,0 +1,21 @@
+// Browser-safe descriptions, imported only by the independent test entry.
+export const inventoryScenarios = {
+  'menu-read-error': '메뉴 이름·선택 목록 조회 실패',
+  'menu-hidden-name': '비공개 메뉴 이름 조회 불가',
+  normal: '정상 · 부족 · 품절 · 미연결',
+  empty: '빈 목록',
+  'list-401': '목록 401 인증',
+  'list-403': '목록 403 권한',
+  'list-404': '목록 404 비활성 API',
+  'list-500': '목록 서버 오류',
+  slow: '목록·변경 1.5초 지연',
+  'write-400': '변경 400 입력 오류',
+  'write-401': '변경 401 인증',
+  'write-403': '변경 403 권한',
+  'write-404': '변경 404 재고 없음',
+  'in-use': '409 활성 주문 (예약 0 포함)',
+  'menu-linked': '409 메뉴 중복',
+  'menu-hidden': '409 HIDDEN 메뉴',
+  'menu-unavailable': '503 메뉴 서버 장애',
+  'response-lost': '변경 반영 후 응답 유실',
+};

@@ -605,9 +605,17 @@ test("서비스 실행기는 Wrapper와 npm 명령 및 실제 서비스 경로�
   assert.deepEqual(
     calls.slice(0, 3).map((call) => [call.command, call.args]),
     [
-      ["sh", ["./gradlew", "--no-daemon", "--console=plain", "spotlessCheck"]],
-      ["sh", ["./gradlew", "--no-daemon", "--console=plain", "test"]],
-      ["sh", ["./gradlew", "--no-daemon", "--console=plain", "build"]],
+      ...["spotlessCheck", "test", "build"].map((task) => [
+        "sh",
+        [
+          "./gradlew",
+          "--no-daemon",
+          "--console=plain",
+          "-Dorg.gradle.internal.repository.max.retries=5",
+          "-Dorg.gradle.internal.repository.initial.backoff=2000",
+          task,
+        ],
+      ]),
     ],
   );
   assert.deepEqual(
