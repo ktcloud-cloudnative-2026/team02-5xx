@@ -26,6 +26,8 @@ import CartOverlay from './components/CartOverlay.jsx';
 import LoginModal from './components/LoginModal.jsx';
 import CheckoutPage from './components/CheckoutPage.jsx';
 import OrderHistoryPage from './orders/OrderHistoryPage.jsx';
+import AccountPage from './account/AccountPage.jsx';
+import { useAccountRoute } from './account/accountRoute.js';
 import {
   useLocationHash,
   parseOrdersRoute,
@@ -54,6 +56,7 @@ export default function App({
 }) {
   const hash = useLocationHash();
   const ordersRoute = parseOrdersRoute(hash);
+  const accountRoute = useAccountRoute();
   const home = ['', '#', '#home'].includes(hash);
   const session = useSyncExternalStore(
     sessionSource.subscribe,
@@ -229,7 +232,7 @@ export default function App({
 
   useEffect(() => {
     const onHistory = () => {
-      if (window.location.hash.startsWith('#orders')) setSelectedId(null);
+      if (/^#(orders|account)/.test(window.location.hash)) setSelectedId(null);
       if (window.location.hash === '#checkout' && checkoutRef.current) return;
       const completed =
         checkoutRef.current?.flow.getSnapshot().stage === 'paid';
@@ -277,6 +280,11 @@ export default function App({
       setLoginIntent(null);
     }
   }, [authenticated, checkout]);
+
+  useEffect(() => {
+    if (session?.reason === 'password-changed')
+      setNotice('비밀번호를 변경했어요. 새 비밀번호로 다시 로그인해 주세요.');
+  }, [session?.reason]);
 
   useEffect(() => {
     if (
@@ -575,7 +583,9 @@ export default function App({
             ? '#home-heading'
             : ordersRoute
               ? '#orders-heading'
-              : '#menu-list'
+              : accountRoute
+                ? '#account-heading'
+                : '#menu-list'
         }
         onClick={(event) => {
           event.preventDefault();
@@ -584,7 +594,9 @@ export default function App({
               ? 'home-heading'
               : ordersRoute
                 ? 'orders-heading'
-                : 'menu-list',
+                : accountRoute
+                  ? 'account-heading'
+                  : 'menu-list',
           );
           target?.focus();
           target?.scrollIntoView();
@@ -614,10 +626,16 @@ export default function App({
             홈
           </a>
           <a
-            className={`nav-item ${page !== 'cart' && !ordersRoute && !home ? 'active' : ''}`}
+            className={`nav-item ${
+              page !== 'cart' && !ordersRoute && !accountRoute && !home
+                ? 'active'
+                : ''
+            }`}
             href="#menu-list"
             aria-current={
-              page !== 'cart' && !ordersRoute && !home ? 'page' : undefined
+              page !== 'cart' && !ordersRoute && !accountRoute && !home
+                ? 'page'
+                : undefined
             }
           >
             <svg
@@ -664,6 +682,23 @@ export default function App({
             장바구니
             {cart.items.length > 0 ? ` (${cart.items.length})` : ''}
           </button>
+          <a
+            className={`nav-item ${accountRoute ? 'active' : ''}`}
+            href="#account"
+            aria-current={accountRoute ? 'page' : undefined}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 22v-3a8 8 0 0 1 16 0v3" />
+            </svg>
+            마이페이지
+          </a>
         </nav>
       </aside>
       <header className="customer-header" aria-label="고객 계정과 장바구니">
@@ -710,7 +745,10 @@ export default function App({
           congestionApi={congestionApi}
         />
       )}
-      <main className="menu-page" hidden={Boolean(ordersRoute) || home}>
+      <main
+        className="menu-page"
+        hidden={Boolean(ordersRoute || accountRoute) || home}
+      >
         {page !== 'cart' && (
           <p className="action-notice" role="status" aria-live="polite">
             {notice}
@@ -833,6 +871,9 @@ export default function App({
           </section>
         </>
       </main>
+      {accountRoute && (
+        <AccountPage route={accountRoute} sessionSource={sessionSource} />
+      )}
       {ordersRoute && (
         <OrderHistoryPage
           route={ordersRoute}
