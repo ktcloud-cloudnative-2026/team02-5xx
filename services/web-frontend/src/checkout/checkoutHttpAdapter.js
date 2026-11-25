@@ -11,8 +11,9 @@ const messages = {
   STORE_NOT_ACCEPTING_ORDERS: '현재 매장이 주문을 받지 않고 있어요.',
   MENU_NOT_AVAILABLE: '판매 중지되었거나 선택할 수 없는 메뉴·옵션이 있어요.',
   OUT_OF_STOCK: '재고가 부족하여 주문을 만들지 못했어요.',
-  HOLD_EXPIRED: '결제 가능한 시간이 지났어요. 주문 내용을 다시 확인해 주세요.',
-  PAYMENT_FAILED: '모의 결제가 거절됐어요. 주문 내용을 다시 확인해 주세요.',
+  HOLD_EXPIRED: '결제 가능한 시간이 지났어요. 새 주문을 진행해 주세요.',
+  PAYMENT_FAILED:
+    '모의 결제가 거절됐어요. 주문 내용을 확인하고 새 주문을 진행해 주세요.',
   STOCK_CONFIRM_FAILED: '재고를 확정하지 못해 주문이 종료됐어요.',
   ORDER_NOT_PAYABLE: '이 주문은 결제할 수 없어요. 주문 상태를 확인해 주세요.',
   ORDER_PAY_IN_PROGRESS:

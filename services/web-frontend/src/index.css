@@ -18,6 +18,15 @@ body {
   margin: 0;
   min-width: 320px;
 }
+.stock-notice {
+  padding: 12px 0;
+  line-height: 1.65;
+  font-size: 14px;
+}
+.stock-warning {
+  font-weight: 700;
+  color: #9b3026;
+}
 button,
 input,
 select {

@@ -164,7 +164,11 @@ for (const [status, code, definitive] of [
       setHandler((req, res, send) => send(status, null, code));
       await assert.rejects(
         adapter.pay(11),
-        (e) => e.code === code && e.definitive === definitive,
+        (e) =>
+          e.code === code &&
+          e.definitive === definitive &&
+          (!['PAYMENT_FAILED', 'HOLD_EXPIRED'].includes(code) ||
+            e.message.includes('새 주문')),
       );
       assert.equal(requests.filter((r) => r.path.endsWith('/pay')).length, 1);
       assert.equal(

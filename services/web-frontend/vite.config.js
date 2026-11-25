@@ -11,10 +11,22 @@ export default defineConfig(({ mode }) => {
     process.env.ORDER_API_TARGET || env.ORDER_API_TARGET || gatewayTarget;
   const cookingTarget =
     process.env.COOKING_API_TARGET || env.COOKING_API_TARGET || gatewayTarget;
+  const inventoryTarget =
+    process.env.INVENTORY_API_TARGET ||
+    env.INVENTORY_API_TARGET ||
+    gatewayTarget;
   return {
     plugins: [react()],
     server: {
       proxy: {
+        ...(inventoryTarget
+          ? {
+              '/api/v1/inventory': {
+                target: inventoryTarget,
+                changeOrigin: false,
+              },
+            }
+          : {}),
         '/api/v1/menus': {
           target:
             process.env.MENU_API_TARGET ||

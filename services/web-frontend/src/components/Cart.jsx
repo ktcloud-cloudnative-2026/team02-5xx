@@ -15,6 +15,12 @@ export default function Cart({
   failure = '',
   onRetry,
   onMenu,
+  stockStates,
+  stockBlocked = false,
+  stockLoading = false,
+  stockError,
+  onStockRetry,
+  stockChecking = false,
 }) {
   return (
     <section className="cart-page" aria-labelledby="cart-title">
@@ -49,13 +55,34 @@ export default function Cart({
           {warning}
         </p>
       )}
+      {stockStates && !pending && !failure && rows.length > 0 && (
+        <div className="stock-notice" role="status">
+          <p>
+            {stockChecking
+              ? '주문 전 최신 재고 확인 중…'
+              : stockLoading
+                ? '재고 확인 중'
+                : stockError
+                  ? '재고 확인 불가. 품절 여부를 확인하지 못했어요.'
+                  : stockBlocked
+                    ? '품절·재고 부족·판매 중지 항목을 확인해 주세요.'
+                    : '주문 가능한 재고를 확인했어요.'}
+          </p>
+          <button
+            className="text-button"
+            disabled={stockLoading || stockChecking}
+            onClick={onStockRetry}
+          >
+            재고 다시 확인
+          </button>
+        </div>
+      )}
       {pending || failure ? (
         <div className="empty-state" role={failure ? 'alert' : 'status'}>
           <h2>
             {failure ? '장바구니를 확인하지 못했어요' : '장바구니 메뉴 확인 중'}
           </h2>
           <p>{failure || '최신 메뉴와 옵션 가격을 확인하고 있어요.'}</p>
-
           {failure && (
             <button className="pill-button" onClick={onRetry}>
               다시 확인
@@ -84,6 +111,11 @@ export default function Cart({
                       {row.name}
                     </button>
                   </h2>
+                  {stockStates?.get(row.menuId)?.label && (
+                    <p className="stock-warning">
+                      {stockStates.get(row.menuId).label}
+                    </p>
+                  )}
                   <p>{row.optionNames.join(', ') || '추가 옵션 없음'}</p>
                   <span className="cart-unit sr-only">
                     단가 {formatPrice(row.unitPrice)}
@@ -144,11 +176,16 @@ export default function Cart({
             <p>
               표시 금액은 예상 금액이에요.
               <br />
-              주문 시 가격과 재고를 다시 확인합니다.
+              재고는 예약되지 않으며 주문 서버의 최종 확보 결과에 따라 달라질 수
+              있어요.
               <br />
             </p>
-            <button className="pill-button" onClick={onOrder}>
-              주문하기
+            <button
+              className="pill-button"
+              onClick={onOrder}
+              disabled={stockBlocked || stockChecking}
+            >
+              {stockChecking ? '재고 확인 중…' : '주문하기'}
             </button>
           </aside>
         </div>

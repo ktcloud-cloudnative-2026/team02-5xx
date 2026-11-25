@@ -250,7 +250,7 @@ export function createCheckoutFlow({
       emit({
         stage: 'failed',
         order,
-        error: '이 주문은 종료됐어요. 주문 내용을 다시 확인해 주세요.',
+        error: '이 주문은 종료됐어요. 주문 내용을 확인하고 새 주문을 진행해 주세요.',
       });
     else
       emit({
@@ -287,7 +287,7 @@ export function createCheckoutFlow({
     if (!recovery && clock() >= Date.parse(snapshot.order.holdExpiresAt)) {
       emit({
         stage: 'failed',
-        error: '임시 확보 시간이 지났어요. 새 주문으로 확인해 주세요.',
+        error: '결제 가능한 시간이 지났어요. 새 주문을 진행해 주세요.',
         errorCode: 'HOLD_EXPIRED',
       });
       return;
