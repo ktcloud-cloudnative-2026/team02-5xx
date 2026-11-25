@@ -177,7 +177,7 @@ export function createCheckoutFlow({
         order: null,
         estimate: null,
         error:
-          '세션이 변경되어 이전 주문 동작을 중단했어요. 결과가 불명확한 요청은 다시 결제하지 마세요.',
+          '로그인 상태가 변경되어 주문을 중단했어요. 결제 결과가 불명확하면 다시 결제하지 말고 주문 내역을 확인해 주세요.',
       });
     }
   });
@@ -250,7 +250,7 @@ export function createCheckoutFlow({
       emit({
         stage: 'failed',
         order,
-        error: '이 임시 주문은 종료됐어요. 새 주문으로 다시 확인해 주세요.',
+        error: '이 주문은 종료됐어요. 주문 내용을 다시 확인해 주세요.',
       });
     else
       emit({
@@ -268,8 +268,8 @@ export function createCheckoutFlow({
       recoverable: false,
       errorCode: error?.code ?? 'UNKNOWN',
       error: uncertain
-        ? '임시 주문 생성 결과를 확인하지 못했어요. 결제 전 단계이므로 새 임시 주문으로 다시 확인할 수 있어요.'
-        : error?.message || '임시 주문을 만들지 못했어요. 다시 확인해 주세요.',
+        ? '주문 준비 결과를 확인하지 못했어요. 결제 전이므로 주문 내용을 다시 확인해 주세요.'
+        : error?.message || '주문을 준비하지 못했어요. 다시 확인해 주세요.',
     });
   async function submitPayment(recovery = false) {
     if (
@@ -363,7 +363,7 @@ export function createCheckoutFlow({
             if (order.status !== 'CREATED')
               throw new CheckoutError(
                 'INVALID_RESPONSE',
-                '임시 주문 응답을 확인해 주세요.',
+                '주문 상태를 다시 확인해 주세요.',
               );
             emit({ stage: 'ready', order });
           } catch (error) {

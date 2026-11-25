@@ -76,12 +76,9 @@ export default function MenuDetail({
           </div>
         ) : (
           <>
-            <div
-              className="detail-photo"
-              aria-label={`${menu.name} 이미지 준비 중`}
-            >
+            <div className="detail-photo" aria-label={`${menu.name} 사진`}>
               <span className="menu-photo" aria-hidden="true">
-                <MenuPhoto imageUrl={menu.imageUrl} />
+                <MenuPhoto imageUrl={menu.imageUrl} name={menu.name} />
               </span>
             </div>
             <div className="detail-content">

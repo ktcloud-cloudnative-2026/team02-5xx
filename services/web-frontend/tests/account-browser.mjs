@@ -93,7 +93,7 @@ try {
     await main.getByLabel('닉네임', { exact: true }).fill('error');
     await main.getByRole('button', { name: '저장', exact: true }).click();
     await alert(
-      status === 400 ? '입력값' : status === 403 ? '권한' : '처리하지',
+      status === 400 ? '입력한 내용' : status === 403 ? '권한' : '처리하지',
     );
   }
   fixture.controls.status = 200;
@@ -102,7 +102,7 @@ try {
     else await r.continue();
   });
   await main.getByRole('button', { name: '저장', exact: true }).click();
-  await alert('서버 연결');
+  await alert('연결이 끊겼어요');
   await page.unroute('**/api/v1/auth/me');
   await main.getByRole('link', { name: '취소', exact: true }).click();
   await main.getByRole('link', { name: '비밀번호 변경', exact: true }).click();
@@ -240,7 +240,7 @@ try {
   ).length;
   await main.getByRole('button', { name: '저장', exact: true }).click();
   await main
-    .getByText('인증이 만료됐어요. 다시 로그인해 주세요.', { exact: true })
+    .getByText('로그인이 만료됐어요. 다시 로그인해 주세요.', { exact: true })
     .waitFor();
   assert.equal(
     fixture.requests.filter((r) => r.path.endsWith('/refresh')).length,
@@ -248,7 +248,7 @@ try {
   );
   fixture.controls.status = 200;
   await login('admin@example.test', 'fixture-new-password');
-  await main.getByRole('alert').filter({ hasText: 'CUSTOMER' }).waitFor();
+  await main.getByRole('alert').filter({ hasText: '고객용 계정' }).waitFor();
   assert.equal(await main.locator('input').count(), 0);
   assert.deepEqual(errors, []);
   console.log(

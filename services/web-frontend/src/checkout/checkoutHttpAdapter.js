@@ -11,8 +11,8 @@ const messages = {
   STORE_NOT_ACCEPTING_ORDERS: '현재 매장이 주문을 받지 않고 있어요.',
   MENU_NOT_AVAILABLE: '판매 중지되었거나 선택할 수 없는 메뉴·옵션이 있어요.',
   OUT_OF_STOCK: '재고가 부족하여 주문을 만들지 못했어요.',
-  HOLD_EXPIRED: '재고 확보 시간이 지났어요. 새 임시 주문부터 확인해 주세요.',
-  PAYMENT_FAILED: '모의 결제가 거절됐어요. 새 임시 주문부터 확인해 주세요.',
+  HOLD_EXPIRED: '결제 가능한 시간이 지났어요. 주문 내용을 다시 확인해 주세요.',
+  PAYMENT_FAILED: '모의 결제가 거절됐어요. 주문 내용을 다시 확인해 주세요.',
   STOCK_CONFIRM_FAILED: '재고를 확정하지 못해 주문이 종료됐어요.',
   ORDER_NOT_PAYABLE: '이 주문은 결제할 수 없어요. 주문 상태를 확인해 주세요.',
   ORDER_PAY_IN_PROGRESS:
@@ -23,8 +23,8 @@ const messages = {
     '메뉴 정보를 확인하지 못했어요. 잠시 후 다시 조회해 주세요.',
   INVENTORY_SERVICE_UNAVAILABLE:
     '재고 정보를 확인하지 못했어요. 잠시 후 다시 조회해 주세요.',
-  UNAUTHORIZED: '고객 인증이 만료됐어요. 다시 로그인해 주세요.',
-  FORBIDDEN: '요청 권한 또는 요청 출처가 허용되지 않았어요.',
+  UNAUTHORIZED: '로그인이 만료됐어요. 다시 로그인해 주세요.',
+  FORBIDDEN: '이 계정으로 주문할 수 없어요. 로그인한 계정을 확인해 주세요.',
 };
 const terminalCreate = {
   INVALID_REQUEST: 400,
@@ -120,13 +120,21 @@ export function createCheckoutHttpAdapter({
         '통신 결과를 확인하지 못했어요. 먼저 주문 상태를 확인해 주세요.',
       );
     }
+    // Gateway authentication failures may be text/plain. Status takes priority
+    // over the service envelope, without making an uncertain write definitive.
+    if (response.status === 401 || response.status === 403) {
+      const code = response.status === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN';
+      const error = new CheckoutError(code, messages[code]);
+      error.status = response.status;
+      throw error;
+    }
     let envelope;
     try {
       envelope = await response.json();
     } catch {
       throw new CheckoutError(
         'UPSTREAM_INVALID_RESPONSE',
-        '서버 응답을 확인할 수 없어요.',
+        '처리 결과를 확인할 수 없어요. 주문 상태를 확인해 주세요.',
       );
     }
     if (!response.ok) {
@@ -160,7 +168,7 @@ export function createCheckoutHttpAdapter({
     )
       throw new CheckoutError(
         'UPSTREAM_INVALID_RESPONSE',
-        '서버 응답 형식을 확인할 수 없어요.',
+        '처리 결과를 확인할 수 없어요. 주문 상태를 확인해 주세요.',
       );
     return envelope.data;
   }
@@ -218,7 +226,7 @@ export function createCheckoutHttpAdapter({
       if (order.status !== 'CREATED')
         throw new CheckoutError(
           'UPSTREAM_INVALID_RESPONSE',
-          '임시 주문 상태를 확인할 수 없어요.',
+          '주문 상태를 확인할 수 없어요.',
         );
       inputs.set(order.orderId, items);
       return order;

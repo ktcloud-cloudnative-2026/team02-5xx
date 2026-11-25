@@ -1,10 +1,11 @@
 import { formatPrice, MAX_QUANTITY } from '../menu.js';
+import MenuPhoto from './MenuPhoto.jsx';
 
 export default function Cart({
   rows,
   total,
   warning,
-  notice,
+  feedback,
   onQuantity,
   onRemove,
   onBack,
@@ -13,6 +14,7 @@ export default function Cart({
   pending = false,
   failure = '',
   onRetry,
+  onMenu,
 }) {
   return (
     <section className="cart-page" aria-labelledby="cart-title">
@@ -27,9 +29,19 @@ export default function Cart({
           <span className="sr-only">{backLabel}</span>
         </button>
       </header>
-      {notice && (
-        <p className="action-notice" role="status" aria-live="polite">
-          {notice}
+      <p
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {!pending && !failure
+          ? `장바구니 상품 ${rows.reduce((count, row) => count + row.quantity, 0)}개`
+          : ''}
+      </p>
+      {feedback && (
+        <p className="cart-feedback" role="status" aria-live="polite">
+          {feedback}
         </p>
       )}
       {warning && (
@@ -43,7 +55,7 @@ export default function Cart({
             {failure ? '장바구니를 확인하지 못했어요' : '장바구니 메뉴 확인 중'}
           </h2>
           <p>{failure || '최신 메뉴와 옵션 가격을 확인하고 있어요.'}</p>
-          <p>확인 전에는 저장된 항목을 변경하거나 금액을 표시하지 않아요.</p>
+
           {failure && (
             <button className="pill-button" onClick={onRetry}>
               다시 확인
@@ -55,11 +67,23 @@ export default function Cart({
           <ul className="cart-items" aria-label="장바구니 항목">
             {rows.map((row) => (
               <li key={row.key} className="cart-item">
-                <span className="cart-photo" aria-hidden="true">
-                  메뉴 사진
-                </span>
+                <button
+                  className="cart-photo"
+                  onClick={(event) => onMenu?.(row.menuId, event)}
+                  aria-label={`${row.name} 상세 보기`}
+                  data-cart-menu-id={row.menuId}
+                >
+                  <MenuPhoto name={row.name} imageUrl={row.imageUrl} />
+                </button>
                 <div className="cart-item-info">
-                  <h2>{row.name}</h2>
+                  <h2>
+                    <button
+                      className="cart-menu-name"
+                      onClick={(event) => onMenu?.(row.menuId, event)}
+                    >
+                      {row.name}
+                    </button>
+                  </h2>
                   <p>{row.optionNames.join(', ') || '추가 옵션 없음'}</p>
                   <span className="cart-unit sr-only">
                     단가 {formatPrice(row.unitPrice)}
@@ -122,8 +146,6 @@ export default function Cart({
               <br />
               주문 시 가격과 재고를 다시 확인합니다.
               <br />
-              장바구니는 이 브라우저에 저장되며, 주문·결제는 고객 로그인 후
-              진행합니다.
             </p>
             <button className="pill-button" onClick={onOrder}>
               주문하기

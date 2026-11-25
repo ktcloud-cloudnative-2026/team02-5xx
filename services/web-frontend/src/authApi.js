@@ -19,7 +19,7 @@ export function authFailure(status, response) {
 }
 
 function protocolFailure() {
-  throw new AuthError('인증 서버 응답을 확인할 수 없어요.', {
+  throw new AuthError('로그인 정보를 확인할 수 없어요. 다시 시도해 주세요.', {
     kind: 'protocol',
   });
 }
@@ -81,7 +81,7 @@ export function createAuthApi({
     } catch (error) {
       if (signal?.aborted)
         throw new AuthError('인증 요청을 취소했어요.', { kind: 'cancelled' });
-      throw new AuthError('인증 서버에 연결할 수 없어요. 다시 시도해 주세요.', {
+      throw new AuthError('로그인에 연결하지 못했어요. 다시 시도해 주세요.', {
         kind: 'network',
       });
     }

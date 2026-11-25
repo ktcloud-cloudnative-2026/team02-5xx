@@ -42,7 +42,7 @@ export function createMenuApi({
     } catch (error) {
       if (signal?.aborted || error.name === 'AbortError') throw error;
       throw new MenuApiError(
-        '메뉴 서버에 연결할 수 없어요. 다시 시도해 주세요.',
+        '메뉴를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.',
       );
     }
     let body;

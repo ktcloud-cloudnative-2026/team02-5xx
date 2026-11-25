@@ -2,6 +2,10 @@
 // Cookie attributes below are loopback test settings, not deployment policy.
 import { resolve } from 'node:path';
 import { startUiFixture } from './ui-fixture.mjs';
+import {
+  nicknameError,
+  passwordError,
+} from '../src/account/accountValidation.js';
 
 export async function startAuthFixture({
   input = resolve('tests/auth-browser-entry.jsx'),
@@ -12,6 +16,7 @@ export async function startAuthFixture({
   const controls = { loginStatus: 200, logoutStatus: 204, delay: 0 };
   const tokens = new Map();
   const cookies = new Map();
+  const passwords = new Map();
   let serial = 0;
   let lastRememberMe = null;
   const customer = { id: 1, email: 'customer@example.test', role: 'CUSTOMER' };
@@ -56,7 +61,7 @@ export async function startAuthFixture({
     previewControls,
     async handleRequest(request, response) {
       const endpoint = request.url?.split('?')[0].replace('/api/v1/auth/', '');
-      if (!Object.hasOwn(counts, endpoint))
+      if (!Object.hasOwn(counts, endpoint) && endpoint !== 'me/password')
         return handleRequest
           ? handleRequest(
               request,
@@ -66,7 +71,7 @@ export async function startAuthFixture({
               ),
             )
           : false;
-      counts[endpoint]++;
+      if (Object.hasOwn(counts, endpoint)) counts[endpoint]++;
       if (endpoint === 'login') {
         let text = '';
         for await (const chunk of request) text += chunk;
@@ -81,24 +86,77 @@ export async function startAuthFixture({
         if (controls.delay)
           await new Promise((done) => setTimeout(done, controls.delay));
         if (controls.loginStatus !== 200) send(response, controls.loginStatus);
-        else if (
-          body.password !== 'fixture-only-password' ||
-          typeof body.rememberMe !== 'boolean'
-        )
-          send(response, 401);
-        else if (body.email === customer.email) issue(response, customer);
-        else if (body.email === otherCustomer.email)
-          issue(response, otherCustomer);
-        else if (body.email === admin.email) issue(response, admin);
-        else send(response, 401);
-      } else if (endpoint === 'me') {
+        else if (typeof body.rememberMe !== 'boolean') send(response, 401);
+        else {
+          const who = [customer, otherCustomer, admin].find(
+            (user) => user.email === body.email,
+          );
+          if (
+            who &&
+            body.password === (passwords.get(who.id) ?? 'fixture-only-password')
+          )
+            issue(response, who);
+          else send(response, 401);
+        }
+      } else if (endpoint === 'me' || endpoint === 'me/password') {
         const user = tokens.get(
           request.headers.authorization?.replace(/^Bearer /, ''),
         );
+        if (request.method === 'PATCH') {
+          let raw = '';
+          for await (const chunk of request) raw += chunk;
+          let body;
+          try {
+            body = JSON.parse(raw);
+          } catch {
+            send(response, 400);
+            return true;
+          }
+          if (!user) send(response, 401);
+          else if (user.role !== 'CUSTOMER') send(response, 403);
+          else if (endpoint === 'me/password') {
+            if (
+              body.currentPassword !==
+              (passwords.get(user.id) ?? 'fixture-only-password')
+            )
+              send(response, 400);
+            else if (
+              passwordError(
+                body.currentPassword,
+                body.newPassword ?? '',
+                body.newPassword,
+              )
+            )
+              send(response, 400);
+            else {
+              passwords.set(user.id, body.newPassword);
+              for (const [key, owner] of cookies)
+                if (owner.id === user.id) cookies.delete(key);
+              response.setHeader(
+                'Set-Cookie',
+                'fixtureRefresh=; HttpOnly; Path=/api/v1/auth; Max-Age=0; SameSite=Lax',
+              );
+              send(response, 204);
+            }
+          } else if (
+            typeof body.nickname !== 'string' ||
+            nicknameError(body.nickname)
+          )
+            send(response, 400);
+          else {
+            user.nickname = body.nickname;
+            send(response, 200, { ...user, nickname: user.nickname });
+          }
+          return true;
+        }
+        if (request.method !== 'GET' || endpoint !== 'me') {
+          send(response, 405);
+          return true;
+        }
         send(
           response,
           user ? 200 : 401,
-          user ? { ...user, nickname: null } : undefined,
+          user ? { ...user, nickname: user.nickname ?? null } : undefined,
         );
       } else if (endpoint === 'refresh') {
         const cookie = request.headers.cookie?.match(

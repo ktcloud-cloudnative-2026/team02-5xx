@@ -52,7 +52,7 @@ async function until(check) {
 }
 const button = (name) => page.getByRole('button', { name, exact: true });
 async function login() {
-  await button('고객 로그인').click();
+  await button('로그인').click();
   await page
     .getByLabel('이메일', { exact: true })
     .fill('customer@example.test');
@@ -157,7 +157,7 @@ try {
     async () => {
       await fresh(checkout.url + '/#cart');
       await button('주문하기').click();
-      await button('Mock 임시 주문 만들기').click();
+      await button('모의 주문 금액 확인').click();
       await page.getByRole('button', { name: /원 모의 결제$/ }).waitFor();
       const modal = page.locator('.checkout-page[open]');
       await dragMatrix(page, modal);
@@ -184,7 +184,7 @@ try {
     async () => {
       await fresh(checkout.url + '/#cart');
       await button('주문하기').click();
-      await button('Mock 임시 주문 만들기').click();
+      await button('모의 주문 금액 확인').click();
       const pay = page.getByRole('button', { name: /원 모의 결제$/ });
       await pay.waitFor();
       await page.evaluate(() => window.__checkoutQA.holdPaidResponse());

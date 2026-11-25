@@ -359,7 +359,7 @@ try {
       await page.route('**/api/v1/menus/2', (route) =>
         route.fulfill({ json: response(10000) }),
       );
-      await page.locator('.header-cart').click();
+      await page.locator('.cart-nav').click();
       const total = page.getByLabel('장바구니 전체 합계', { exact: true });
       await total.filter({ hasText: '10,000원' }).waitFor();
       await gate.release();
