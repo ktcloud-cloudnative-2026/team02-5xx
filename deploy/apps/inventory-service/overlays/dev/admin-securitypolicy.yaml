@@ -1,0 +1,30 @@
+# Inventory 관리자 HTTPRoute에 JWT 검증을 붙인다(#112 A안, #303 방식). dev 전용(#335).
+# - issuer·audience가 dev 값이라 overlays/dev에 둔다. prod는 관리자 경로를 열지 않는다.
+# - Auth JWKS로 서명·issuer·audience 검증, 실패하면 Gateway가 401.
+# - sub → X-User-Id, role → X-User-Role 로 Inventory에 전달하고, STORE_ADMIN 확인은 서비스가 한다(#247).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: inventory-service-admin-jwt
+  namespace: peakorder
+  labels:
+    app: inventory-service
+    team: team02
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: inventory-service-admin
+  jwt:
+    providers:
+      - name: peakorder-auth
+        issuer: http://10.10.22.100
+        audiences:
+          - peakorder-api-dev
+        remoteJWKS:
+          uri: http://auth-service.peakorder.svc.cluster.local:8080/api/v1/auth/jwks
+        claimToHeaders:
+          - header: X-User-Id
+            claim: sub
+          - header: X-User-Role
+            claim: role
