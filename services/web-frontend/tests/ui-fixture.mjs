@@ -14,6 +14,7 @@ export async function startUiFixture({
   handleRequest,
   testControls = true,
   previewControls,
+  port = 0,
 } = {}) {
   const bundle = await build({
     logLevel: 'error',
@@ -81,7 +82,10 @@ export async function startUiFixture({
       response.end(file);
     }
   });
-  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  await new Promise((done, reject) => {
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', done);
+  });
   return {
     url: `http://127.0.0.1:${server.address().port}`,
     close: () => new Promise((done) => server.close(done)),

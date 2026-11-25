@@ -1,5 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { STATUSES, STATUS_LABELS } from '../../data/admin/adminMenuContract.js';
+import { createAdminMenuAccess } from '../../data/admin/adminMenuAccess.js';
 import AdminDialog from './AdminDialog.jsx';
 import AdminMenuEditor from './AdminMenuEditor.jsx';
 import './admin.css';
@@ -19,8 +26,12 @@ function StatusDialog({ menu, adapter, onSaved, onClose, returnFocusRef }) {
   const [status, setStatus] = useState(menu.status);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
+  const submitting = useRef(false);
   async function save(event) {
     event.preventDefault();
+    if (submitting.current || uncertain) return;
+    submitting.current = true;
     setSaving(true);
     setError('');
     try {
@@ -28,12 +39,14 @@ function StatusDialog({ menu, adapter, onSaved, onClose, returnFocusRef }) {
       onSaved(
         menu.id,
         status === menu.status
-          ? '동일한 모의 상태를 유지했습니다.'
-          : '모의 판매 상태를 변경했습니다.',
+          ? '판매 상태를 유지했습니다.'
+          : '판매 상태를 변경했습니다.',
       );
     } catch (failure) {
       setError(failure.message);
+      setUncertain(failure.uncertain === true);
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   }
@@ -48,8 +61,7 @@ function StatusDialog({ menu, adapter, onSaved, onClose, returnFocusRef }) {
         <div className="am-dialog-body">
           <h3>{menu.name}</h3>
           <p className="am-help">
-            세 상태 사이의 전이와 비공개 메뉴 복귀를 허용하는 제안 계약입니다.
-            재고·품절과는 별개입니다.
+            비공개 메뉴도 다시 판매할 수 있어요. 재고·품절과는 별개입니다.
           </p>
           {error && (
             <div className="am-alert" role="alert">
@@ -76,7 +88,11 @@ function StatusDialog({ menu, adapter, onSaved, onClose, returnFocusRef }) {
           </p>
         </div>
         <footer className="am-dialog-footer">
-          <span className="am-help">실제 서버 변경 없음</span>
+          <span className="am-help">
+            {uncertain
+              ? '창을 닫고 목록을 새로 조회해 저장 결과를 확인해 주세요.'
+              : ''}
+          </span>
           <div>
             <button
               type="button"
@@ -86,8 +102,8 @@ function StatusDialog({ menu, adapter, onSaved, onClose, returnFocusRef }) {
             >
               취소
             </button>
-            <button className="am-button" disabled={saving}>
-              {saving ? '모의 저장 중…' : '상태 저장'}
+            <button className="am-button" disabled={saving || uncertain}>
+              {saving ? '저장 중…' : '상태 저장'}
             </button>
           </div>
         </footer>
@@ -96,31 +112,71 @@ function StatusDialog({ menu, adapter, onSaved, onClose, returnFocusRef }) {
   );
 }
 
-export default function AdminMenuPage({ adapter }) {
+export default function AdminMenuPage({
+  adapter: providedAdapter,
+  embedded = false,
+}) {
+  const access = useMemo(
+    () => createAdminMenuAccess(providedAdapter),
+    [providedAdapter],
+  );
+  const permission = useSyncExternalStore(
+    access.subscribe,
+    access.getSnapshot,
+    access.getSnapshot,
+  );
+  const adapter = access.adapter;
+  useEffect(() => {
+    access.activate();
+    return () => access.dispose();
+  }, [access]);
   const [filters, setFilters] = useState({
     query: '',
     categoryId: '',
     status: '',
     sort: 'default',
   });
-  const [result, setResult] = useState({ categories: [], menus: [] });
+  const [cachedResult, setResult] = useState({ categories: [], menus: [] });
+  const result = permission.denied
+    ? { categories: [], menus: [] }
+    : cachedResult;
   const [phase, setPhase] = useState('loading');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [epoch, setEpoch] = useState(0);
-  const [modal, setModal] = useState(null);
+  const [storedModal, setModal] = useState(null);
+  const modal = permission.denied ? null : storedModal;
   const opener = useRef(null);
   const detailTicket = useRef(0);
+  const errorRegion = useRef(null);
+  const currentError = permission.denied ? permission.error.message : error;
+  useEffect(() => {
+    if (!permission.denied) return;
+    detailTicket.current++;
+    setResult({ categories: [], menus: [] });
+    setModal(null);
+    setNotice('');
+    setError(permission.error.message);
+    setPhase('error');
+    const frame = requestAnimationFrame(() =>
+      errorRegion.current?.focus({ preventScroll: true }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [permission]);
   useEffect(() => {
     let current = true;
+    const controller = new AbortController();
     setPhase('loading');
     setError('');
     adapter
-      .list({
-        ...filters,
-        categoryId: filters.categoryId ? Number(filters.categoryId) : null,
-        status: filters.status || null,
-      })
+      .list(
+        {
+          ...filters,
+          categoryId: filters.categoryId ? Number(filters.categoryId) : null,
+          status: filters.status || null,
+        },
+        { signal: controller.signal },
+      )
       .then((response) => {
         if (current) {
           setResult(response.data);
@@ -128,15 +184,22 @@ export default function AdminMenuPage({ adapter }) {
         }
       })
       .catch((failure) => {
-        if (current) {
+        if (current && failure.name !== 'AbortError') {
           setError(`목록을 불러오지 못했습니다. ${failure.message}`);
           setPhase('error');
         }
       });
     return () => {
       current = false;
+      controller.abort();
     };
   }, [adapter, filters, epoch]);
+  useEffect(
+    () => () => {
+      detailTicket.current++;
+    },
+    [],
+  );
   useEffect(() => {
     if (
       !modal &&
@@ -156,11 +219,13 @@ export default function AdminMenuPage({ adapter }) {
     setModal(null);
   }
   function saved(id, message) {
+    if (access.getSnapshot().denied) return;
     setNotice(`${message} (메뉴 #${id})`);
     setModal(null);
     setEpoch((value) => value + 1);
   }
   async function open(menuId, type, event) {
+    if (access.getSnapshot().denied) return;
     opener.current = event.currentTarget;
     const ticket = ++detailTicket.current;
     setModal({ type: 'loading' });
@@ -169,7 +234,7 @@ export default function AdminMenuPage({ adapter }) {
       if (ticket === detailTicket.current)
         setModal({ type, menu: response.data });
     } catch (failure) {
-      if (ticket === detailTicket.current) {
+      if (ticket === detailTicket.current && failure.name !== 'AbortError') {
         setModal(null);
         setError(`메뉴를 불러오지 못했습니다. ${failure.message}`);
       }
@@ -177,51 +242,63 @@ export default function AdminMenuPage({ adapter }) {
   }
   const categoryName = (id) =>
     result.categories.find((category) => category.id === id)?.name ?? '미지정';
+  const Content = embedded ? 'div' : 'main';
   return (
     <div className="am-shell">
-      <a className="am-skip" href="#am-menu-list">
-        메뉴 목록으로 건너뛰기
-      </a>
-      <aside className="am-sidebar">
-        <div className="am-brand">
-          <span className="am-brand-mark" aria-hidden="true">
-            P
-          </span>
-          PEAK ORDER
-        </div>
-        <span className="am-workspace">매장 관리</span>
-        <div className="am-nav-current" aria-current="page">
-          <span aria-hidden="true">▦</span> 메뉴 관리
-        </div>
-        <div className="am-sidebar-note">
-          ♙<br />
-          관리자
-          <br />
-          <small>Mock 전용</small>
-        </div>
-      </aside>
-      <main className="am-main">
+      {!embedded && (
+        <>
+          <a className="am-skip" href="#am-menu-list">
+            메뉴 목록으로 건너뛰기
+          </a>
+          <aside className="am-sidebar">
+            <div className="am-brand">
+              <span className="am-brand-mark" aria-hidden="true">
+                P
+              </span>
+              PEAK ORDER
+            </div>
+            <span className="am-workspace">매장 관리</span>
+            <div className="am-nav-current" aria-current="page">
+              <span aria-hidden="true">▦</span> 메뉴 관리
+            </div>
+            <div className="am-sidebar-note">
+              ♙<br />
+              관리자
+              <br />
+              <small>Mock 전용</small>
+            </div>
+          </aside>
+        </>
+      )}
+      <Content className="am-main">
         <header className="am-page-heading">
           <div>
             <h1>메뉴 관리</h1>
             <p>메뉴 정보와 옵션, 판매 상태를 한곳에서 관리하세요.</p>
           </div>
-          <div className="am-preview-banner">
-            <strong>MOCK PREVIEW</strong>
-            <span>
-              모의 데이터만 사용합니다. 실제 관리자 인증과 API는 연결되지
-              않았습니다. 새로고침하면 샘플로 돌아갑니다.
-            </span>
-          </div>
+          {!embedded && (
+            <div className="am-preview-banner">
+              <strong>MOCK PREVIEW</strong>
+              <span>
+                모의 데이터만 사용합니다. 실제 관리자 인증과 API는 연결되지
+                않았습니다. 새로고침하면 샘플로 돌아갑니다.
+              </span>
+            </div>
+          )}
         </header>
-        {notice && (
+        {!permission.denied && notice && (
           <div className="am-notice" role="status">
             {notice}
           </div>
         )}
-        {error && (
-          <div className="am-alert am-list-error" role="alert">
-            <span>{error}</span>
+        {currentError && (
+          <div
+            className="am-alert am-list-error"
+            role="alert"
+            tabIndex={-1}
+            ref={errorRegion}
+          >
+            <span>{currentError}</span>
             <button
               type="button"
               className="am-text-button"
@@ -294,6 +371,7 @@ export default function AdminMenuPage({ adapter }) {
                 className="am-button am-create"
                 disabled={!result.categories.length}
                 onClick={(event) => {
+                  if (access.getSnapshot().denied) return;
                   opener.current = event.currentTarget;
                   setModal({ type: 'create' });
                 }}
@@ -432,9 +510,9 @@ export default function AdminMenuPage({ adapter }) {
         </div>
         <footer className="am-page-footer">
           <span>PEAK ORDER · 관리자 메뉴 관리</span>
-          <span>ME-03~07 제안 계약 기반 · 재고 연동 없음</span>
+          {!embedded && <span>독립 검수 화면 · 재고 연동 없음</span>}
         </footer>
-      </main>
+      </Content>
       {modal?.type === 'loading' && (
         <AdminDialog
           title="메뉴 불러오는 중"
@@ -442,7 +520,7 @@ export default function AdminMenuPage({ adapter }) {
           returnFocusRef={opener}
         >
           <div className="am-dialog-body" role="status">
-            모의 상세 데이터를 불러오고 있습니다…
+            메뉴 정보를 불러오고 있습니다…
           </div>
         </AdminDialog>
       )}

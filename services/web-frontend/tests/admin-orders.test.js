@@ -411,16 +411,11 @@ test('HTTP fixture implements exact number/period/status/manual/page and separat
     await fixture.close();
   }
 });
-test('customer production bundle excludes independent admin UI and fixture data', async () => {
+test('integrated product excludes independent preview and fixture data', async () => {
   const bundle = await build({ logLevel: 'silent', build: { write: false } });
   const output = bundle.output
     .map((file) => file.code ?? file.source)
     .join('\n');
-  for (const marker of [
-    'HTTP FIXTURE PREVIEW',
-    '/api/v1/admin/orders',
-    'PO-20200101-0001',
-    'STORE MANAGEMENT',
-  ])
+  for (const marker of ['HTTP FIXTURE PREVIEW', 'PO-20200101-0001'])
     assert.equal(output.includes(marker), false);
 });

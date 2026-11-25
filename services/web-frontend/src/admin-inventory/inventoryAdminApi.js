@@ -132,6 +132,12 @@ export function createInventoryAdminApi({
       );
     }
     signal?.throwIfAborted();
+    if (response.status === 401 || response.status === 403)
+      throw httpFailure(
+        response.status,
+        response.status === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN',
+        write,
+      );
     let envelope;
     try {
       envelope = await response.json();

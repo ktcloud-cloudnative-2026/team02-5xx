@@ -237,6 +237,11 @@ export function createDashboardApi({
         ...(write ? { body: JSON.stringify(body) } : {}),
       });
       signal?.throwIfAborted();
+      if (response.status === 401 || response.status === 403)
+        throw new DashboardError(statusMessage(response.status), {
+          status: response.status,
+          code: response.status === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN',
+        });
       let envelope;
       try {
         envelope = await response.json();

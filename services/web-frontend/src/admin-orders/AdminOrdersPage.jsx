@@ -421,6 +421,7 @@ function Search({ query, onSearch }) {
 }
 export default function AdminOrdersPage({
   api = defaultApi,
+  embedded = false,
   environmentNotice,
 }) {
   const hash = useAdminRoute();
@@ -461,43 +462,52 @@ export default function AdminOrdersPage({
   const totalPages = list.data
     ? Math.ceil(list.data.totalElements / list.data.size)
     : 0;
+  const Content = embedded ? 'div' : 'main';
   return (
     <div className="ao-app">
-      <a
-        className="ao-skip"
-        href="#ao-main"
-        onClick={(event) => {
-          event.preventDefault();
-          document.getElementById('ao-main')?.focus();
-        }}
-      >
-        주문 목록으로 건너뛰기
-      </a>
-      <aside className="ao-sidebar" aria-label="관리자 메뉴">
-        <div className="ao-brand" aria-label="Peak Order">
-          P
-        </div>
-        <nav aria-label="매장 관리">
-          <span className="ao-nav-muted">
-            <Icon name="grid" />
-            대시보드
-          </span>
-          <span className="ao-nav-muted">
-            <Icon name="box" />
-            재고관리
-          </span>
-          <span className="ao-nav-muted">
-            <Icon name="menu" />
-            메뉴관리
-          </span>
-          <a className="ao-nav-active" href="#admin-orders" aria-current="page">
-            <Icon name="order" />
-            주문 관리
+      {!embedded && (
+        <>
+          <a
+            className="ao-skip"
+            href="#ao-main"
+            onClick={(event) => {
+              event.preventDefault();
+              document.getElementById('ao-main')?.focus();
+            }}
+          >
+            주문 목록으로 건너뛰기
           </a>
-        </nav>
-        <span className="ao-admin-label">관리자</span>
-      </aside>
-      <main className="ao-main" id="ao-main" tabIndex={-1}>
+          <aside className="ao-sidebar" aria-label="관리자 메뉴">
+            <div className="ao-brand" aria-label="Peak Order">
+              P
+            </div>
+            <nav aria-label="매장 관리">
+              <span className="ao-nav-muted">
+                <Icon name="grid" />
+                대시보드
+              </span>
+              <span className="ao-nav-muted">
+                <Icon name="box" />
+                재고관리
+              </span>
+              <span className="ao-nav-muted">
+                <Icon name="menu" />
+                메뉴관리
+              </span>
+              <a
+                className="ao-nav-active"
+                href="#admin-orders"
+                aria-current="page"
+              >
+                <Icon name="order" />
+                주문 관리
+              </a>
+            </nav>
+            <span className="ao-admin-label">관리자</span>
+          </aside>
+        </>
+      )}
+      <Content className="ao-main" id="ao-main" tabIndex={-1}>
         <header className="ao-page-heading">
           <div>
             <p className="ao-eyebrow">STORE MANAGEMENT</p>
@@ -675,7 +685,7 @@ export default function AdminOrdersPage({
         <footer className="ao-page-footer">
           PEAK ORDER · 관리자 주문 조회
         </footer>
-      </main>
+      </Content>
       {!route.error && route.selectedId !== null && (
         <Detail
           state={

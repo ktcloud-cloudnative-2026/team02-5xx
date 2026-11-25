@@ -390,10 +390,7 @@ try {
       const { gate } = await pending(page, cleanups);
       await loginModal(page);
       await gate.release();
-      await page
-        .getByText('현재 담을 수 없는 메뉴입니다.', { exact: true })
-        .first()
-        .waitFor();
+      await page.getByText('판매 중지', { exact: true }).first().waitFor();
       assert.ok(details >= 2);
       assert.deepEqual(await stored(page), original);
       assert.equal(await writes(page), 0);

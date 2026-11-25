@@ -297,11 +297,15 @@ try {
             .click();
           if (operation === 'pay')
             await page.getByRole('button', { name: /원 모의 결제$/ }).click();
-          if (status === 401)
+          if (status === 401) {
+            await page.waitForURL('**/#home');
             await page
-              .getByText(/로그인 상태가 변경되어 주문을 중단/)
+              .locator('.session-notice')
+              .filter({ hasText: '로그인이 만료됐어요' })
               .waitFor();
-          else if (operation === 'pay')
+            assert.equal(await page.locator('.checkout-page').count(), 0);
+            assert.equal(await page.getByLabel('로그인 사용자').count(), 0);
+          } else if (operation === 'pay')
             await page.getByText(/처리 결과를 확인할 수 없어요/).waitFor();
           else
             await page

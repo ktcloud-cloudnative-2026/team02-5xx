@@ -48,7 +48,7 @@ async function fresh({ scenario = 'mixed', items = [], width = 1440 } = {}) {
       return original.call(this, key, value);
     };
   }, items);
-  await page.goto(fixture.url);
+  await page.goto(`${fixture.url}/#menu-list`);
   await page.locator('[data-menu-id="1"]').waitFor();
   await page.waitForFunction(
     () =>

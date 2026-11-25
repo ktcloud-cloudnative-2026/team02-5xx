@@ -41,7 +41,15 @@ async function fresh(
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text());
   });
-  page.on('requestfailed', (request) => network.push(request.url()));
+  page.on('requestfailed', (request) => {
+    // History/unmount cancels the public stock GET added by #267. Keep genuine
+    // network failures and every failed mutation in the error assertion below.
+    const cancelledStockRead =
+      request.method() === 'GET' &&
+      new URL(request.url()).pathname === '/api/v1/inventory/availability' &&
+      request.failure()?.errorText === 'net::ERR_ABORTED';
+    if (!cancelledStockRead) network.push(request.url());
+  });
   page.on('response', (response) => {
     if (response.status() >= 400)
       network.push(`${response.status()} ${response.url()}`);
