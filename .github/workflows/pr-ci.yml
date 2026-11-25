@@ -95,11 +95,14 @@ jobs:
 
       # Issue #328: 공유 IP 러너의 Maven Central 429를 줄이려고 Gradle 의존성과 Wrapper 배포판만 캐시한다.
       # main push 실행이 저장한 캐시를 PR 실행이 복원한다(PR 캐시는 그 PR 안에서만 보인다).
+      # 잠금 파일·gc.properties는 Gradle 안내대로 캐시하지 않는다(이전 실행의 잠금이 복원되면 대기가 생길 수 있음, #329 리뷰).
       - name: Restore Gradle dependency cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.gradle/caches/modules-2
+            !~/.gradle/caches/modules-2/*.lock
+            !~/.gradle/caches/modules-2/gc.properties
             ~/.gradle/wrapper/dists
           key: gradle-deps-${{ runner.os }}-${{ hashFiles('services/*/build.gradle', 'services/*/build.gradle.kts', 'services/*/settings.gradle', 'services/*/settings.gradle.kts', 'services/*/gradle/libs.versions.toml', 'services/*/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
