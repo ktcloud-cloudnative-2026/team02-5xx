@@ -61,6 +61,15 @@ Pod가 내려갈 때(롤링 업데이트, 이후 HPA 축소) 진행 중인 요�
 - 이 값을 바꾸면 Pod 템플릿이 바뀌어 Pod가 롤링 교체된다(replicas 1). 여러 서비스를 동시에 롤링하지 않는다(DB 연결 예산, #186).
 - Application(`deploy/argocd/dev/inventory-service.yaml`)은 Deployment의 `/spec/replicas`를 비교에서 제외하고 `RespectIgnoreDifferences=true`로 Sync가 그 값을 되돌리지 않게 한다(Order #204와 같은 방식). 이 파일은 Argo CD가 관리하지 않아 바꾸면 dev에서 `kubectl apply -f deploy/argocd/dev/inventory-service.yaml`로 다시 적용해야 반영된다.
 
+## 자동 확장(HPA, dev)
+
+- `overlays/dev/hpa.yaml`의 HorizontalPodAutoscaler가 CPU 사용률 평균 70%(requests 100m 기준 약 70m)를 목표로 Pod를 1개에서 3개까지 조절한다(이슈 #312, #186 합의값). prod에는 없다.
+- Pod 수는 HPA가 정하고, Application의 `ignoreDifferences`(`/spec/replicas`)와 `RespectIgnoreDifferences`가 Sync가 Git의 `replicas: 1`로 되돌리지 않게 한다. Git의 `replicas: 1`은 HPA가 없을 때의 값이다.
+- 축소는 쿠버네티스 기본 안정화(5분)를 따른다. 줄어드는 Pod는 `preStop`과 정상 종료 설정으로 요청을 보호한다(위 "종료").
+- 확대하면 Pod당 DB 연결이 최대 4개라 서비스당 최대 12개(3 × 4)이고, 롤링 중 임시 Pod를 포함한 전체 예산은 최대 96이다(일반 연결 97, #186). 여러 서비스를 동시에 롤링하지 않는다.
+- 2 Pod 시험(2026-11-25, dev, 메뉴 3 재고 44개, 내부 API를 Pod마다 port-forward로 직접 호출): 두 Pod에 서로 다른 주문 54건의 재고 확보를 동시에 보냈을 때 성공은 정확히 44건, 나머지 10건은 `409`였고 초과 확보가 없었다(`reserved_qty`는 `stock_qty`와 같은 44, DB 제약 `reserved_qty ≤ stock_qty`). 같은 `orderId`를 두 Pod에서 동시에 4번 요청해도 확보는 한 건만 생겼고, 같은 확보의 확정·해제·복원을 두 Pod에서 동시에 보내도 중복 반영이 없었다. 확보 만료(`HoldExpiryScheduler`, 5초 주기)를 두 Pod가 돌렸는데도 `reserved_qty`가 정확히 0으로 돌아왔고(중복 해제 없음) 재고는 시작 값 44로 복원됐다. 결과는 이슈 #312 댓글에 있다.
+- 확인: `kubectl -n peakorder get hpa inventory-service`로 현재 사용률(TARGETS)과 Pod 수를 본다. 사용률이 `<unknown>`이면 CPU 지표(metrics-server) 문제다. 부하 시험으로 확대·축소와 requests·목표값을 조정하는 것은 아직 남아 있다.
+
 ## 확인 명령
 
 ```bash
