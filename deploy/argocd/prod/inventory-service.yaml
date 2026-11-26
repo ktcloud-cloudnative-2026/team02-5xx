@@ -1,0 +1,20 @@
+# prod Application (초안). dev와 달리 자동 동기화를 두지 않는다.
+# - prod 반영은 "dev 검증 → prod overlay PR → 리뷰·승인 → Argo CD 화면에서 수동 Sync" 순서로만 한다.
+# - 적용 전 확인할 것은 deploy/argocd/README.md의 "prod 준비" 절을 따른다.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: inventory-service-prod
+  namespace: argocd
+  labels:
+    app: inventory-service
+    team: team02
+spec:
+  project: peakorder-prod
+  source:
+    repoURL: https://github.com/ktcloud-cloudnative-2026/team02-5xx.git
+    targetRevision: main
+    path: deploy/apps/inventory-service/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: peakorder

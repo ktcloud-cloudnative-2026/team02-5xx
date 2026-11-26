@@ -4,4 +4,7 @@ resources:
   - ../../base
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/auth
-    newTag: sha-317b6ee68bf4cba0f356b5ebdd19abfc02c715d0
+    # 현재 dev에서 검증한 이미지(#369로 dev 반영·확인)를 prod 후보로 올린다.
+    newTag: sha-6219d6bf419ca733376c317fcbc4bbbd4d38ba5b
+patches:
+  - path: session-patch.yaml
