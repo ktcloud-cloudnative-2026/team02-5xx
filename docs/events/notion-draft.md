@@ -8,7 +8,7 @@
 - 공통 확정 규칙: [CLAUDE.md](../../CLAUDE.md)
 - 최근 확인: 2026-11-26, main `340cda0` 기준 1차 대조(#193).
 - 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
-- 구현 기준(현재, 2026-11-19): main `b4724aa`에는 Order Flyway V1~V5와 주문 생성·조회·결제·취소 API(PR #28·#29·#46·#61)·관리자 영업·접수 API(PR #133)·취소 후속 처리 재시도 상한(PR #135)·주문 상세 조리 상태(PR #142), Order의 이벤트 발행·수신(OrderConfirmed 발행·CookingCompleted 수신, PR #52), Cooking의 OrderConfirmed 수신(PR #57)·자동 조리 진행과 CookingCompleted 발행([PR #78](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/78))·전표 등록 시각 DB 기록(PR #109)·메뉴 이름·옵션 요약 길이 초과 시 잘라 저장(PR #113)이 병합되어 있습니다. 두 서비스를 함께 띄운 실제 이벤트 연동은 아직 확인하지 않았으며, 열린 PR의 구현을 main 반영 완료로 표시하지 않습니다.
+- 과거 구현 기준(2026-11-19): main `b4724aa`에는 Order Flyway V1~V5와 주문 생성·조회·결제·취소 API(PR #28·#29·#46·#61)·관리자 영업·접수 API(PR #133)·취소 후속 처리 재시도 상한(PR #135)·주문 상세 조리 상태(PR #142), Order의 이벤트 발행·수신(OrderConfirmed 발행·CookingCompleted 수신, PR #52), Cooking의 OrderConfirmed 수신(PR #57)·자동 조리 진행과 CookingCompleted 발행([PR #78](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/78))·전표 등록 시각 DB 기록(PR #109)·메뉴 이름·옵션 요약 길이 초과 시 잘라 저장(PR #113)이 병합되어 있습니다. 당시에는 실제 연동 확인 전이었으며, 최신 검증은 아래 11/24~25 dev 검증 기록을 따릅니다. 열린 PR은 main 반영 완료로 표시하지 않습니다.
 
 ---
 
