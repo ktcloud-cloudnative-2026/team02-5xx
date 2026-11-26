@@ -5,6 +5,6 @@ resources:
   - hpa.yaml
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/auth
-    newTag: sha-c782944fbef4be7253240f0198cce4feab238da5
+    newTag: sha-ad7c5b2e0e1b6aa4e6f798adfae3062e5ae53c4b
 patches:
   - path: session-patch.yaml
