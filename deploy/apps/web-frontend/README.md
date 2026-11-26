@@ -21,6 +21,7 @@ web-frontend/
     dev/kustomization.yaml
     dev/resources-patch.yaml
     prod/kustomization.yaml
+    prod/resources-patch.yaml
 ```
 
 - Deployment와 ClusterIP Service 이름은 `web-frontend`입니다.
@@ -33,11 +34,94 @@ web-frontend/
   별도 헬스 API나 백엔드 연결을 요구하지 않습니다.
 - Probe 주기와 실패 임계값 등은 Kubernetes 기본값을 사용합니다.
   이미지 실행 명령은 재정의하지 않고 PR #79의 Nginx 실행 구성을 사용합니다.
-- dev/prod는 별도 클러스터에 같은 Base를 사용합니다. #366의 자원 초기값은
-  dev의 `resources-patch.yaml`에만 지정하며 prod는 기존 구성을 유지합니다.
+- dev/prod는 별도 클러스터에 같은 Base를 사용합니다. #366의 dev 자원 초기값과
+  #417의 prod 초기 후보는 각 환경의 `resources-patch.yaml`에서 독립 관리합니다.
 - 환경별 복제 수, 스케줄링 및 추가 보안 정책은 지정하지 않았습니다.
-  자원 설정의 근거와 측정 한계는 아래 #366을 따릅니다.
+  자원 설정의 근거와 측정 한계는 아래 #366 및 #417을 따릅니다.
   Namespace 생성과 이미지 접근 권한도 플랫폼 담당 범위입니다.
+
+## #417 prod 자원 초기 후보 (2026-11-26)
+
+[Issue #417](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/417)은
+[#186](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/186)의 환경별 검증 원칙에 따라
+[#366](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/366) /
+[PR #372](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/372)의 dev 초기값을
+prod 전용 patch로 추가합니다. **실제 운영 부하를 검증한 최종값이 아닙니다.**
+
+| 자원   | requests | limits |
+| ------ | -------- | ------ |
+| CPU    | 25m      | 250m   |
+| Memory | 32Mi     | 128Mi  |
+
+### 근거와 적용 한계
+
+- #372의 현재 게시 이미지(`sha-6219d6bf419ca733376c317fcbc4bbbd4d38ba5b`)를
+  WSL2의 별도 rootfs/network namespace와 cgroup v2에서 제한해 측정한 기록을 근거로 합니다.
+  Nginx 1.30.6, master 1 + worker 4, UID 101, 8080 조건에서 기동 memory peak 6.60Mi,
+  lifetime peak 16.03Mi, 유휴 메모리 4.71Mi였습니다. 20/200/1000 req/s에서 평균 CPU는
+  4.3/28.9/120.6m, throttled periods는 0%였습니다. 부하 요청 67,602개는 모두 200,
+  HTTP/연결 오류와 memory max/oom/oom_kill은 0이었습니다. 아래 원본 측정 기록을 유지합니다.
+- 동시 32 포화 시험에서는 CPU 249.8m, throttled periods 99.34%, p95 81.77ms였습니다.
+  이는 CPU 상한의 영향을 보여 주므로 처리량이나 지연의 운영 보장값으로 사용하지 않습니다.
+  증가 부하에서 CPU가 requests 25m를 넘었지만 requests는 사용 상한이 아니며,
+  실제 prod 대표 부하가 지속적으로 이를 넘는지는 후속 측정으로 판단합니다.
+- #372 GitOps 승인 리뷰의 dev 관측값은 새 이미지 기준 CPU 1m / 메모리 8Mi였습니다.
+  이는 담당자 보고이며 이번 작업에서 클러스터를 직접 조회하거나 부하를 재현한 결과가 아닙니다.
+- 사용자 제공 2026-11-26 prod 사전 점검: Worker 2대, 각 4 vCPU와 allocatable memory 약 15.45GiB,
+  기존 CPU requests 각각 110m/100m, memory requests 544Mi/256Mi, Control Plane `NoSchedule` 유지.
+  초기 requests를 추가할 여유의 근거지만 requests 합계는 실제 사용량이나 향후 서비스 전체 예산과
+  같지 않습니다. 이번 작업은 노드 배치·taint·replicas·공통 Quota/LimitRange를 변경하지 않습니다.
+- prod 이미지는 여전히 미배포 placeholder입니다. 측정 이미지와 prod 적용 이미지의 동일성을
+  입증할 수 없으므로 dev 숫자는 초기 후보의 근거로만 사용합니다. 배포 준비 시 실제 게시 태그와
+  digest, Nginx worker 수·실행 설정·정적 파일 구성·압축/캐시 및 노드 CPU 인식을 비교하고,
+  차이가 있으면 대상 이미지의 격리 검증을 수행합니다. 이미지 선정·교체는 별도 작업입니다.
+- 같은 4 vCPU여도 노드 경쟁·스케줄링·캐시·Gateway/TLS·접속 패턴은 다릅니다.
+  단기 합성 시험은 requests 예약 효과, Kubernetes/OCI 기동, 장시간 soak, 강제 OOM,
+  실제 prod의 오류율·p95/p99를 입증하지 않습니다. 현재 기록에서 후보값 변경 근거는 발견하지 못했습니다.
+
+### 로컬 검증과 배포 후 실측 계획
+
+기준 main은 `d4e2212ac053cb257eea1b22f0e5c285463ed909`, 브랜치는
+`infra/417-web-prod-resources`입니다. Kustomize v5.8.3의 `kustomize build`로
+base/dev/prod 변경 전후 6건을 렌더링하고 YAML 객체를 비교합니다.
+base/dev 전체 동일, prod는 `web-frontend` 컨테이너의 resources 외 전체 동일임을 확인합니다.
+requests ≤ limits, 이미지 placeholder·태그, replicas 미지정, 8080, `/index.html` 두 probe,
+Service·HTTPRoute·labels/selector를 보존합니다. YAML 파싱과 `git diff --check`도 수행합니다.
+
+Frontend는 Node 24.22.3 / npm 11.19.1에서 `npm ci`, `npm test`, `npm run build`,
+`npm run check:admin-boundary`를 다시 실행해 **766 PASS, 실패/생략 0**, build와 boundary 검사를
+통과했습니다. 과거 결과 재사용 없이 이번 실행을 별도 기록하며 React/Nginx 입력은 변경하지 않습니다.
+렌더링·객체 비교 결과와 실행 로그는 저장소 밖 `Peak_Order-417-qa` 디렉터리에 보관합니다.
+
+실제 prod 배포·공유 환경 부하 시험은 이번 작업에서 수행하지 않습니다.
+[#409](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/409)의 검증 기록과 연계하되
+prod 실행 환경·버전·일시·관측 구간 및 결과는 후속 배포 검증에서 별도로 남깁니다.
+
+1. 작성자 외 인프라 담당 승인과 CI 통과 후 Git PR → Argo CD로 진행합니다.
+   placeholder 교체·게시 이미지/pull 권한·prod Application·현재 Quota/LimitRange 및 전체 requests 예산은
+   배포 전 담당자가 확인합니다. 다른 서비스 롤링·통합 테스트와 시간을 조율합니다.
+2. 실제 image ID와 resources, rollout/Ready, Argo CD Synced/Healthy, probe 및 재시작 수를 확인합니다.
+   기동 직후부터 유휴 10분, 합의한 대표 정적 파일 혼합 부하 30분, 정상 트래픽 24시간을
+   초기 관측 계획으로 잡고 운영 담당자와 조건을 확정합니다. 운영 환경 포화 시험은 별도 조율합니다.
+3. `kubectl top pod -n peakorder -l app=web-frontend --containers`와 함께
+   `container_cpu_usage_seconds_total` rate, CFS throttled periods/전체 periods 비율,
+   memory usage/working set·peak, OOMKilled·재시작 증가, Nginx/Gateway 4xx/5xx·연결 오류율과
+   p95/p99를 같은 구간에서 기록합니다. 실제 수집 가능 지표를 먼저 확인하고
+   기동 peak는 짧은 간격의 cgroup/수집 지표로 보완합니다. top만으로 peak를 판단하지 않습니다.
+4. 대표 부하에서 CPU 25m 또는 working set 32Mi를 지속 초과하면 requests를 검토합니다.
+   CPU limit 근처의 지속 사용·throttling과 지연 증가가 함께 나타나면 250m limit을 검토합니다.
+   memory peak가 128Mi의 75%를 반복 초과하면 worker 수·file cache·트래픽을 구분해 재측정합니다.
+   OOM·예상하지 않은 재시작·HTTP 오류 증가 또는 합의한 지연 기준 초과 시 시험을 중지하고 복구합니다.
+   이는 후속 조정 기준이며 새 SLO/알림 합의가 아닙니다. 값 조정은 근거와 함께 별도 Git PR로 합니다.
+
+### rollback
+
+prod 자원 patch 파일과 prod kustomization의 해당 `patches` 연결만 되돌리는 Git PR을 만들고,
+승인·CI 후 Argo CD로 이전의 자원 미지정 상태를 복원합니다. 다른 patch가 추가된 경우 그 연결은 보존합니다.
+이미지·replicas·probe·base/dev·다른 서비스는 함께 되돌리지 않습니다.
+자원 상한 제거는 노드 사용량을 늘릴 수 있으므로 인프라 담당과 조율하고,
+Sync/Healthy·rollout/Ready·실제 resources·오류율·지연 및 재시작 안정화를 다시 확인합니다.
+직접 prod `kubectl apply`는 수행하지 않으며 긴급 대응은 팀 운영 절차를 따릅니다.
 
 ## 이미지 태그 교체
 
