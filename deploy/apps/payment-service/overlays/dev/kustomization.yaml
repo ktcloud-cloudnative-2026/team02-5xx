@@ -2,6 +2,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+  - hpa.yaml
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/payment
-    newTag: sha-03161b1b04af8db385d308be8e1066fa9dcaf980
+    newTag: sha-5675838fe251862e7ffc4b4c7edb9503bf12faa5
+patches:
+  - path: hikari-patch.yaml

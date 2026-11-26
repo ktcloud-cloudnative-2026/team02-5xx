@@ -11,7 +11,9 @@
   [Gateway 동의](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/280#issuecomment-7156749640),
   [Order 의견](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/280#issuecomment-7156668619) 및
   [갱신된 Issue #280](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/280)을 확인했다.
-- PR #356은 main `b6bc0bb`로 병합됐다. 이번 기준 main은 `843c95162daed7484f5bb54977c0a5ff8f92c211`이다.
+- PR #356은 main `b6bc0bb`로 병합됐다. 최초 구현 기준 main은 `843c95162daed7484f5bb54977c0a5ff8f92c211`이다.
+  2026-11-26 통합 기준은 #357 병합을 포함한 `ca7c82b727c32677f5a11894bc844f3ee5fcaa0a`이며,
+  자원·JVM·dev Hikari 4/1·종료 보호와 관리자 Route/Policy/활성화를 함께 보존한다.
 - 제품 상시 false `AdminMenuGatewayTrust`를 기본 false `AdminMenuActivation`으로 교체했다.
   토글은 요청별 Gateway 검증이 아닌 배포 정책이다. true에서도 기존 ID·역할 검증은 생략하지 않는다.
 - dev만 관리자 전용 Route·JWT Policy·활성화 패치를 두고 base/prod false와 공개 Route 제거 필터는 유지한다.

@@ -229,7 +229,9 @@ base/prod는 명시적 false, dev overlay만 관리자 전용 Route/Policy와 tr
 기존 업무·DB 계약 및 ME-01/02·MI-01/02는 바꾸지 않는다.
 
 **현재 dev 이미지 태그는 이번 구현이 없는 과거 버전이다.** 이번 작업에서 태그는 바꾸지 않았다.
-또한 자동 Sync 상태로 활성화 패치를 먼저 병합하면 실제 정책 확인 전 켜질 수 있으므로,
+현재 게시 JAR은 관리자 컨트롤러/활성화 설정을 포함하지 않으며, main 소스의 상시 false 구현과 구분한다.
 [인증 연동 문서의 단계적 GitOps 절차](../../docs/api/menu-admin-auth-integration.md)에 따라
-Gateway 보호와 네트워크 검증을 먼저 하고 활성화해야 한다. 실패하면 토글 off를 먼저 확인한 뒤
-관리자 Route/Policy를 정리한다. 실제 dev E2E·배포·원격 CI는 수행하지 않았다.
+구 이미지 차단 또는 명시적 off 상태에서 Gateway 보호·네트워크를 검증한 뒤에만 새 관리자 이미지를 활성화한다.
+실패하면 토글 off를 먼저 확인한 뒤 관리자 Route/Policy를 정리한다.
+병합된 #357의 자원·JVM·dev Hikari 4/1·종료 보호와 통합하되 #365 Actuator는 포함하지 않는다.
+기존 PR #360 CI/리뷰와 이번 미커밋 통합의 검증은 구분하며 실제 dev E2E·배포는 수행하지 않았다.

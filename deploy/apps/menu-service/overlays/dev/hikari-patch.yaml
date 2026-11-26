@@ -1,0 +1,16 @@
+# #186·#354의 dev 연결 예산. prod 풀 크기는 별도 검토한다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: menu-service
+  namespace: peakorder
+spec:
+  template:
+    spec:
+      containers:
+        - name: menu-service
+          env:
+            - name: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE
+              value: "4"
+            - name: SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE
+              value: "1"
