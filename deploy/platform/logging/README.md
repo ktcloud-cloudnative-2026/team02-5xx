@@ -121,13 +121,24 @@ Grafana(port-forward, 겹치지 않는 포트 사용 — cp의 3000·18082 등�
 
 - 필드 이름은 `docs/observability.md` 3-1 대응표(`log.level` → `log_level`, `service.name` → `service_name`)를 따른다.
 - Pod를 재시작한 뒤에도 이전 Pod의 로그가 조회되면 정상이다.
+  11/25 #349로 Cooking Pod가 교체된 뒤 아래 쿼리에서 종료된 Pod(`2t2wq`)와 새 Pod(`q8j4d`)가 함께 조회됐다(#347).
+  ```logql
+  sum by (pod) (count_over_time({namespace="peakorder", app="cooking-service"}[6h]))
+  ```
+- **안 보이면 시간 범위부터 넓힌다.** 로그는 받은 시각이 아니라 **원래 찍힌 시각**으로 저장된다. 조용한 서비스(예: 주문이 없을 때의 Cooking)는 기본 범위(Last 1 hour)에 0줄일 수 있다.
+- Grafana 접속 예: cp에서 `kubectl -n monitoring port-forward svc/monitoring-grafana 13000:80`, 내 PC에서 `ssh -L 13000:localhost:13000 lab@t2-dev-cp` → `http://localhost:13000`. 같은 `lab` 계정을 쓰므로 사람마다 포트를 다르게 한다.
+
+### 설치·재시작 직후 보이는 정상 경고
+
+- **Alloy `final error sending batch … status=400 … timestamp too old`**: Alloy가 처음 뜰 때(또는 재시작 뒤) 노드에 남은 로그를 처음부터 읽어 보내고, Loki가 **7일보다 오래된 줄만** 거부한 것이다. 최근 줄은 저장된다. 과거 로그를 다 읽으면 멈춘다.
+- **Loki `failed to resolve loki-memberlist… no such host`**: headless Service는 Ready가 된 Pod만 DNS에 올리므로, Loki가 Ready 되기 전 자기 자신을 찾다 나는 경고다. Ready 뒤 재시작 없이 사라진다.
 
 ## 한계
 
 - **보관은 기간 기준뿐**이다. Loki(OSS)에는 용량 기준 삭제가 없다.
 - local-path PVC는 **hostPath 방식이라 `5Gi`가 실제 용량 한도가 아니다.** 로그가 많으면 노드 디스크가 찰 수 있다. PVC 사용량 알림(`KubePersistentVolumeFillingUp`)은 hostPath 볼륨의 kubelet 지표가 없어 동작하지 않는다(11/25 확인) → **노드 디스크 알림**(`NodeFilesystemSpaceFillingUp`·`NodeFilesystemAlmostOutOfSpace`)이 감시한다.
-- local-path PVC는 Loki Pod가 처음 뜬 노드에 고정되고 확장할 수 없다(dev 한정 감수).
-- Alloy의 `/tmp/alloy`는 emptyDir라 **Pod가 다시 만들어지면 읽은 위치를 잊는다.** 재시작 직후 일부 로그가 중복되거나 빠질 수 있다.
+- local-path PVC는 Loki Pod가 처음 뜬 노드에 고정되고 확장할 수 없다(dev 한정 감수). **dev에서는 `t2-dev-w2`**(11/25 설치). w2가 내려가면 Loki는 다른 워커로 옮겨 가지 못하고, w2가 돌아올 때까지 로그 저장·조회가 멈춘다(#330 리뷰).
+- Alloy의 `/tmp/alloy`는 emptyDir라 **Pod가 다시 만들어지면 읽은 위치를 잊는다.** 재시작 직후 일부 로그가 중복되거나 빠질 수 있다. 위 `timestamp too old` 경고도 이 때문에 재시작 때 다시 보인다.
 - Alloy 설정은 ConfigMap 문자열이라 `helm template`으로 문법을 검사하지 못한다. 설치 후 Alloy 로그로 확인한다.
 - 실제로 `/var/log/pods` 읽기가 `privileged` 없이 되는지는 cp에서 파일 권한·SELinux로 확인했고, 워커에서는 설치 후 수집 여부로 확인한다.
 
