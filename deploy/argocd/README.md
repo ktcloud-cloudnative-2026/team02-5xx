@@ -122,7 +122,7 @@ Application 자체는 이 서비스 Application의 관리 대상에 포함되지
 
 `prod/` 디렉터리는 prod Argo CD 등록을 위한 **초안**이다. 아래 선행 조건이 모두 확인되기 전에는 prod 클러스터에 적용하지 않는다. prod에 직접 `kubectl apply`로 서비스 리소스를 만들지 않는다(CLAUDE.md 8절). Application·AppProject 등록도 Gateway·플랫폼 담당과 함께 진행한다.
 
-- `prod/project.yaml`: prod overlay가 만드는 종류(Deployment·Service·HTTPRoute)만 허용한다.
+- `prod/project.yaml`: prod overlay가 만드는 종류(Deployment·Service·HTTPRoute)와 Gateway JWT 검증용 SecurityPolicy만 허용한다. HPA는 prod 범위에서 제외해 허용하지 않는다(팀 결정 11/26).
 - `prod/*-service.yaml`, `prod/web-frontend.yaml`: dev와 달리 **자동 동기화를 두지 않는다.** prod 반영 순서는 "dev 검증 → prod overlay PR → 리뷰·승인 → Argo CD 화면에서 수동 Sync"다.
 
 ### 선행 조건 (2026-11-26 확인 기준)
@@ -136,14 +136,14 @@ prod 클러스터는 노드 3개가 Ready이고 `argocd`·`monitoring`·`peakord
 | prod Gateway | `peakorder-gateway`(`10.10.22.200`) Programmed, HTTPRoute 없음. Gateway 자체는 보존한다 | 플랫폼(Gateway) |
 | 이미지 태그 | Menu·web-frontend prod 태그가 `sha-REPLACE…` 자리표시자. 나머지도 dev보다 오래된 태그. 각 서비스 담당이 dev 검증 태그로 prod overlay PR을 올린다 | 각 서비스 |
 | DB·Secret | prod DB 6개와 서비스별 Secret(값은 Git 밖) 준비 여부 미확인 | DB·각 서비스 |
-| **Gateway JWT (보안)** | Order 고객 HTTPRoute는 JWT 경로라 신원 헤더 `remove`가 없고, JWT 검증(SecurityPolicy)은 **dev overlay에만** 있다. prod SecurityPolicy 없이 Order를 Sync하면 클라이언트가 보낸 `X-User-Id`·`X-User-Role`이 그대로 서비스에 전달된다. **prod SecurityPolicy가 준비되기 전에는 `order-service-prod`를 Sync하지 않는다.** 관리자 경로도 prod에는 열지 않는다 | Gateway·Order |
+| **Gateway JWT (보안)** | Order 고객 HTTPRoute는 JWT 경로라 신원 헤더 `remove`가 없고, JWT 검증(SecurityPolicy)은 **dev overlay에만** 있다. prod SecurityPolicy 없이 Order를 Sync하면 클라이언트가 보낸 `X-User-Id`·`X-User-Role`이 그대로 서비스에 전달된다. **prod SecurityPolicy가 준비되기 전에는 `order-service-prod`를 Sync하지 않는다.** 관리자 API는 prod에서도 연다(팀 결정 11/26). dev와 같이 Gateway JWT(SecurityPolicy)와 서비스의 역할 검사를 모두 거친다 | Gateway·Order |
 | NetworkPolicy | prod 미적용. Git PR → Argo CD 경로로 별도 적용 | 플랫폼 |
 | HTTPS | prod 도메인 없음(HTTP만). Auth Refresh 쿠키(Secure)는 HTTPS에서만 저장된다(#287). dev처럼 HTTPS 도메인이 필요하다 | 플랫폼(Gateway) |
-| prod 회원가입 | 약관 버전이 없어 `REGISTRATION_UNAVAILABLE`(#268). prod로 시연하면 시연용 약관 버전을 prod에 넣을지 팀이 결정한다 | 팀·Auth |
+| prod 회원가입 | **연다(팀 결정 11/26).** dev·프론트와 같은 시연용 약관 버전 `demo-v1`을 Auth prod overlay에 넣었다 | Auth |
 
 ### Auth prod (이 초안에 포함)
 
-- `deploy/apps/auth-service/overlays/prod/session-patch.yaml`: dev와 같은 구조로 DB·서명 키·issuer·허용 Origin을 prod Secret에서 읽는다. 시연용 약관 버전은 넣지 않아 prod 회원가입은 `REGISTRATION_UNAVAILABLE`로 막힌다(#268).
+- `deploy/apps/auth-service/overlays/prod/session-patch.yaml`: dev와 같은 구조로 DB·서명 키·issuer·허용 Origin을 prod Secret에서 읽는다. 시연용 약관 버전 `demo-v1`을 넣어 prod 회원가입을 연다(팀 결정 11/26). 실제 약관이 정해지면 값을 바꾸는 PR을 올린다.
 - prod 이미지는 현재 dev에서 검증한 `sha-6219d6b…`(#369)로 올린다.
 - prod 클러스터 `peakorder` namespace에 아래 Secret을 **prod 전용 값으로** 만든 뒤에만 Sync한다. 값은 Git·문서·채팅에 남기지 않고, dev 서명 키·issuer를 복사하지 않는다.
 

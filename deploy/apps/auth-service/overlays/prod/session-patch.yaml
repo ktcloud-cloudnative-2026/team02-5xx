@@ -1,8 +1,8 @@
 # Auth prod 실행 설정 (초안). dev의 session-patch.yaml과 같은 구조로, 값은 모두 prod 클러스터의 Secret에서 읽는다.
 # - Secret 이름·키는 dev와 같다(auth-service-db, auth-service-runtime, auth-service-jwt). 값은 prod 전용으로 따로 만든다.
 #   dev의 서명 키·issuer를 prod에 복사하지 않는다. Secret 값은 Git에 넣지 않는다.
-# - 약관 버전(AUTH_TERMS_VERSION·AUTH_PRIVACY_VERSION)은 넣지 않는다. 실제 약관이 정해질 때까지 prod 회원가입은
-#   REGISTRATION_UNAVAILABLE로 막아 둔다(#268). 시연용 demo-v1을 prod에 넣지 않는다.
+# - 약관 버전: 팀 결정(11/26, prod 시연 확정)으로 prod 회원가입을 열고 dev·프론트(#258)와 같은 시연용 demo-v1을 쓴다.
+#   실제 약관이 정해지면 이 값을 실제 버전으로 바꾸는 PR을 올린다.
 # - prod Secret 준비 전에는 Sync하지 않는다(필수 Secret이 없으면 Pod가 시작하지 못한다).
 apiVersion: apps/v1
 kind: Deployment
@@ -18,6 +18,11 @@ spec:
           env:
             - name: AUTH_SESSION_ENABLED
               value: "true"
+            # 시연용 약관 버전(팀 결정 11/26). 비밀값 아님. 프론트 회원가입 요청의 버전과 같아야 한다.
+            - name: AUTH_TERMS_VERSION
+              value: "demo-v1"
+            - name: AUTH_PRIVACY_VERSION
+              value: "demo-v1"
             - name: AUTH_DB_URL
               valueFrom:
                 secretKeyRef:
