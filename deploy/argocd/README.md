@@ -132,7 +132,7 @@ prod 클러스터는 노드 3개가 Ready이고 `argocd`·`monitoring`·`peakord
 | 항목 | 현재 상태 | 담당 |
 | --- | --- | --- |
 | prod 접속 | `t2-prod-cp` SSH 호스트 키 지문을 플랫폼 담당과 대조해 등록 완료(11/25) | 플랫폼(Gateway) |
-| prod Argo CD | **미설치**(CRD 없음). 설치는 클러스터 직접 적용이라 강사님 예외 승인 후 진행한다. dev와 같은 v3.6.1 | CI/CD |
+| prod Argo CD | **설치 완료(11/26 15:21 KST)**. 강사님 예외 승인(11/26, 범위: Argo CD 설치와 서비스별 Secret 생성) 후 공식 `install.yaml` v3.6.1을 `--server-side`로 적용. dev와 같은 구성(Pod 7개 Running, CRD 3개, 외부 노출 없음). AppProject·Application은 아직 등록하지 않음 | CI/CD |
 | prod Gateway | `peakorder-gateway`(`10.10.22.200`) Programmed, HTTPRoute 없음. Gateway 자체는 보존한다 | 플랫폼(Gateway) |
 | 이미지 태그 | Menu·web-frontend prod 태그가 `sha-REPLACE…` 자리표시자. 나머지도 dev보다 오래된 태그. 각 서비스 담당이 dev 검증 태그로 prod overlay PR을 올린다 | 각 서비스 |
 | DB·Secret | prod DB 6개와 서비스별 Secret(값은 Git 밖) 준비 여부 미확인 | DB·각 서비스 |
