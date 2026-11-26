@@ -9,4 +9,4 @@ patches:
   - path: admin-enabled-patch.yaml
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/cooking
-    newTag: sha-5537ab2760a6a8d7fc972e98b0e3dc9359695836
+    newTag: sha-3cf2d9b8bd2105890724282723a4bbb31e5f1e4f
