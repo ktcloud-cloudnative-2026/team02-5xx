@@ -12,7 +12,7 @@
 | Payment 이미지 | `sha-5675838fe251862e7ffc4b4c7edb9503bf12faa5` (11/26 기준) |
 | Payment 설정 | Hikari 4/1, preStop 10초·종료 유예 50초 (#363), HPA min 1·max 3·CPU 70% (#374) |
 | 테스트 계정 | customer-demo (비밀번호는 기록하지 않음) |
-| 테스트 데이터 | paymentId 9018(환불됨), 9019 / orderId 999001, 999002 (가짜 주문번호) |
+| 테스트 데이터 | paymentId 9018(환불됨), 9019, 9020(주문 261126-0001) / orderId 999001, 999002 (가짜 주문번호) |
 
 ## 1. Payment Service
 
@@ -39,7 +39,7 @@
 
 | ID | 내용 | 상태 | 실제 결과 | 근거 | 일시 |
 |---|---|---|---|---|---|
-| C-01 | Order → Payment 결제 요청·결과 | BLOCKED | 주문 단계에서 409 `STORE_NOT_ACCEPTING_ORDERS` (영업·접수 초기값 꺼짐) | #399 병합 후 관리자 API로 접수 켜고 재시도 | 11/26 11:33 |
+| C-01 | Order → Payment 결제 요청·결과 | PASS | 화면 주문 261126-0001(31,900원) → Payment 로그 `orderId=9 paymentId=9020 status=APPROVED`, 이후 조리 중으로 전환 | customer-demo로 화면 주문, `kubectl logs deploy/payment-service` | 11/26 14:29 |
 | C-02 | 주문 취소 → Payment 환불 | NOT RUN | | C-01 이후 | |
 | C-03 | 결제 실패 시 조리로 넘어가지 않음 | NOT RUN | | P-04와 함께 | |
 
@@ -55,6 +55,8 @@
 - 11/26 dev 로그인 403: Auth `allowed-origins`에 dev 도메인이 없어서였음 → Auth 담당이 해결
 - 11/26 11:43 I-04 Pod 삭제는 주문 접수가 꺼진 상태라 다른 테스트 영향 없음
 - 11/26 Payment 공통 지표 설정 누락 발견 → #393 / PR #397
+- 11/26 14:19 Order 영업·접수 켜짐(#399, Order 담당 공지) → C-01 BLOCKED 해제
+- 화면: 주문 내역 목록은 "결제 완료", 상세는 "조리 중"으로 상태가 다르게 보임 → Frontend 담당 공유 예정
 
 ## 관련 이슈·PR
 
