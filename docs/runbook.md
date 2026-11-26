@@ -43,7 +43,7 @@ kubectl -n peakorder exec rabbitmq-0 -- rabbitmqctl list_queues name messages co
   {namespace="peakorder", app="<서비스>"} |~ " (WARN|ERROR) "               # 텍스트 로그
   ```
   안 보이면 시간 범위를 넓힌다(로그는 원래 찍힌 시각 기준).
-- **로그 형식은 서비스마다 다르다.** ECS JSON(한 줄에 JSON 하나): **Cooking**(#190), **Order**(#271). 그 외 서비스는 ECS 적용 전이라 Spring 기본 텍스트 로그다. ECS가 적용되면 이 줄을 갱신한다. JSON용 명령은 텍스트 로그에서 아무것도 찾지 못하므로 형식에 맞는 명령을 쓴다.
+- **로그 형식은 서비스마다 다르다.** ECS JSON(한 줄에 JSON 하나): **Auth**(#324), **Cooking**(#190), **Menu**(#392), **Order**(#271). 그 외 서비스(**Inventory**·**Payment**)는 ECS 적용 전이라 Spring 기본 텍스트 로그다. ECS가 적용되면 이 줄을 갱신한다. JSON용 명령은 텍스트 로그에서 아무것도 찾지 못하므로 형식에 맞는 명령을 쓴다.
 - 시각은 **UTC**라 한국 시간은 +9시간이다(ECS의 `@timestamp`).
 - `consumers`가 0인 업무 큐는 받는 서비스가 연결돼 있지 않다는 뜻이다(메시지가 쌓인다).
 - DB 접속 문제는 아래 [PostgreSQL](#postgresql-t2-db) 절의 "접속이 안 될 때"를 본다.
