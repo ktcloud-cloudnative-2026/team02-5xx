@@ -81,7 +81,7 @@ Pod가 내려갈 때(롤링 업데이트, 이후 HPA 축소) 진행 중인 요�
 - 확대하면 Pod당 DB 연결이 최대 4개라 서비스당 최대 12개(3 × 4)이고, 롤링 중 임시 Pod를 포함한 전체 예산은 최대 96이다(일반 연결 97, #186). 여러 서비스를 동시에 롤링하지 않는다.
 - 2 Pod 시험(2026-11-25, dev, 주문 3건): 조리 중 전표는 항상 1건 이하였고 각 전표는 한 번만 시작·완료됐다. 조리 중 Pod 하나를 지워도 전표가 끊기지 않고 예정 시각(200초)에 완료됐고, 대기 중 주문 취소는 `CANCELED`로 반영됐다. 완료 이벤트(CookingCompleted)는 모두 발행(`SENT`)되어 Order가 `COMPLETED`로 바꿨고, 중복 수신(`duplicate`)은 0이었다.
 - 알려진 동작: Pod가 2개 이상이면 거의 동시에 결제된 주문의 대기열 등록(`queued_at`) 순서가 결제 순서와 수십 ms 단위로 바뀔 수 있다(시험에서 120ms 간격으로 결제된 두 주문이 48ms 역전). FIFO 기준은 Cooking 등록 시각이라 합의된 규칙 안이다.
-- 확인: `kubectl -n peakorder get hpa cooking-service`로 현재 사용률(TARGETS)과 Pod 수를 본다. 사용률이 `<unknown>`이면 CPU 지표(metrics-server) 문제다. 부하 시험으로 확대·축소와 requests·목표값을 조정하는 것은 아직 남아 있다.
+- 확인: `kubectl -n peakorder get hpa cooking-service`로 현재 사용률(TARGETS)과 Pod 수를 본다. 사용률이 `<unknown>`이면 CPU 지표를 아직 읽지 못한 것이다. 원인은 Pod의 CPU requests 미설정, Pod가 아직 Ready가 아니거나 기동 직후 지표 수집 지연, metrics-server 이상 등일 수 있으므로 `kubectl -n peakorder describe hpa cooking-service`의 Conditions·Events와 `kubectl -n peakorder top pod`로 원인을 좁힌다. 부하 시험을 마쳤다(확대 1 → 3, 오류 0%, 축소 3 → 1). requests 100m·목표 70%는 시작값을 그대로 유지한다. 결과는 이슈 #186 댓글에 있다.
 
 ## 배포 전후 확인
 
