@@ -20,10 +20,10 @@
 
 | ID | 내용 | 상태 | 실제 결과 | 근거 | 일시 |
 |---|---|---|---|---|---|
-| O-01 | 주문 생성(OR-01): 접수 상태·Cooking 장애 503·Menu 검증·재고 확보·입력 경계 | NOT RUN | | 영업·접수를 켠 뒤 진행 | |
-| O-02 | 결제(OR-02): 성공·실패·반복 호출·재고 확정·orderNo | NOT RUN | 11/25 Order 2 Pod 시험에서 같은 주문 동시 결제는 200 한 개·409, 주문번호 한 번 발급(이전 이미지 기준) | 최신 이미지로 재시험 예정. 이전 결과는 #186 댓글 | |
-| O-03 | 주문 조회(OR-03·04): 본인 주문만·타 사용자 404·페이지·조리 상태 | NOT RUN | 고객 토큰의 `GET /api/v1/orders`는 200 | O-01 이후 상세·격리 확인 | 11/26 |
-| O-04 | 주문 취소(OR-05): 조리 전 취소·재고 복원·환불·재시도 상한 | NOT RUN | | CT-05와 함께 진행 | |
+| O-01 | 주문 생성(OR-01): 접수 상태·Cooking 장애 503·Menu 검증·재고 확보·입력 경계 | IN PROGRESS | 주문 12·15·16·17 생성 `201`, `CREATED`, 합계 금액 정확, `holdExpiresAt`은 주문 시각 + 5분, 메뉴 3 `reserved_qty` 0 → 1 반영. Cooking 장애 503·Menu 검증 실패·입력 경계(수량 0·100·빈 항목·옵션 255자)는 미확인 | Gateway 경유 curl(고객 토큰), `inventories` 조회 | 11/26 15:11 |
+| O-02 | 결제(OR-02): 성공·실패·반복 호출·재고 확정·orderNo | IN PROGRESS | 성공: 주문 15·16·17 `200 PAID`·`orderNo` 발급, 같은 주문 재요청도 `200`·같은 `orderNo`, `payments` 한 건(`APPROVED`), 재고 확보 `CONFIRMED`. 실패: 주문 12가 Payment 모의 결제 실패 시간대(15:07~, 다른 팀원 시험)에 걸려 `402 PAYMENT_FAILED`, 재결제 `409 ORDER_NOT_PAYABLE`, `payments 9023 FAILED`, 재고 확보 `RELEASED`(해제). 의도한 결제 실패 시험(P-04)은 정진혁 소관 | curl, `payments`·`inventory_reservations` 조회 | 11/26 15:12~15:28 |
+| O-03 | 주문 조회(OR-03·04): 본인 주문만·타 사용자 404·페이지·조리 상태 | IN PROGRESS | 상세 `200`에 조리 상태(`cooking`: `WAITING`·`COOKING`, 앞 대기·예상 대기 시간) 포함, 목록은 최신순이며 결제 실패·만든 직후 상태는 제외. **타 사용자 격리는 `BLOCKED`**: `customer-demo`를 팀 전원이 같이 써서 다른 주문도 본인 주문으로 조회됨(`200`). 두 번째 고객 계정 필요(CT-02 이태훈 결과 참조) | curl(고객 토큰), 목록 출력 | 11/26 15:2x |
+| O-04 | 주문 취소(OR-05): 조리 전 취소·재고 복원·환불·재시도 상한 | IN PROGRESS | 정상 취소(주문 17, 조리 대기 중): `CANCELED`, 결제 `REFUNDED`·환불 `COMPLETED` 한 건, 재고 확보 `RESTORED`, 조리 전표 `CANCELED`. 조리 시작 후 취소(주문 15): `409 COOKING_ALREADY_STARTED`, 결제 `APPROVED`·재고 `CONFIRMED` 그대로(부작용 없음). 결제 직후 취소(주문 17 첫 시도): `409 COOKING_ORDER_PENDING`(Cooking 접수 전). 반복 취소·환불 실패 후속 처리·재시도 상한은 미확인 | curl, `payments`·`payment_refunds`·`inventory_reservations`·`cooking_tickets` 조회 | 11/26 15:2x~15:29 |
 | O-05 | 관리자 API(OR-06~09) | IN PROGRESS | OR-06 조회 200, OR-07 PATCH 200(영업·접수 켬, 재조회 `true`/`true`), OR-08 목록 200. OR-09 상세와 OR-08 검색 조건은 미확인 | Gateway 경유 curl(관리자 토큰), #398 댓글 | 11/26 14:19 |
 | O-06 | 인증·신원·권한 | PASS | 토큰 없음 401, 위조 헤더(`X-User-Role: STORE_ADMIN`)만 401, 허용하지 않은 메서드·`/internal/**`·`/actuator/**` 404, CUSTOMER 토큰으로 관리자 경로 403, STORE_ADMIN 토큰으로 고객 경로 403 | Gateway 경유 curl(토큰 값은 기록하지 않음), #398 댓글 | 11/26 |
 | O-07 | 이벤트·Outbox: OrderConfirmed 발행·중복·지연·복구 | NOT RUN | 11/25 Order 2 Pod 시험에서 outbox 중복 발행 없음(Cooking `duplicate` 0, 이전 이미지 기준) | 최신 이미지로 재시험 예정 | |
@@ -43,7 +43,7 @@
 
 | ID | 내용 | 상태 | 비고 |
 |---|---|---|---|
-| CT-05 | 주문 취소·재고 복원·환불 | NOT RUN | 같은 orderId로 Order 응답·Payment DB·Inventory DB·Cooking 로그를 김민규가 확인하고 근거를 기록. 정진혁(PI-03 환불)·김지윤(CI-03)·Inventory 담당(II-03·04, 미정)은 근거 확인. 환불 실패 등 장애 주입은 정진혁과 조율 |
+| CT-05 | 주문 취소·재고 복원·환불 | IN PROGRESS | 정상 취소·조리 시작 후 거절·접수 처리 중 거절 세 경로를 주문 15·16·17로 Order·Payment·Inventory·Cooking 네 곳에서 확인. 환불 실패 등 장애 주입은 정진혁과 조율 후 진행. 정진혁·김지윤·Inventory 담당은 근거 확인 요청 예정 |
 | CT-07 | 다중 Pod·HPA·DB 연결 예산 | IN PROGRESS | 11/25~26 결과를 최신 이미지로 재확인 예정. 부하·HPA 확대는 시작 전 Discord 공지 |
 
 ## 4. DB 연결 예산 기록 (CT-07)
@@ -60,6 +60,8 @@
 - 11/26 14:19 영업·주문 접수를 켰다. 그 전에는 고객 주문이 `409 STORE_NOT_ACCEPTING_ORDERS`로 막혀 있었다(정진혁의 C-01도 같은 이유로 BLOCKED).
 - 11/26 #399 병합 뒤 Order 롤링: 새 Pod 1/1·재시작 0, `order-service-admin` Route·`order-service-admin-jwt` Policy 생성, `order_dev` 연결 2.
 - 11/26 Payment 재생 부하(같은 주문·키·금액 재요청)는 새 결제 기록을 만들지 않았다(order_id 910100~919099 9,000건·중복 없음).
+- 11/26 15:07~ Payment Deployment 설정이 잠시 바뀌어(새 ReplicaSet `884479744`, `PAYMENT_MOCK_RESULT` 환경 값 포함) 15:12에 제 결제가 `PAYMENT_FAILED`로 거절됐다. 이후 원래 설정으로 복귀(새 Pod 15:3x). 값(`FAIL`)은 아직 직접 확인하지 못했고 다른 팀원의 결제 실패 시험으로 추정한다.
+- Access 토큰 수명은 900초(15분)라 시험 중 `401 Jwt is expired`가 나올 수 있다. 재로그인한다.
 
 ## 관련 이슈·PR
 
