@@ -6,7 +6,7 @@ resources:
   - admin-securitypolicy.yaml
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/menu
-    newTag: sha-eac2e88c7da2ed894689d4868713467c975ee3f4
+    newTag: sha-099a7e8a9f2369836a809e41fb6aee71223ef4ab
 patches:
   - path: hikari-patch.yaml
   - path: admin-enabled-patch.yaml
