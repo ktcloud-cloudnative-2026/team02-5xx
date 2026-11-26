@@ -1,0 +1,63 @@
+# Payment·클러스터 통합 테스트 — 정진혁
+
+- 담당: Payment Service, dev·prod Kubernetes 클러스터, Payment 배포·운영 설정
+- 공동 테스트 주관: CT-04 결제 실패·중복·응답 유실
+- 상태 값: NOT RUN / IN PROGRESS / PASS / FAIL / BLOCKED / RETEST
+
+## 테스트 환경
+
+| 항목 | 값 |
+|---|---|
+| 환경 | dev (`https://peakorder-dev.jpexstudio.com`) |
+| Payment 이미지 | `sha-5675838fe251862e7ffc4b4c7edb9503bf12faa5` (11/26 기준) |
+| Payment 설정 | Hikari 4/1, preStop 10초·종료 유예 50초 (#363), HPA min 1·max 3·CPU 70% (#374) |
+| 테스트 계정 | customer-demo (비밀번호는 기록하지 않음) |
+| 테스트 데이터 | paymentId 9018(환불됨), 9019 / orderId 999001, 999002 (가짜 주문번호) |
+
+## 1. Payment Service
+
+| ID | 내용 | 상태 | 실제 결과 | 근거 | 일시 |
+|---|---|---|---|---|---|
+| P-01 | 결제 승인(SUCCESS) 응답 | PASS | paymentId 9018, `SUCCESS` | port-forward 후 `POST /internal/v1/payments` | 11/26 10:53 |
+| P-02 | 같은 idempotencyKey 재전송 시 결제 1건 | PASS | 3번 보내도 같은 paymentId 9018 | 같은 요청 반복 | 11/26 10:54 |
+| P-03 | 환불: 승인 결제 환불, 재환불, 없는 결제 | PASS | `REFUNDED` → 다시 `REFUNDED`(중복 환불 없음) → 999999는 `PAYMENT_NOT_FOUND` | `POST /internal/v1/payments/{id}/refund` | 11/26 11:22 |
+| P-03b | 승인 안 된(FAILED) 결제 환불 → 409 | NOT RUN | | P-04와 함께 진행 | |
+| P-04 | Mock 실패 전환(`PAYMENT_MOCK_RESULT=FAIL`) 후 주문 흐름 | NOT RUN | | 공유 환경 영향 → 디스코드 공지 후 진행, 종료 후 복원 | |
+| P-05 | 내부 API 외부 접근 차단 | PASS | dev 도메인 `/internal/v1/payments/9018` → 404 | 내 PC에서 `curl.exe` | 11/26 11:25 |
+
+## 2. 클러스터 및 배포
+
+| ID | 내용 | 상태 | 실제 결과 | 근거 | 일시 |
+|---|---|---|---|---|---|
+| I-01 | 노드·Pod·Argo CD 상태 | PASS | 노드 3개 Ready, 비정상 Pod 없음, 앱 9개 Synced/Healthy | `kubectl get nodes`, `get pods -A`, `get applications -n argocd` | 11/26 10:52 |
+| I-02 | 외부 도메인 → Gateway → 서비스 | PASS | dev 홈 화면 정상, `/api/v1/menus` 200 | 브라우저 접속 | 11/26 11:06 |
+| I-03 | Payment ↔ PostgreSQL 연결 | PASS | actuator health `UP` | `kubectl exec ... /actuator/health` | 11/26 10:52 |
+| I-04 | Payment Pod 삭제 → 자동 복구 | PASS | 새 Pod 약 21초 만에 1/1 Running, 이후 paymentId 9019 `SUCCESS` | `kubectl delete pod`, `get pods -w` | 11/26 11:43 |
+| I-05 | Payment DB 연결 풀(최대 4·최소 1) 및 연결 수 | IN PROGRESS | Pod 환경 변수 `MAXIMUM_POOL_SIZE=4`, `MINIMUM_IDLE=1` 확인. DB 쪽 연결 수는 미확인 | `kubectl exec ... env` | 11/26 09:53 |
+
+## 3. 서비스 간 연동
+
+| ID | 내용 | 상태 | 실제 결과 | 근거 | 일시 |
+|---|---|---|---|---|---|
+| C-01 | Order → Payment 결제 요청·결과 | BLOCKED | 주문 단계에서 409 `STORE_NOT_ACCEPTING_ORDERS` (영업·접수 초기값 꺼짐) | #399 병합 후 관리자 API로 접수 켜고 재시도 | 11/26 11:33 |
+| C-02 | 주문 취소 → Payment 환불 | NOT RUN | | C-01 이후 | |
+| C-03 | 결제 실패 시 조리로 넘어가지 않음 | NOT RUN | | P-04와 함께 | |
+
+## 4. 공동 테스트 (주관)
+
+| ID | 내용 | 상태 | 비고 |
+|---|---|---|---|
+| CT-04 | 결제 실패·중복·응답 유실 | NOT RUN | Order 담당(주문 상태), Frontend(F-04)와 함께 진행. P-02·P-04 결과를 바탕으로 함 |
+
+## 5. 기타 확인 기록
+
+- 11/26 HPA(#374) 병합 직후 기동 CPU로 1 → 3 확대, w1·w2에 분산 배치, 약 11분 뒤 1로 축소 (#362 댓글)
+- 11/26 dev 로그인 403: Auth `allowed-origins`에 dev 도메인이 없어서였음 → Auth 담당이 해결
+- 11/26 11:43 I-04 Pod 삭제는 주문 접수가 꺼진 상태라 다른 테스트 영향 없음
+- 11/26 Payment 공통 지표 설정 누락 발견 → #393 / PR #397
+
+## 관련 이슈·PR
+
+- #362, #363, #374 (Payment 연결 풀·종료 보호·HPA)
+- #393, #397 (Payment 공통 지표)
+- #399 (Order 관리자 API dev 공개 — C-01 선행 조건)
