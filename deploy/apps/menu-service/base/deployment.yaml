@@ -50,6 +50,9 @@ spec:
                   optional: false
             - name: JAVA_TOOL_OPTIONS
               value: -XX:MaxRAMPercentage=60.0
+            # docs/observability.md 3-1 (#389): Spring Boot 내장 ECS JSON 로그.
+            - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+              value: ecs
           lifecycle:
             preStop:
               exec:
