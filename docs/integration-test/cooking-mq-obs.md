@@ -66,9 +66,9 @@
 |---|---|---|---|---|---|
 | O-01 | 수집 대상 6개 서비스 전부 up(`count by (service) (up{namespace="peakorder"} == 1)`), `PeakorderTargetDown` 없음. 업무 지표(`cooking_tickets`·Outbox·DLQ)가 시험 상황을 반영 | PASS | 사전: Auth·Inventory·Payment·Menu `/actuator/prometheus` 모두 200(547/187/125/1110줄). #401 ServiceMonitor 4개 선택 Sync `Succeeded`(16:00:19, OutOfSync는 4개뿐) → `up == 1` 6개 서비스 + `rabbitmq`, `up == 0` 0건, `PeakorderTargetDown` 0건 | Grafana sidecar에서 각 Service 호출, Prometheus API 조회 | 11/26 16:01 |
 | O-02 | 알림 발화·해제: DLQ(M-05)→1번 `RabbitMQDeadLetterQueueNotEmpty`, RabbitMQ 재시작(F-04)→5번 Outbox, Cooking 0개(F-02)→7번 `PeakorderDeploymentNoAvailablePods`(Pod가 없으면 `up`이 사라져 2번은 안 울림 — 설계대로). 복구 후 inactive, 그 외 오탐 0 | NOT RUN | | | |
-| O-03 | 주문 번호로 Order·Cooking 로그를 Loki에서 시간순 추적(`\| json`), 삭제된 Pod(F-01·F-02) 로그도 조회 | IN PROGRESS | Cooking: `0004`·`0008`을 orderId·orderNo로 등록·시작·완료 단계별 추적 가능. F-01에서 삭제된 Pod `hkbsg` 로그 61줄 보존. Payment: `orderId=14` 결제 로그 추적 가능(텍스트). **Order: 주문 처리 중 로그 0줄** — 현재 Pod 원본 34줄 = Loki 34줄로 수집 누락은 없음, 최근 1시간(주문 2건 처리) 원본 0줄 → 관측 공백, Order 담당 공유 예정 | Loki query_range(`orderId`·`orderNo`), `kubectl logs` 원본과 줄 수 대조 | 11/26 16:05~16:16 |
+| O-03 | 주문 번호로 Order·Cooking 로그를 Loki에서 시간순 추적(`\| json`), 삭제된 Pod(F-01·F-02) 로그도 조회 | IN PROGRESS | Cooking: `0004`·`0008`을 orderId·orderNo로 등록·시작·완료 단계별 추적 가능. F-01에서 삭제된 Pod `hkbsg` 로그 61줄 보존. Payment: `orderId=14` 결제 로그 추적 가능(텍스트). **Order: 주문 처리 중 로그 0줄** — 현재 Pod 원본 34줄 = Loki 34줄로 수집 누락은 없음, 최근 1시간(주문 2건 처리) 원본 0줄 → 관측 공백 → #426 | Loki query_range(`orderId`·`orderNo`), `kubectl logs` 원본과 줄 수 대조 | 11/26 16:05~16:16 |
 | O-04 | 시험 중 로그에 비밀번호·토큰·`Authorization` 0건 | NOT RUN | | | |
-| O-05 | 각 서비스 지표·ECS 로그 수집 상태(Auth D-05 포함) | IN PROGRESS | 지표: O-01과 같음. ECS JSON 로그 설정: Auth·Cooking·Menu·Order(main 기준, 런북 #405), Inventory·Payment는 텍스트 로그. `application` 공통 지표 라벨 없음(16:02 확인): **Payment**(#397로 해결 예정)·**Inventory**(요청 지표 11·JVM 8 시계열, 별도 조치 필요) → `application` 기준 패널(요청 수·5xx 등)에서 빠짐. #397 병합 후 `count by (application) (http_server_requests_seconds_count{namespace="peakorder"})` 재확인. Menu ECS dev 반영 확인: 24h WARN 4줄이 `\| json`으로 파싱(SpringDoc 기동 안내 — 정상 경고), #389 | `deploy/apps/*/base/deployment.yaml` `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs` | 11/26 |
+| O-05 | 각 서비스 지표·ECS 로그 수집 상태(Auth D-05 포함) | IN PROGRESS | 지표: O-01과 같음. ECS JSON 로그 설정: Auth·Cooking·Menu·Order(main 기준, 런북 #405), Inventory·Payment는 텍스트 로그. `application` 공통 지표 라벨 없음(16:02 확인): **Payment**(#397로 해결 예정)·**Inventory**(요청 지표 11·JVM 8 시계열 → #424) → `application` 기준 패널(요청 수·5xx 등)에서 빠짐. #397 병합 후 `count by (application) (http_server_requests_seconds_count{namespace="peakorder"})` 재확인. Menu ECS dev 반영 확인: 24h WARN 4줄이 `\| json`으로 파싱(SpringDoc 기동 안내 — 정상 경고), #389 | `deploy/apps/*/base/deployment.yaml` `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs` | 11/26 |
 
 ## 5. 공동 테스트
 
@@ -129,3 +129,4 @@ CT 매핑은 개인 계획(Discord) 기준 **제안**이며, 팀 확정 후 갱�
 - 로깅: #330(Loki·Alloy 설치), #359(README·런북 Loki 조회), #405(런북 ECS 서비스 목록)
 - Cooking: #349(관리자 API dev 공개), #313·#332(다중 Pod·HPA), #370(dev 이미지)
 - 선행 조건: #399(주문 접수 초기값)
+- 통합 테스트 중 등록한 결함·개선: #424(Inventory 지표 `application` 라벨, O-05), #426(Order 주문 처리 INFO 로그, O-03)
