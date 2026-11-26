@@ -4,6 +4,6 @@ resources:
   - ../../base
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/menu
-    newTag: sha-eac2e88c7da2ed894689d4868713467c975ee3f4
+    newTag: sha-b38b6abbf6a61719ac197db0cda15296b1b46b40
 patches:
   - path: hikari-patch.yaml
