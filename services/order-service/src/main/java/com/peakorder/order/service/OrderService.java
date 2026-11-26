@@ -125,14 +125,22 @@ public class OrderService {
     } catch (RuntimeException e) {
       String reason = e instanceof BusinessException be ? be.errorCode().name() : "INVENTORY_ERROR";
       txService.markFailed(orderId, reason);
+      log.info("재고 확보 실패로 주문 종료 orderId={} reason={}", orderId, reason);
       throw e;
     }
+    OrderDetailResponse held;
     try {
-      return txService.markHeld(orderId, hold);
+      held = txService.markHeld(orderId, hold);
     } catch (RuntimeException e) {
       compensateHoldSaveFailure(orderId, hold);
       throw e;
     }
+    log.info(
+        "주문 생성 orderId={} status={} itemCount={}",
+        held.orderId(),
+        held.status(),
+        held.items() == null ? 0 : held.items().size());
+    return held;
   }
 
   /**
@@ -271,7 +279,14 @@ public class OrderService {
       }
       throw e;
     }
-    return txService.confirmOrder(orderId, lock, payment.paymentId(), menus);
+    OrderDetailResponse confirmed =
+        txService.confirmOrder(orderId, lock, payment.paymentId(), menus);
+    log.info(
+        "결제 완료 주문 확정 orderId={} orderNo={} status={}",
+        confirmed.orderId(),
+        confirmed.orderNo(),
+        confirmed.status());
+    return confirmed;
   }
 
   /**
@@ -286,7 +301,11 @@ public class OrderService {
 
   /** 내 독점일 때만 주문을 종료한다. 독점을 잃었으면 종료하지 않고 false(후속 처리도 하지 않는다). */
   private boolean failOrder(Long orderId, UUID lock, String reason) {
-    return txService.markFailed(orderId, lock, reason);
+    boolean ended = txService.markFailed(orderId, lock, reason);
+    if (ended) {
+      log.info("주문 종료 orderId={} reason={}", orderId, reason);
+    }
+    return ended;
   }
 
   /** OR-03 본인 주문 목록. 확정되지 않은 주문(CREATED, FAILED)은 제외한다. */

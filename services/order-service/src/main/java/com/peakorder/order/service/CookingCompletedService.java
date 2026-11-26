@@ -48,5 +48,6 @@ public class CookingCompletedService {
                     new IllegalArgumentException(
                         "존재하지 않는 주문에 대한 CookingCompleted입니다 orderId=" + event.orderId()));
     order.markCompleted(event.completedAt(), now);
+    log.info("조리 완료 반영 orderId={} orderNo={}", event.orderId(), order.getOrderNo());
   }
 }
