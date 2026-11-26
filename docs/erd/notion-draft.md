@@ -6,7 +6,7 @@
 - 원본 최종 수정: 2026-11-13T03:41:37.090Z (UTC)
 - 가져온 날짜: 2026-11-13 (Asia/Seoul)
 - 공통 확정 규칙: [CLAUDE.md](../../CLAUDE.md)
-- 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
+- 최근 확인: 2026-11-26, main `340cda0` 기준 1차 대조(#193). 아래 과거 설계와 확인 기록은 보존하며 V2 등 명시한 구현 변경을 반영합니다.
 - Order 도식 갱신: 2026-11-18. Order Flyway V1~V3(PR #28·#29·#46)에 맞춰 3-4 도식·설명을 고쳤습니다. Notion 원본의 같은 부분도 맞춰 수정해야 합니다.
 - 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
 - 구현 기준(현재, 2026-11-20): main `b57c266`에는 Order Flyway V1~V6와 주문 생성·조회·결제·취소 API(OR-01~05, PR #28·#29·#46·#61), 관리자 영업·주문 접수 상태 API(OR-06·07, PR #133), 취소 후속 처리 재시도 상한·수동 확인 표시(V5, PR #135), 주문 상세의 Cooking 조리 상태(PR #142), 관리자 주문 목록·검색·상세(OR-08·09, V6 인덱스, PR #170), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100)와 고객 메뉴 목록·상세 ME-01·ME-02(PR #105), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62)·자동 조리 진행과 CookingCompleted 발행(PR #78)·전표 등록 시각 DB 기록(PR #109)·표시용 문자열 길이 초과 처리(PR #113), Inventory 초기 구성(PR #70)과 내부 API(PR #115), Payment 내부 API(PR #71), Cooking CI-02 예상 시간 변경(PR #141)이 병합되어 있습니다. 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
@@ -302,7 +302,7 @@ erDiagram
 
 ### 3-6. 조리 (cooking\_svc)
 
-홈 화면의 현재 혼잡도·대기 주문수·예상 대기 시간은 `cooking_tickets` 상태로 계산해 Redis에 캐시합니다. `congestion_snapshots`은 이력용 선택 표입니다. 조리 대기열은 RabbitMQ OrderConfirmed 이벤트로 등록하고 조리가 끝나면 CookingCompleted 이벤트로 Order에 알리며, 조리 순서(FIFO)는 Cooking DB에 실제 등록된 순서를 기준으로 합니다.
+홈 화면의 현재 혼잡도·대기 주문수·예상 대기 시간은 `cooking_tickets` 상태로 계산합니다(초기 Redis 캐시 구상은 실제 앱 사용 여부 추가 확인). `congestion_snapshots`은 이력용 선택 표입니다. 조리 대기열은 RabbitMQ OrderConfirmed 이벤트로 등록하고 조리가 끝나면 CookingCompleted 이벤트로 Order에 알리며, 조리 순서(FIFO)는 Cooking DB에 실제 등록된 순서를 기준으로 합니다.
 
 **대기열 등록 및 조리 완료 처리**
 
@@ -354,7 +354,9 @@ erDiagram
 
 ### 3-7. 재고 (inventory\_svc)
 
-재고 임시확보(기본 5분·테스트 10초, STOCK\_HOLD\_TTL) → 확정(차감) → 해제/복원. 품절 여부는 Inventory가 판단하고 Menu는 API로 조회합니다(품절·재입고 RabbitMQ 이벤트는 현재 미구현). 임시 확보·확정·해제에는 임시 orderId를 쓰고, menu\_id는 NULL 허용·UNIQUE로 두어 관리자가 메뉴와 명시적으로 연결합니다. 재고·확보 상태와 expires\_at은 DB에 저장합니다. Redis는 만료 타이머를 보조하며, Redis 유실 시에도 DB 기준 스케줄러로 만료 처리합니다.
+> [#202](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/202) Flyway V2에서 nullable `inventories.deleted_at TIMESTAMPTZ` 추가. IN-06은 삭제 시 menu_id를 NULL로 해제하고 행과 이력을 유지합니다. RESERVED·CONFIRMED 예약이 남으면 삭제/연결 변경을 제한합니다. [실제 V2 SQL](../../services/inventory-service/src/main/resources/db/migration/V2__add_inventories_deleted_at.sql).
+
+재고 임시확보(기본 5분·테스트 10초, STOCK\_HOLD\_TTL) → 확정(차감) → 해제/복원. 품절 여부는 Inventory가 판단하고 Menu는 API로 조회합니다(품절·재입고 RabbitMQ 이벤트는 현재 미구현). 임시 확보·확정·해제에는 임시 orderId를 쓰고, menu\_id는 NULL 허용·UNIQUE로 두어 관리자가 메뉴와 명시적으로 연결합니다. 재고·확보 상태와 expires\_at은 DB에 저장합니다. 초기 Redis 만료 보조 구상과 별개로 현재 확인한 구현은 DB 만료 스케줄러입니다. 앱의 실제 Redis 사용 여부는 추가 확인합니다.
 
 ```mermaid
 erDiagram
@@ -369,6 +371,7 @@ erDiagram
         int low_stock_threshold "재고 부족 기준"
         bigint version "동시 수정 방지 번호"
         timestamptz updated_at "고친 시각"
+        timestamptz deleted_at "논리 삭제 시각 (NULL 허용, V2)"
     }
 
     inventory_reservations {
@@ -498,7 +501,7 @@ erDiagram
 | Order 상태 | CREATED, PAID, WAITING, COOKING, COMPLETED, CANCELED, FAILED | Order PR의 CHECK와 enum은 도식과 일치. 현재 이벤트 처리는 PAID→COMPLETED이며 WAITING·COOKING 반영 방식은 미확정 |
 | Cooking 상태·관계 | WAITING→COOKING→DONE, WAITING→CANCELED. order_id UNIQUE, 전표-항목 FK | [PR #62](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/62)의 V1에 상태 CHECK, quantity > 0, cook_time_sec·estimated_cook_sec >= 0, (status, queued_at, id) INDEX 존재. CI-03은 행 잠금으로 취소 경합 제어 |
 | Cooking 혼잡도 | congestion_thresholds로 기준값 관리 | V1에는 id, busy_wait_sec(>0), updated_at 존재. 도식의 선택 이력 표 congestion_snapshots는 PR에서 제외. 확정된 필수 표 누락으로 간주하지 않음 |
-| Inventory | inventories.menu_id NULL 허용·UNIQUE, 확보 상태 RESERVED/CONFIRMED/RELEASED/EXPIRED | **main 병합(PR #70 초기 구성, PR #115 내부 API II-01~04·만료 스케줄러):** [PR #70](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/70)의 V1에서 아래 네 테이블·주요 제약을 확인. PR은 RESTORED를 추가하므로 기존 Notion 도식과 상태값 차이를 구분. 마이그레이션 존재가 Order와 함께 띄운 실제 연동 확인을 의미하지 않음(연동은 아직 확인하지 않음) |
+| Inventory | inventories.menu_id NULL 허용·UNIQUE, 확보 상태 RESERVED/CONFIRMED/RELEASED/EXPIRED | **main 병합(PR #70 초기 구성, PR #115 내부 API II-01~04·만료 스케줄러):** [PR #70](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/70)의 V1에서 아래 네 테이블·주요 제약을 확인. PR은 RESTORED를 추가하므로 기존 Notion 도식과 상태값 차이를 구분. 11/24 dev 정상 주문 확보·확정 확인 보고(#259); 전체 장애/취소 시나리오와 실제 DB 스키마 대조는 별도 |
 | 이벤트 이력 | 업무 변경·Outbox 저장, processed_events.event_id UUID PK로 중복 방지 | Order·Cooking PR에 event_id UNIQUE Outbox와 Processed Event 존재. 수신은 이력 삽입과 업무 반영을 같은 트랜잭션에서 처리. [이벤트 계약](../events/notion-draft.md) 참조 |
 
 #### Inventory V1 확인 — PR #70
