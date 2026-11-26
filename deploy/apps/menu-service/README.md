@@ -26,6 +26,7 @@ menu-service/
     dev/kustomization.yaml
     dev/hikari-patch.yaml
     dev/admin-enabled-patch.yaml
+    dev/probes-patch.yaml
     dev/admin-httproute.yaml
     dev/admin-securitypolicy.yaml
     prod/kustomization.yaml
@@ -70,25 +71,32 @@ DB 환경 변수를 참조하는 것만으로 연결·마이그레이션 성공�
 
 ## Probe와 한계
 
-현재 브랜치의 서비스와 병합된 PR #76에는 Spring Boot Actuator 의존성이 없습니다.
-Readiness와 Liveness는 `tcpSocket.port: http`로 컨테이너 8080의 포트 개방을
-검사합니다. 존재하지 않는 `/actuator/health` HTTP Probe는 사용하지 않습니다.
+#365에서 Actuator가 추가됐고 #394의 dev 이미지에 포함됐다. #402는 dev overlay에서만
+아래 HTTP Probe를 적용한다. `port: http`는 컨테이너 8080을 가리킨다.
 
-TCP 연결 성공은 **애플리케이션 포트 개방만 확인**합니다.
-DB 연결 상태, Flyway 완료, API 정상 응답 및 업무 준비 완료를 보장하지 않습니다.
-특히 DB가 끊겨도 포트가 열려 있으면 Probe가 성공할 수 있습니다.
-추가 라이브러리나 서비스 코드 변경은 포함하지 않았습니다.
+| Probe | 경로 | 주기 | 실패 임계값 |
+| --- | --- | --- | --- |
+| startup | `/actuator/health/liveness` | 5초 | 24회 |
+| readiness | `/actuator/health/readiness` | 10초 | 기본값 3회 |
+| liveness | `/actuator/health/liveness` | 20초 | 기본값 3회 |
 
-Probe 주기·실패 임계값 등은 Kubernetes 기본값을 사용합니다.
-실제 Spring Boot 기동·DB 초기화 시간을 측정하지 않았으므로 Liveness가 느린
-기동 중 재시작을 유발할 수 있습니다. 배포 전 실제 이미지로 기동 시간을 검증하고,
-필요하면 담당자와 시작 지연·임계값 또는 Startup Probe를 조정해야 합니다.
+Auth·Order와 같은 값이다. startup 성공 전에는 readiness/liveness 검사를 시작하지 않는다.
+startup은 약 120초의 기동 검사 예산이며 실제 dev 기동·롤링 검증은 별도다.
+명시하지 않은 timeoutSeconds(1초), successThreshold(1회) 등은 Kubernetes 기본값을 쓴다.
+readiness/liveness는 `$patch: replace`로 교체해 base의 `tcpSocket`이 함께 남지 않게 한다.
+
+base/prod는 기존 TCP Probe를 유지한다. TCP 연결 성공은 포트 개방만 확인한다.
+**현재 기본 HTTP readiness도 DB 준비 완료를 보장하지 않는다.** #365의 격리 DB 장애 시험에서
+전체 health는 503 DOWN이었지만 readiness/liveness는 200 UP이었다.
+DB를 liveness에 넣거나 readiness health group을 변경하지 않았다.
+이번 게시 이미지·로컬 HTTP·렌더링 검증 및 후속 절차는
+[별도 검증 기록](../../../docs/menu-http-probes-validation-402.md)에 있다.
 
 ## GHCR 이미지 태그 교체
 
 Base와 prod Overlay는 아래 **미배포 플레이스홀더**를 유지합니다.
-dev는 `sha-eac2e88c7da2ed894689d4868713467c975ee3f4`를 사용하며, #354에서
-이미지 태그를 갱신하지 않습니다. 플레이스홀더는 배포 가능 여부를 나타내지 않습니다.
+dev는 #394에서 적용한 `sha-46d1801215997aa767ab12fa53249acd06b710d1`를 사용하며,
+#402에서는 이미지 태그를 갱신하지 않습니다. 플레이스홀더는 배포 가능 여부를 나타내지 않습니다.
 
 ```text
 ghcr.io/ktcloud-cloudnative-2026/team02-5xx/menu:sha-REPLACE_WITH_PUBLISHED_40_CHAR_COMMIT_SHA
@@ -136,7 +144,7 @@ git diff --check
 - 리소스 및 Pod의 공통 라벨과 selector 일치
 - ClusterIP 및 Service 8080 → `http` → containerPort 8080 연결
 - DB 환경 변수 3개의 `menu-service-db` Secret 이름과 동일 이름 키 참조
-- Readiness/Liveness의 TCP `http` 포트 검사
+- base/prod의 TCP Readiness/Liveness 유지, dev의 세 HTTP Probe와 단일 handler 확인
 - 지정 GHCR 경로와 배포 전 실제 게시된 SHA 태그, `latest` 및 플레이스홀더 없음
 
 2026-11-19 리뷰 수정 검증에서는 저장소 밖에 준비한 공식 Kustomize v5.8.3

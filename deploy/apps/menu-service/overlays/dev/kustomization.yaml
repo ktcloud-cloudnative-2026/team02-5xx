@@ -11,3 +11,4 @@ images:
 patches:
   - path: hikari-patch.yaml
   - path: admin-enabled-patch.yaml
+  - path: probes-patch.yaml

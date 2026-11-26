@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: menu-service
+  namespace: peakorder
+spec:
+  template:
+    spec:
+      containers:
+        - name: menu-service
+          # #402: Actuator 지원이 확인된 dev 이미지에만 HTTP probe 적용.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          # 전체 교체로 base의 tcpSocket handler가 함께 남지 않도록 한다.
+          readinessProbe:
+            $patch: replace
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            $patch: replace
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 20
