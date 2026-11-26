@@ -25,6 +25,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 class CookingCompletedServiceTest {
 
@@ -70,23 +72,91 @@ class CookingCompletedServiceTest {
     assertThat(order.getHistories().get(2).getToStatus()).isEqualTo(OrderStatus.COMPLETED);
   }
 
-  @Test
-  void completion_is_logged_with_order_id_and_order_no() {
-    Order order = orderIn(OrderStatus.PAID);
-    when(orders.findWithLockById(5L)).thenReturn(Optional.of(order));
+  private ListAppender<ILoggingEvent> captureLogs() {
     Logger logger = (Logger) LoggerFactory.getLogger(CookingCompletedService.class);
     ListAppender<ILoggingEvent> logs = new ListAppender<>();
     logs.start();
     logger.addAppender(logs);
+    return logs;
+  }
+
+  private void stopCapturing(ListAppender<ILoggingEvent> logs) {
+    ((Logger) LoggerFactory.getLogger(CookingCompletedService.class)).detachAppender(logs);
+  }
+
+  @Test
+  void completion_is_logged_with_order_id_order_no_and_event_id() {
+    Order order = orderIn(OrderStatus.PAID);
+    when(orders.findWithLockById(5L)).thenReturn(Optional.of(order));
+    ListAppender<ILoggingEvent> logs = captureLogs();
     try {
       service.handle(new CookingCompletedEvent(eventId, 5L, completedAt));
     } finally {
-      logger.detachAppender(logs);
+      stopCapturing(logs);
     }
 
     assertThat(logs.list)
         .extracting(ILoggingEvent::getFormattedMessage)
-        .contains("조리 완료 반영 orderId=5 orderNo=261116-0001");
+        .contains("조리 완료 반영 orderId=5 orderNo=261116-0001 eventId=" + eventId);
+  }
+
+  @Test
+  void already_completed_order_logs_ignore_warning_instead_of_completion() {
+    Order order = orderIn(OrderStatus.PAID);
+    order.markCompleted(completedAt, now);
+    when(orders.findWithLockById(5L)).thenReturn(Optional.of(order));
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    try {
+      service.handle(new CookingCompletedEvent(eventId, 5L, completedAt));
+    } finally {
+      stopCapturing(logs);
+    }
+
+    assertThat(logs.list)
+        .extracting(ILoggingEvent::getFormattedMessage)
+        .noneMatch(message -> message.startsWith("조리 완료 반영"))
+        .contains("이미 완료된 주문에 대한 CookingCompleted를 무시합니다 orderId=5 eventId=" + eventId);
+  }
+
+  @Test
+  void completion_is_logged_only_after_the_transaction_commits() {
+    Order order = orderIn(OrderStatus.PAID);
+    when(orders.findWithLockById(5L)).thenReturn(Optional.of(order));
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    TransactionSynchronizationManager.initSynchronization();
+    try {
+      service.handle(new CookingCompletedEvent(eventId, 5L, completedAt));
+      assertThat(logs.list)
+          .extracting(ILoggingEvent::getFormattedMessage)
+          .noneMatch(message -> message.startsWith("조리 완료 반영"));
+
+      TransactionSynchronizationManager.getSynchronizations()
+          .forEach(TransactionSynchronization::afterCommit);
+      assertThat(logs.list)
+          .extracting(ILoggingEvent::getFormattedMessage)
+          .anyMatch(message -> message.startsWith("조리 완료 반영 orderId=5"));
+    } finally {
+      TransactionSynchronizationManager.clearSynchronization();
+      stopCapturing(logs);
+    }
+  }
+
+  @Test
+  void completion_is_not_logged_when_the_transaction_rolls_back() {
+    Order order = orderIn(OrderStatus.PAID);
+    when(orders.findWithLockById(5L)).thenReturn(Optional.of(order));
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    TransactionSynchronizationManager.initSynchronization();
+    try {
+      service.handle(new CookingCompletedEvent(eventId, 5L, completedAt));
+      // 커밋이 일어나지 않고 롤백되면 afterCommit은 호출되지 않는다.
+      assertThat(logs.list)
+          .extracting(ILoggingEvent::getFormattedMessage)
+          .noneMatch(message -> message.startsWith("조리 완료 반영"));
+    } finally {
+      TransactionSynchronizationManager.clearSynchronization();
+      stopCapturing(logs);
+    }
   }
 
   @Test

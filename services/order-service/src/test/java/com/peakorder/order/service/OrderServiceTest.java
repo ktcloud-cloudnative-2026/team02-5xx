@@ -388,43 +388,6 @@ class OrderServiceTest {
   }
 
   @Test
-  void pay_success_logs_confirmation_with_order_no() {
-    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
-    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
-    OrderDetailResponse confirmed = mock(OrderDetailResponse.class);
-    when(confirmed.orderId()).thenReturn(100L);
-    when(confirmed.orderNo()).thenReturn("261126-0001");
-    when(confirmed.status()).thenReturn(OrderStatus.PAID);
-    when(txService.confirmOrder(eq(100L), eq(LOCK), eq(9L), any())).thenReturn(confirmed);
-    ListAppender<ILoggingEvent> logs = captureLogs();
-    try {
-      service.payOrder(7L, 100L);
-    } finally {
-      stopCapturing(logs);
-    }
-
-    assertThat(logs.list)
-        .extracting(ILoggingEvent::getFormattedMessage)
-        .contains("결제 완료 주문 확정 orderId=100 orderNo=261126-0001 status=PAID");
-  }
-
-  @Test
-  void pay_failure_logs_order_end_with_reason() {
-    when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
-    when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "FAILED"));
-    ListAppender<ILoggingEvent> logs = captureLogs();
-    try {
-      assertThatThrownBy(() -> service.payOrder(7L, 100L)).isInstanceOf(BusinessException.class);
-    } finally {
-      stopCapturing(logs);
-    }
-
-    assertThat(logs.list)
-        .extracting(ILoggingEvent::getFormattedMessage)
-        .contains("주문 종료 orderId=100 reason=PAYMENT_FAILED");
-  }
-
-  @Test
   void pay_success_charges_confirms_stock_then_confirms_order() {
     when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
     when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
