@@ -33,6 +33,16 @@ Actuator의 Kubernetes Probe 경로를 쓴다. 클러스터 안에서 실행되�
 
 DB·RabbitMQ 상태는 Probe에 넣지 않는다. 잠깐 끊겨도 Pod가 재시작을 반복하지 않게 하기 위해서다.
 
+## 연결 풀·종료 보호·Pod 수 관리 — Issue #362
+
+HPA(#186)를 붙이기 전 선행 조건이다. Order(#205, #294)·Inventory(#315)와 같은 방식이다.
+
+- **DB 연결 풀(dev)**: `overlays/dev/hikari-patch.yaml`로 `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=4`, `SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1`을 지정한다. Hikari 기본값은 Pod당 최대 10개라(dev에서 `payment_dev` 연결 10개) Pod가 늘면 DB `max_connections`를 넘는다. prod는 이 패치에 포함하지 않는다(같은 DB 서버라 prod 값은 prod 이슈에서 정한다).
+- **종료 보호**: `preStop`(`sleep 10`)과 `terminationGracePeriodSeconds: 50`(preStop 10초 + 앱 정상 종료 대기 30초 + 여유 10초). 앱의 graceful shutdown은 Spring Boot 4.1.2 기본값(`GRACEFUL`, 대기 `spring.lifecycle.timeout-per-shutdown-phase` 30초)이다. 이미지가 `eclipse-temurin:21-jre-alpine`이라 `sleep`을 쓸 수 있다.
+- **Pod 수 관리**: Argo CD Application(`deploy/argocd/dev/payment-service.yaml`)은 Deployment의 `/spec/replicas`를 비교에서 제외하고 `RespectIgnoreDifferences=true`로 Sync가 그 값을 되돌리지 않게 한다(자동 동기화 설정은 그대로). 이 파일은 Argo CD가 관리하지 않아 바꾸면 dev에서 `kubectl apply -f deploy/argocd/dev/payment-service.yaml`로 다시 적용해야 반영된다.
+- 이 값을 바꾸면 Pod 템플릿이 바뀌어 Pod가 롤링 교체된다(자동 동기화). 다른 서비스 배포와 동시에 병합하지 않는다(DB 연결 예산, #186).
+- 다중 Pod 안전성: 결제(PI-01)는 `payments`의 `order_id`·`idempotency_key` UNIQUE로 DB에 한 건만 저장되고, 환불(PI-03)은 결제 행을 `FOR UPDATE`로 잠그며 결제당 완료 환불 1건 유니크 인덱스가 있다(Pod 수와 무관, 정진혁 확인). 2 Pod 시험은 이슈 #362에서 진행한다.
+
 ## 로컬 확인
 
 ```bash
