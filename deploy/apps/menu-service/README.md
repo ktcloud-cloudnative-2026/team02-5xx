@@ -172,6 +172,14 @@ Kubernetes 변경은 `CLAUDE.md` 6절의 필수 리뷰 대상입니다.
 이 작업은 `deploy/apps/menu-service/`만 수정하며 서비스 소스·CI·Dockerfile,
 다른 서비스 배포 구성 및 실제 Secret을 변경하거나 생성하지 않습니다.
 
+## 자동 확장(HPA, dev) — Issue #367
+
+- `overlays/dev/hpa.yaml`의 HorizontalPodAutoscaler가 CPU 사용률 평균 70%(requests 100m 기준 약 70m)를 목표로 Pod를 1개에서 3개까지 조절한다(#186 합의값). prod에는 없다.
+- Pod 수는 HPA가 정하고, Application의 `ignoreDifferences`(`/spec/replicas`)와 `RespectIgnoreDifferences`가 Sync가 Git의 `replicas: 1`로 되돌리지 않게 한다. Git의 `replicas: 1`은 HPA가 없을 때의 값이다.
+- 축소는 쿠버네티스 기본 안정화(5분)를 따른다. 줄어드는 Pod는 `preStop`(10초)과 `terminationGracePeriodSeconds`(50초)로 요청을 보호한다(#354).
+- 확대하면 Pod당 DB 연결이 최대 4개라 서비스당 최대 12개(3 × 4)이고 전체 예산은 `max_connections` 상향(#186, 남규리) 뒤의 값을 따른다. 여러 서비스를 동시에 롤링하지 않는다.
+- 확인: `kubectl -n peakorder get hpa menu-service`로 현재 사용률(TARGETS)과 Pod 수를 본다. 사용률이 `<unknown>`이면 CPU 지표(metrics-server) 문제다. 2 Pod 시험·부하 시험 결과는 담당 이슈 댓글에 있다.
+
 ## 공개 HTTPRoute (#275)
 
 `base/httproute.yaml`은 `envoy-gateway-system/peakorder-gateway`의 `http`
