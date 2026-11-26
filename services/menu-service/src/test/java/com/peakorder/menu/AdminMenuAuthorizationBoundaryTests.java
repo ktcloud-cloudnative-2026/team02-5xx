@@ -24,7 +24,7 @@ class AdminMenuAuthorizationBoundaryTests {
                 new AdminMenuController(
                     service,
                     new AdminMenuAuthorization(
-                        new com.peakorder.menu.service.AdminMenuGatewayTrust())))
+                        new com.peakorder.menu.service.AdminMenuActivation(false))))
             .setControllerAdvice(new AdminMenuExceptionHandler())
             .build();
     // This injected servlet identity is not a reviewed, connected authentication mechanism.

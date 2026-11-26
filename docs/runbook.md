@@ -177,6 +177,7 @@ sudo -u postgres psql -d cooking_dev -c "SELECT event_type, count(*), min(create
 | 접속 허용 | dev DB는 dev 노드(.11~.13)에서만, prod DB는 prod 노드(.21~.23)에서만 (`pg_hba.conf`) |
 | 비밀번호 | 문서·Git·채팅에 기록하지 않음. 서비스는 Secret `<서비스>-service-db`의 `DB_URL`·`DB_USER`·`DB_PASSWORD` 키로 받음(Order·Payment·Cooking과 같은 형식. Menu는 `menu-service-db`에 `MENU_DB_*` 키를 쓰는 예외). dev Secret은 비밀번호를 관리하는 DB 담당이 `peakorder` 네임스페이스에 직접 만들고, 이슈에는 이름·키 존재만 남김(#112, 2026-11-23 합의). prod Secret 생성 방식·담당은 [미정: GitOps 담당과 결정] |
 | 백업 | 매일 03:00 `pg_dump`, `/var/backups/postgresql/peakorder`, 7일 보관 |
+| 최대 연결 | max_connections 150(서비스용 147, 관리자 예약 3). 2026-11-26 100→150 (#186), 설정은 postgresql.auto.conf |
 
 서비스: auth, menu, inventory, order, payment, cooking
 
@@ -236,15 +237,15 @@ kubectl -n peakorder describe secret <서비스>-service-db           # 키 3개
 
 - 금지: `kubectl get secret -o yaml` 결과를 공유하지 않는다(base64는 암호화가 아님).
 - 비밀번호는 `--from-file`과 프로세스 치환으로 넘겨 kubectl 명령 인수(프로세스 목록)에 남지 않게 한다. `printf`는 셸 내장 명령이라 별도 프로세스 인수가 생기지 않는다.
-- 연결 풀: #186 기준으로 서비스 Deployment에 `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=4`, `SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1`을 권장합니다(t2-db 한 대에 DB 12개, `max_connections` 100).
+- 연결 풀: #186 기준으로 서비스 Deployment에 `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=4`, `SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1`을 권장합니다(t2-db 한 대에 DB 12개, `max_connections` 150 — #186 연결 예산).
 
-현황 (2026-11-23)
+현황 (2026-11-26)
 
 | Secret | 상태 |
 |---|---|
 | `order-service-db`, `payment-service-db`, `cooking-service-db` | 기존 |
 | `auth-service-db`, `inventory-service-db` | 11/23 DB 담당 생성 |
-| `menu-service-db` | 아직 없음 |
+| `menu-service-db` | Menu 배포 때 생성(키 `MENU_DB_*`) |
 
 #### Menu (`menu-service-db`, 키 이름이 다름)
 
@@ -305,3 +306,29 @@ sudo -u postgres psql -c "\password <계정>"
 ```
 
 바꾼 뒤 해당 서비스의 Secret도 함께 바꿔야 합니다.
+
+### 설정 변경·재시작 (max_connections 등)
+
+재시작이 필요한 설정을 바꾸면 모든 서비스의 DB 연결이 몇 초 끊깁니다. 팀에 시간을 공지하고, 시험이 없는 시간에 합니다.
+
+```bash
+sudo -u postgres psql -c "show max_connections;"                  # 1. 현재 값 확인
+sudo cp /var/lib/postgresql/16/main/postgresql.auto.conf \
+  /var/backups/postgresql/postgresql.auto.conf.$(date +%Y%m%d)      # 2. 날짜 붙여 백업
+sudo -u postgres psql -c "ALTER SYSTEM SET max_connections = 150;" # 3. 변경
+sudo systemctl restart postgresql && sudo systemctl is-active postgresql   # 4. 재시작
+sudo -u postgres psql -c "show max_connections;"                  # 5. 적용값 확인
+# 6. 1~2분 뒤 dev DB 6개가 다시 연결됐는지, 메모리 여유 확인
+sudo -u postgres psql -c "select datname, count(*) from pg_stat_activity where datname like '%\_dev' group by datname;"
+free -h
+```
+
+- 되돌리기: `ALTER SYSTEM RESET <설정>;` 후 재시작합니다.
+- 주의: Swap이 없습니다(메모리 3.8GiB). 연결 수를 크게 늘리지 않습니다.
+- `pg_hba.conf` 변경은 재시작이 아니라 `sudo systemctl reload postgresql`로 반영합니다.
+
+**변경 기록**
+
+| 날짜 | 내용 |
+|---|---|
+| 2026-11-26 09:31 | `max_connections` 100→150 적용(남규리), 백업 `/var/backups/postgresql/postgresql.auto.conf.20261126` |

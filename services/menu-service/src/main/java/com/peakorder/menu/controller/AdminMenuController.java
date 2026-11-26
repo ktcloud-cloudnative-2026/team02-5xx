@@ -31,9 +31,9 @@ public class AdminMenuController {
   }
 
   @Operation(
-      summary = "ME-03: Administrator menu list (currently disabled)",
+      summary = "ME-03: Administrator menu list (disabled by default)",
       description =
-          "Default deny: always 403 until reviewed authentication integration. No role headers are trusted. "
+          "Disabled by default (MENU_ADMIN_ENABLED=false). When enabled behind the Gateway, canonical identity headers and STORE_ADMIN are required. "
               + "Proposed query contract includes ON_SALE, PAUSED and HIDDEN, all categories and no pagination.")
   @Parameters({
     @Parameter(
@@ -75,7 +75,7 @@ public class AdminMenuController {
         content = @Content(schema = @Schema(implementation = ApiResponse.class))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "403",
-        description = "FORBIDDEN (all production requests are denied)",
+        description = "FORBIDDEN: disabled or insufficient role",
         content = @Content(schema = @Schema(implementation = ApiResponse.class))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "500",
@@ -102,9 +102,9 @@ public class AdminMenuController {
   }
 
   @Operation(
-      summary = "ME-04: Administrator menu detail (currently disabled)",
+      summary = "ME-04: Administrator menu detail (disabled by default)",
       description =
-          "Default deny: always 403 until reviewed authentication integration. "
+          "Disabled by default (MENU_ADMIN_ENABLED=false). When enabled behind the Gateway, canonical identity headers and STORE_ADMIN are required. "
               + "Proposed detail allows HIDDEN and includes inactive options in ID order.")
   @ApiResponses({
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -121,7 +121,7 @@ public class AdminMenuController {
         content = @Content(schema = @Schema(implementation = ApiResponse.class))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "403",
-        description = "FORBIDDEN (all production requests are denied)",
+        description = "FORBIDDEN: disabled or insufficient role",
         content = @Content(schema = @Schema(implementation = ApiResponse.class))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "404",

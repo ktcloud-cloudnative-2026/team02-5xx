@@ -1,0 +1,27 @@
+# #280: 최신 Order dev JWT 계약과 동일. 활성화 전 실제 적용 확인이 필요하다.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: menu-service-admin-jwt
+  namespace: peakorder
+  labels:
+    app: menu-service
+    team: team02
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: menu-service-admin
+  jwt:
+    providers:
+      - name: peakorder-auth
+        issuer: http://10.10.22.100
+        audiences:
+          - peakorder-api-dev
+        remoteJWKS:
+          uri: http://auth-service.peakorder.svc.cluster.local:8080/api/v1/auth/jwks
+        claimToHeaders:
+          - header: X-User-Id
+            claim: sub
+          - header: X-User-Role
+            claim: role

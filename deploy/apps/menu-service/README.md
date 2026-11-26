@@ -24,6 +24,10 @@ menu-service/
     kustomization.yaml
   overlays/
     dev/kustomization.yaml
+    dev/hikari-patch.yaml
+    dev/admin-enabled-patch.yaml
+    dev/admin-httproute.yaml
+    dev/admin-securitypolicy.yaml
     prod/kustomization.yaml
 ```
 
@@ -35,8 +39,8 @@ menu-service/
   Spring Boot 기본 포트를 사용하며 이미지의 실행 명령을 재정의하지 않습니다.
 - Base에 공통 리소스를 두고 dev/prod Overlay에서 각각 이미지 태그를 지정합니다.
   dev/prod는 독립 클러스터이므로 이름이나 namespace 접미사를 추가하지 않습니다.
-- 환경별 복제 수, CPU/메모리 requests/limits, 실제 DB 주소 및 추가 인프라
-  정책은 확정 근거가 없어 지정하지 않았습니다. 배포 전 담당자 확인이 필요합니다.
+- 환경별 복제 수, 실제 DB 주소 및 추가 인프라 정책은 별도 확인 대상입니다.
+  자원 제한·JVM·종료 보호와 dev Hikari 설정은 아래 #354에 따릅니다.
 
 ## PostgreSQL Secret 선행 조건
 
@@ -44,11 +48,11 @@ menu-service/
 별도로 준비해야 합니다. 다음은 이 배포 구성에서 사용하는 이름·키 계약이며,
 기존 Secret이 이미 존재한다는 뜻은 아닙니다.
 
-| 컨테이너 환경 변수 | Secret 이름 | Secret 키 | 용도 |
-| --- | --- | --- | --- |
-| `MENU_DB_URL` | `menu-service-db` | `MENU_DB_URL` | Menu PostgreSQL JDBC URL |
-| `MENU_DB_USERNAME` | `menu-service-db` | `MENU_DB_USERNAME` | Menu DB 사용자 |
-| `MENU_DB_PASSWORD` | `menu-service-db` | `MENU_DB_PASSWORD` | Menu DB 비밀번호 |
+| 컨테이너 환경 변수 | Secret 이름       | Secret 키          | 용도                     |
+| ------------------ | ----------------- | ------------------ | ------------------------ |
+| `MENU_DB_URL`      | `menu-service-db` | `MENU_DB_URL`      | Menu PostgreSQL JDBC URL |
+| `MENU_DB_USERNAME` | `menu-service-db` | `MENU_DB_USERNAME` | Menu DB 사용자           |
+| `MENU_DB_PASSWORD` | `menu-service-db` | `MENU_DB_PASSWORD` | Menu DB 비밀번호         |
 
 세 환경 변수 모두 `valueFrom.secretKeyRef`로 주입하며 `optional: false`입니다.
 Secret이나 키가 없으면 컨테이너를 시작할 수 없습니다.
@@ -82,8 +86,9 @@ Probe 주기·실패 임계값 등은 Kubernetes 기본값을 사용합니다.
 
 ## GHCR 이미지 태그 교체
 
-Base와 두 Overlay의 현재 태그는 **미배포 플레이스홀더**입니다.
-실제 게시된 이미지 SHA 또는 배포 가능 여부를 나타내지 않습니다.
+Base와 prod Overlay는 아래 **미배포 플레이스홀더**를 유지합니다.
+dev는 `sha-eac2e88c7da2ed894689d4868713467c975ee3f4`를 사용하며, #354에서
+이미지 태그를 갱신하지 않습니다. 플레이스홀더는 배포 가능 여부를 나타내지 않습니다.
 
 ```text
 ghcr.io/ktcloud-cloudnative-2026/team02-5xx/menu:sha-REPLACE_WITH_PUBLISHED_40_CHAR_COMMIT_SHA
@@ -149,6 +154,11 @@ Kustomize 렌더링은 Kubernetes API 서버의 스키마 검증이나 실제 �
 대체하지 않습니다. 이미지 존재 여부·기동, DB 연결·Flyway, TCP Probe 응답,
 Service 통신 및 실제 dev/prod 배포는 미검증입니다.
 
+## Pod 수 관리(HPA 준비) — Issue #367
+
+- Argo CD Application(`deploy/argocd/dev/menu-service.yaml`)은 Deployment의 `/spec/replicas`를 비교에서 제외하고 `RespectIgnoreDifferences=true`로 Sync가 그 값을 되돌리지 않게 한다(Order #204와 같은 방식, 자동 동기화 설정은 그대로). 이후 HPA가 Pod 수를 정하거나 2 Pod 시험을 위해 수동으로 늘려도 Sync가 Git의 `replicas: 1`로 되돌리지 않는다.
+- 이 파일은 Argo CD가 관리하지 않아, 바꾸면 dev에서 `kubectl apply -f deploy/argocd/dev/menu-service.yaml`로 다시 적용해야 반영된다.
+
 ## 후속 연동
 
 PR #76·#79·#82는 병합됐지만 해당 사실만으로 실배포 검증이 완료되지는 않습니다.
@@ -177,10 +187,10 @@ Kubernetes 변경은 `CLAUDE.md` 6절의 필수 리뷰 대상입니다.
 base를 사용하는 dev/prod 렌더링에 모두 포함됩니다. 이미지·Deployment·Service는
 변경하지 않으며 실제 prod 적용은 수행하지 않습니다.
 
-| 메서드 | 경로 | 매칭 |
-| --- | --- | --- |
-| GET | `/api/v1/menus` | Exact (ME-01) |
-| GET | `/api/v1/menus/{menuId}` | RegularExpression `^/api/v1/menus/[^/]+$` (ME-02) |
+| 메서드 | 경로                     | 매칭                                              |
+| ------ | ------------------------ | ------------------------------------------------- |
+| GET    | `/api/v1/menus`          | Exact (ME-01)                                     |
+| GET    | `/api/v1/menus/{menuId}` | RegularExpression `^/api/v1/menus/[^/]+$` (ME-02) |
 
 상세는 비어 있지 않은 한 세그먼트만 허용합니다. 숫자로만 제한하지 않아
 `0`, `-1`, `abc`, `1.5`, Long 범위 초과 ID도 서비스에 도달하여
@@ -208,3 +218,143 @@ Auth #155·Cooking PR #266 선례 및
 위조/중복/대소문자 변형 헤더 제거, 다른 서비스의 실환경 회귀는 미검증입니다.
 server dry-run·실제 배포·Argo CD Sync는 실행하지 않았습니다.
 Gateway 담당자 리뷰 승인과 CI 성공 후 Git PR → Argo CD 절차로 후속 검증합니다.
+
+## dev 관리자 API 연동 (#280)
+
+`overlays/dev/`에 `admin-httproute.yaml`, `admin-securitypolicy.yaml`,
+`admin-enabled-patch.yaml`을 추가했다. ME-03~07 GET·POST·PATCH의 정확한 경로만
+별도 Route로 공개하며 Order dev와 같은 JWT provider를 사용한다.
+JWT Route에는 헤더 remove를 넣지 않고, 기존 공개 Route의 remove는 유지한다.
+base/prod는 `MENU_ADMIN_ENABLED=false`이며 관리자 Route/Policy를 포함하지 않는다.
+Service·포트·Secret·probe·이미지 태그·NetworkPolicy와 내부 호출 관계는 유지한다.
+#280 자체는 자원·Hikari·종료 보호를 추가하지 않았다. 현재 통합 결과는 병합된 #357의
+자원·JVM·dev Hikari 4/1·종료 보호를 함께 보존한다. Menu HPA·모니터링은 추가하지 않는다.
+
+`MENU_ADMIN_ENABLED=true`는 Gateway 경유를 증명하지 않는다. 기존 #112/#280의
+Gateway JWT + NetworkPolicy + 서비스 신원/역할 검사와 운영 통제를 전제로 하는 활성화다.
+허용된 내부 Pod·노드 수준의 우회 위험은 남는다.
+
+### 적용 전 필수 게이트
+
+**새 관리자 코드가 포함된 이미지를 Gateway 보호 검증 전에 활성화하지 않는다.**
+Kustomize의 파일 순서나 단순 sync-wave로 JWT Policy의 실제 준비 완료를 보장할 수 없다.
+현재 main 태그의 게시 JAR에는 관리자 컨트롤러/활성화 설정이 없어 true 환경 변수에도
+관리자 API를 제공하지 않는다. main 소스의 상시 false/403과 구 이미지의 엔드포인트 부재는 구분한다.
+GitOps 담당이 이 구 이미지 차단을 확인한 단계 적용 또는
+명시적 토글 false/자동 Sync 조율을 사용하여 Route/Policy·NetworkPolicy·운영 통제를 먼저 확인한다.
+그 이후에만 승인된 새 이미지·활성화를 반영한다. 구 이미지가 바뀌면 차단 전제를 재확인한다.
+이 작업에서 실제 클러스터나 Application을 변경하지 않았다.
+
+롤백은 **토글 false → 서비스 차단 확인 → 관리자 Route 비공개/Policy 정리** 순서다.
+활성 서비스·공개 Route를 남긴 채 Policy만 제거하지 않는다.
+세부 시험 목록과 실패 시 절차는
+[최신 Menu 인증 연동 문서](../../../docs/api/menu-admin-auth-integration.md)를 따른다.
+
+## 자원·연결 풀·정상 종료 보호 (#354, 병합 PR #357)
+
+기준 main `8c319af4abe5550ead0bf765b06e67a80dec85ac`, 작업 브랜치
+`infra/354-menu-resource-readiness`. #280의 미커밋 검토 문서를 보존하기 위해
+기존 경로를 유지하고 이 작업만 별도 worktree에서 수행했다.
+
+| 항목                            | 변경 전                      | 변경 후                     | 적용 범위              |
+| ------------------------------- | ---------------------------- | --------------------------- | ---------------------- |
+| CPU requests / limits           | 미지정                       | `100m` / `1`                | base → dev·prod 렌더링 |
+| 메모리 requests / limits        | 미지정                       | `384Mi` / `768Mi`           | base → dev·prod 렌더링 |
+| `JAVA_TOOL_OPTIONS`             | 미지정                       | `-XX:MaxRAMPercentage=60.0` | base → dev·prod 렌더링 |
+| Hikari 최대 / 최소 유휴         | 명시값 없음(기본 최대 10)    | `4` / `1`                   | **dev overlay만**      |
+| `preStop`                       | 없음                         | `["sh", "-c", "sleep 10"]`  | base → dev·prod 렌더링 |
+| `terminationGracePeriodSeconds` | 미지정(Kubernetes 기본 30초) | `50`                        | base → dev·prod 렌더링 |
+
+### 범위 판단
+
+자원·JVM·종료 보호는 기존 Order·Inventory·Auth와 같은 base 구조를 사용한다.
+반면 Hikari 4/1은 [#354](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/354)의
+**dev 기준**과 [#186 DB 합의](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/186#issuecomment-7095046477)에
+따라 `overlays/dev/hikari-patch.yaml`로 한정했다. Order의 dev Hikari 패치와
+Auth의 dev session 패치가 같은 선례다. Inventory/Cooking의 base 풀 설정을
+그대로 복사해 prod에 확대하지 않았다. dev·prod가 같은 DB 서버를 쓰므로
+prod 연결 예산은 별도 검토한다.
+
+기존 Secret 참조 3개, TCP readiness/liveness probe, dev/prod 이미지 태그,
+Service·HTTPRoute와 관리자 차단 정책은 유지한다. HPA·replicas 비교 제외,
+Actuator·Prometheus·startupProbe 및 NetworkPolicy는 추가하지 않았다.
+**base 변경은 prod 렌더링에도 반영되지만, prod 배포나 이미지 태그 변경을 뜻하지 않는다.**
+prod의 기존 미배포 이미지 플레이스홀더와 Hikari 미지정 상태도 그대로다.
+
+### 실제 게시 이미지 확인
+
+소스 Dockerfile만으로 판단하지 않고, 현재 dev overlay의 다음 게시 이미지를
+GHCR에서 내려받아 linux/amd64 manifest·config·각 layer digest를 확인했다.
+
+```text
+ghcr.io/ktcloud-cloudnative-2026/team02-5xx/menu:sha-eac2e88c7da2ed894689d4868713467c975ee3f4
+linux/amd64 manifest sha256:b17ebd251d5fa3dff8c534baab3458478b4508e3382883dd090e5062b602922f
+```
+
+- 실제 이미지 설정: `USER app`(UID 100), `WORKDIR /app`, exec형
+  `ENTRYPOINT ["java", "-jar", "app.jar"]`. Deployment가 실행 명령을 덮어쓰지 않는다.
+- 이미지에 `/bin/sh`, `/bin/sleep`이 있고 app 사용자로 실행할 수 있음을 확인했다.
+- Docker 실행기가 없어 WSL2의 별도 mount/PID namespace와 chroot에서
+  **내려받은 이미지의 JRE·app.jar 그대로** 실행했다. JVM은 namespace PID 1,
+  UID 100이며 SIGTERM을 직접 받았다. 셸은 `exec java`로 교체해 exec형 ENTRYPOINT와
+  동일한 신호 전달 구조를 유지했다. 이미지나 서비스 코드를 덧붙이지 않았다.
+- 실제 JRE는 Temurin 21.0.13.1, app.jar의 Spring Boot는 4.1.2다.
+  게시 JAR의 configuration metadata에서 `server.shutdown=graceful`,
+  `spring.lifecycle.timeout-per-shutdown-phase=30s` 기본값을 직접 확인했다.
+  따라서 중복 환경 변수를 추가하지 않는다.
+- 별도 loopback PostgreSQL 16에서 앱 기동·Flyway·메뉴 조회 200을 확인했다.
+  제안한 dev 환경 변수 이름 그대로 Hikari `maximumPoolSize=4`, `minimumIdle=1`
+  바인딩을 실제 이미지의 HikariConfig 로그에서 확인했다.
+- 실제 `sh -c "sleep 10"` 실행 후에도 HTTP 요청이 처리됐다.
+  DB 잠금으로 진행 중인 메뉴 조회를 유지한 상태에서 JVM PID 1에 SIGTERM을 보냈다.
+  새 TCP 연결은 거부되고, 잠금을 해제한 기존 요청은 200으로 완료된 뒤
+  `Graceful shutdown complete` 및 Hikari 종료를 확인했다. JVM 종료 코드 143은
+  SIGTERM 종료이며, 로그·진행 중 응답 완료로 graceful 처리 여부를 별도 확인했다.
+
+이것은 실제 이미지 파일시스템/JVM을 사용한 **로컬 Linux 실행 검증**이다.
+Docker/OCI 런타임, 768Mi cgroup 제한, Kubernetes kubelet의 hook 실행과
+Service/Gateway endpoint 전파, 실제 dev 롤링 시험을 대체하지 않는다.
+
+50초는 preStop 10초 + Boot의 기본 종료 단계 30초 + 여유 10초라는 기존 서비스
+기준이다. 30초는 각 종료 단계의 기본값이지 모든 종료 단계 합계의 상한이 아니다.
+느린 요청·연결·추가 lifecycle 단계가 예산을 넘으면 kubelet이 강제 종료할 수 있으므로
+실제 dev에서 종료 시간과 응답 유실을 확인해야 한다.
+
+### 이번 검증 결과 (2026-11-25)
+
+```powershell
+kustomize build deploy/apps/menu-service/overlays/dev
+kustomize build deploy/apps/menu-service/overlays/prod
+# 별도 폐기 가능한 PostgreSQL 테스트 DB 환경 변수를 지정한 Menu 디렉터리에서
+.\gradlew.bat --no-daemon spotlessCheck test build --rerun-tasks --console=plain
+git diff --check
+```
+
+- Kustomize **v5.8.3**으로 변경 전후 dev/prod 4개 렌더링 PASS.
+  각 환경의 리소스 3개 유지, 환경 변수 이름 중복 없음, 자원·JVM·종료·dev 풀 값 확인.
+  새 설정을 제외한 Deployment 객체와 기존 Service·HTTPRoute 객체가 변경 전과
+  동일함을 비교했다. Secret 참조·probe·태그·selector·포트·replicas도 보존했다.
+- 기존 Menu 테스트 **534 PASS, 실패/오류/생략 0**, 실제 별도 PostgreSQL 18 테스트
+  **91건 포함**. 고객 ME-01·02·내부 MI-01·02와 관리자 기본 차단 회귀를 포함한다.
+  Gradle `test`, `spotlessCheck`, `build` PASS. 테스트 조건을 완화하지 않았다.
+- 게시 이미지의 sh/sleep, PID 1 SIGTERM, Hikari 4/1, 진행 요청 완료 시험 PASS.
+- 저장소 밖 `C:/M/Peak_Order-354-qa/`에 before/after YAML, `validation.json`,
+  `runtime-results.json`, `image-runtime.log`, `gradle.log`를 보관했다.
+  실험 과정의 초기 검증 도구 오류는 수정 후 재실행했으며 최종 결과와 구분한다.
+- 이번 검증 전용 PostgreSQL만 종료하며 다른 worktree·미리보기 프로세스를 유지한다.
+
+### dev 반영 후 확인할 것
+
+위 2026-11-25 기록은 #354의 최초 로컬 검증이다. 이후 PR #357은 main `ca7c82b`로 병합됐다.
+현재 #360 통합 작업은 이 설정을 보존하며 Commit·Push·PR 병합·배포·클러스터 접근을 하지 않는다.
+후속 #360 제출·배포 시 서비스 및 공통 인프라 담당 리뷰와 CI, DB 담당 확인이 필요하다.
+
+1. 다른 서비스 배포 PR과 동시에 병합하지 않고, Argo CD 자동 Sync·Healthy 및
+   rollout 완료를 확인한다. 현재 자동 Sync 여부는 이 작업에서 현장 조회하지 않았다.
+2. 실제 Pod에서 resources·JVM 옵션·Hikari 4/1 바인딩과 menu_dev 연결 수를 확인한다.
+   최소 유휴 1은 전체 연결 수의 고정값이 아니며 사용 중에는 Pod당 최대 4개다.
+3. 고객·내부 API 응답, 관리자 차단 유지, 롤링 중 오류·재시작·OOM·DB 연결 대기와
+   preStop/정상 종료 시각을 기록한다. 기존 TCP probe는 DB 준비 완료를 보장하지 않는다.
+4. [#186의 최신 DB 예산 조건](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/186#issuecomment-7153706150)에
+   따라 종료 중 Pod와 롤링 추가 Pod를 포함하고 Menu·Payment 풀 적용 전에는
+   여러 서비스 동시 롤링을 피한다. 2 Pod·HPA·prod 예산은 후속 담당 작업이다.
