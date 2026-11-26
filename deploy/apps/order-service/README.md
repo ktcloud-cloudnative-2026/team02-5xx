@@ -80,6 +80,32 @@ Pod가 내려갈 때(롤링 업데이트, 이후 HPA 축소) 진행 중인 요�
 - 2 Pod 시험(2026-11-25, dev): 같은 주문의 동시 결제 요청에서 결제는 한 번만 처리되고(나머지는 `409`), 주문번호도 한 번만 발급됐다. outbox는 모두 발행(`SENT`)됐고 Cooking의 중복 수신(`duplicate`)은 0이었으며, 취소 후 재고 복원은 한 번이었다. 결과는 이슈 #225 댓글에 있다.
 - 확인: `kubectl -n peakorder get hpa order-service`로 현재 사용률(TARGETS)과 Pod 수를 본다. 사용률이 `<unknown>`이면 CPU 지표를 아직 읽지 못한 것이다. 원인은 Pod의 CPU requests 미설정, Pod가 아직 Ready가 아니거나 기동 직후 지표 수집 지연, metrics-server 이상 등일 수 있으므로 `kubectl -n peakorder describe hpa order-service`의 Conditions·Events와 `kubectl -n peakorder top pod`로 원인을 좁힌다. 부하 시험을 마쳤다(확대 1 → 3, 오류 0%, 축소 3 → 1). requests 100m·목표 70%는 시작값을 그대로 유지한다. 결과는 이슈 #186 댓글에 있다.
 
+## prod 연결 풀 — Issue #428
+
+prod overlay에도 dev와 같은 HikariCP 값을 명시한다. `overlays/prod/hikari-patch.yaml`을 prod kustomization의 `patches`에 연결하며 dev patch를 참조하지 않고 prod 파일로 독립 관리한다. 이 변경은 이미지·Secret·replicas·HPA·관리자 API를 바꾸지 않는다.
+
+| 환경 변수 | prod 값 |
+| --- | --- |
+| `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` | `"4"` |
+| `SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE` | `"1"` |
+
+Hikari 기본값은 최대 10개다. dev와 prod는 같은 PostgreSQL 서버(`t2-db`, `max_connections` 150, 서비스용 147)를 쓰므로 prod에 값을 지정하지 않으면 prod Pod 하나가 평소에도 많은 연결을 쥐고 예산을 넘길 수 있다. 계산 근거는 [#186 DB 담당 11/25 제안](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/186#issuecomment-7157471963)과 Menu의 같은 변경(#420, `deploy/apps/menu-service/README.md`)을 따른다.
+
+| 계산 조건 | 최대 연결 수 |
+| --- | --- |
+| 서비스용 연결: `max_connections` 150 − 관리자 예약 3 | 147 |
+| dev 최대 확장: 6서비스 × 3 Pod × 풀 4 | 72 |
+| dev 동시 롤링: 6서비스 × (3 + surge 1) Pod × 풀 4 | 96 |
+| dev 종료 중 Pod 중첩 포함 보수적 계산: 6 × (3 + 1 + 종료 중 1) × 4 | 120 |
+| prod 초기: 6서비스 × 1 Pod × 풀 4 | 24 |
+| 보수적 합계: dev 120 + prod 24 | 144 |
+
+147 − 144 = 3은 prod 롤링의 surge·종료 중 연결, 관리·마이그레이션·수동 접속, HPA 확대를 **보장하는 여유가 아니다**. 이 계산은 prod의 모든 서비스가 풀 4를 적용하고 각각 1 Pod라는 전제이며, 다른 서비스의 prod overlay도 같은 값이 필요하다. prod 동기화 중에는 dev의 부하·HPA 확대·여러 서비스 동시 롤링을 피하고 DB 담당이 현재 연결 수를 확인한다. 이 문서의 수치는 담당자의 실행 기록(#186)과 코드·manifest를 읽어 계산한 것이며, 이번 변경에서 DB에 접속해 재측정하지 않았다.
+
+prod 이미지 태그 승격, Secret(`order-service-db`), 관리자 API 개방은 prod 선행 조건(DB 담당, Auth issuer)이 정해진 뒤 별도 이슈에서 다룬다. 배포 경로는 **Git PR → Argo CD**이며 prod에 직접 `kubectl apply`하지 않는다.
+
+롤백: 배포 전에는 prod kustomization의 `patches` 항목과 `hikari-patch.yaml`만 제거한다. 다만 제거하면 풀 기본값(최대 10)으로 돌아가 연결 예산이 늘어나므로 제거 전에 DB 담당이 전체 연결 예산을 확인하고, 배포 후에도 같은 Git PR → Argo CD 경로로 복구한다.
+
 ## 로그
 
 - 환경 변수 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`로 로그를 한 줄에 JSON 하나(ECS) 형식으로 출력한다(이슈 #271, `docs/observability.md` 3-1, Cooking #190과 같은 방식). `application.yml`·코드는 바꾸지 않아 로컬 개발은 기존 텍스트 로그 그대로다. `service.name`에는 `order-service`가 자동으로 들어간다.

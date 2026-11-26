@@ -1,0 +1,17 @@
+# #186·#428: prod 초기 1 Pod 연결 예산. dev와 독립적으로 관리한다(dev patch를 참조하지 않는다).
+# Hikari 기본값은 최대 10개라, 지정하지 않으면 dev·prod가 같이 쓰는 DB 서버의 max_connections 예산을 넘길 수 있다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+  namespace: peakorder
+spec:
+  template:
+    spec:
+      containers:
+        - name: order-service
+          env:
+            - name: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE
+              value: "4"
+            - name: SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE
+              value: "1"
