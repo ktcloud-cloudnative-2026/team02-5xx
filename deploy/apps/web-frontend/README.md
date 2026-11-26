@@ -42,8 +42,10 @@ web-frontend/
 ## 이미지 태그 교체
 
 Base와 prod의 이미지 참조는 아래 **미배포 플레이스홀더**입니다.
-dev는 `sha-eac2e88c7da2ed894689d4868713467c975ee3f4`를 사용하며 #366에서
-실제 GHCR linux/amd64 이미지를 내려받아 확인했습니다. 태그는 변경하지 않습니다.
+현재 dev 태그는 #368로 main에 반영된 `sha-6219d6bf419ca733376c317fcbc4bbbd4d38ba5b`입니다.
+아래 최초 자원 실측은 이전 dev 이미지 `sha-eac2e88c7da2ed894689d4868713467c975ee3f4`와
+당시 main의 로컬 production 빌드를 대상으로 했습니다. 이전 실측의 이미지 SHA와 결과는 보존하며,
+현재 게시 이미지의 확인 결과는 별도 구역에 기록합니다. #372 수정에서는 최신 main의 태그를 유지합니다.
 Base/prod 플레이스홀더를 유지한 채 동기화하거나 배포하면 안 됩니다.
 
 ```text
@@ -143,7 +145,7 @@ Gateway 담당자 리뷰 승인과 CI 성공 후 실환경에서 후속 확인�
 
 ## dev 자원 초기값과 실측 (#366)
 
-확인일 2026-11-26, 기준 main `6219d6bf419ca733376c317fcbc4bbbd4d38ba5b`,
+최초 실측일 2026-11-26, 당시 기준 main `6219d6bf419ca733376c317fcbc4bbbd4d38ba5b`,
 작업 브랜치 `infra/366-web-frontend-resources`.
 [#366](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/366)과
 [#186 Frontend 담당 합의](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/186#issuecomment-7088327252),
@@ -172,9 +174,9 @@ Frontend는 Spring 초기값을 복사하지 않고 별도 실측하며 HPA는 �
 검증 시작 후보를 유지한다. 실제 CPU 제한은 throttling으로 작동하고 메모리 초과 시 OOM이 발생할 수 있다.
 requests는 스케줄링에 사용되며 사용량의 상한이 아니다.
 [Kubernetes 자원 관리](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/).
-HPA/PDB/replicas·이미지·probe·Service/HTTPRoute·labels/selector·Nginx/React는 변경하지 않는다.
+자원 patch는 HPA/PDB/replicas·이미지·probe·Service/HTTPRoute·labels/selector·Nginx/React를 변경하지 않는다.
 
-### 실제 게시 이미지 및 격리 실행
+### 최초 실측의 이전 게시 이미지 및 격리 실행
 
 ```text
 ghcr.io/ktcloud-cloudnative-2026/team02-5xx/web-frontend:sha-eac2e88c7da2ed894689d4868713467c975ee3f4
@@ -196,7 +198,7 @@ Nginx **1.30.6**, `USER nginx`(UID/GID **101**), 작업 디렉터리 `/`,
   `try_files $uri $uri/ /index.html`, stdout access log/stderr error log를 유지했다.
   gzip/sendfile 설정을 추가하지 않았다. 실행 전후 Nginx 설정 해시도 동일했다.
 - 게시 이미지의 HTML 545B·JS 303,293B·CSS 26,450B·SVG 551B와
-  최신 main의 production 빌드는 서로 다른 산출물이다. 게시 이미지에 PNG/WebP는 없다.
+  당시 main(`6219d6b`)의 production 빌드는 서로 다른 산출물이다. 이 이전 게시 이미지에는 PNG/WebP가 없다.
   최신 빌드의 PNG/WebP까지 확인하기 위해 같은 게시 Nginx에 별도 빌드 파일을 읽기 전용으로 연결했다.
   이 추가 시험을 새 이미지 게시나 기존 이미지 내용의 검증으로 혼동하지 않는다.
 
@@ -269,7 +271,7 @@ p95가 약 76ms로 커진 것은 관찰된 제한 효과다. 100ms보다 짧은 
 넘을 수 있으며 전체 구간 평균/커널 quota와 구분한다.
 이 처리량을 dev Gateway의 성능 보장이나 실제 사용자 용량으로 사용하지 않는다.
 
-최신 main production 빌드(동일 Nginx, ext4, 250m/128Mi)의 결과도 별도로 기록한다.
+당시 main(`6219d6b`)의 로컬 production 빌드(동일 Nginx, ext4, 250m/128Mi)의 결과도 별도로 기록한다.
 
 | 최신 빌드 조건 | 실측 req/s | 평균 CPU(m) | 메모리(Mi) | p95(ms) | throttled periods |
 | -------------- | ---------- | ----------- | ---------- | ------- | ----------------- |
@@ -287,6 +289,55 @@ lifetime memory peak 17.27Mi였다. 포화 구간 평균 CPU는 실제 계측값
 상태·Content-Type 및 GET 본문 SHA-256을 실제 산출물과 비교하여 통과했다.
 이번 짧은 시험에서는 후보값을 올릴 근거가 없어 유지하되 장시간/실환경 검증 후 조정한다.
 
+### #372 리뷰 반영: 현재 이미지와 main 통합 재검증
+
+통합 기준 main은 `2e902de59969bdfe3310251e4801795ba357ae54`다.
+#363(Payment 설정), #368(Frontend 태그), #329(CI 캐시), #369(Auth 태그), #370(Cooking 태그)의 병합 내용을
+커밋하지 않은 3-way 패치로 작업 트리에 반영했다. Frontend 외 9개 파일은 main과 동일하다.
+main 대비 #366의 변경은 README·dev kustomization·resources patch 3파일이며,
+이번 리뷰 반영의 직접 수정은 앞의 2파일이다. 기존 resources patch 내용은 그대로다.
+
+```text
+ghcr.io/ktcloud-cloudnative-2026/team02-5xx/web-frontend:sha-6219d6bf419ca733376c317fcbc4bbbd4d38ba5b
+linux/amd64 manifest sha256:c04582f1e66a264fa8a5f41a7806c873ca886b749750b88355fa79bfe243b515
+```
+
+현재 게시 이미지도 직접 내려받아 config/layer digest를 확인했다.
+이전 이미지와 앞의 8개 Nginx/base layer가 같고, Nginx 바이너리·nginx.conf·entrypoint의
+SHA-256도 동일하다. UID 101, Nginx 1.30.6, master 1 + worker 4, 실행 명령/8080도 유지됐다.
+앱 산출물 layer는 달라졌으므로 이전 이미지의 숫자를 새 이미지의 측정값으로 재사용하지 않았다.
+
+현재 이미지 자체를 별도 rootfs/network namespace와 cgroup에서 추가 실행했다.
+환경·부하 도구·부하 단계는 최초 최종 시험과 같으며 `cpu.max=25000 100000`,
+`memory.max=134217728`, swap 0을 커널 파일에서 확인했다. HTML·JS·CSS·SVG·PNG·WebP
+18파일의 GET/HEAD **36개 검사**에서 상태/Content-Type 및 GET 본문 해시가 모두 일치했다.
+
+| 현재 게시 이미지 조건 | 실측 req/s | 평균 CPU(m) | 메모리(Mi) | p95(ms) | throttled periods |
+| --------------------- | ---------- | ----------- | ---------- | ------- | ----------------- |
+| 대표 20               | 20.1       | 4.3         | 5.45       | 0.68    | 0%                |
+| 증가 200              | 200.0      | 28.9        | 5.89       | 0.40    | 0%                |
+| burst 1000            | 1000.0     | 120.6       | 7.93       | 0.33    | 0%                |
+| 동시 32 포화          | 3278.6     | 249.8       | 14.82      | 81.77   | 99.34%            |
+
+기동 50.0ms/누적 CPU 24.4ms/기동 memory peak 6.60Mi,
+유휴 CPU 증가량 0·메모리 4.71Mi, lifetime memory peak **16.03Mi**였다.
+추가 부하 요청 **67,602개 모두 200**, HTTP/연결 오류와 memory max/oom/oom_kill은 모두 0이었다.
+현재 이미지도 단기 부하에서 기존 시작값을 유지할 근거를 제공하지만 실제 노드의 스케줄링/경쟁,
+Gateway 지연·장시간 운용까지 보장하지 않는다. CPU requests/limits **25m/250m**와
+메모리 requests/limits **32Mi/128Mi**는 변경하지 않았다. 위의 최초 측정 SHA/수치도 그대로다.
+
+최신 main을 기준으로 base/dev/prod 전후 6개 렌더링을 다시 비교했다.
+base/prod는 객체 전체가 동일하고 dev도 resources를 제외하면 전체가 동일하다.
+main의 현재 태그와 resources patch가 함께 남고 probe·Service·HTTPRoute·replicas·labels/selector는 보존된다.
+Frontend **766 PASS**, production build/admin boundary 검사와 포맷·diff 검사도 통과했다.
+추가 산출물은 별도 QA 디렉터리(예: `<qa-dir>/372/`)의 `benchmark-results.json`,
+`manifest-results.json`, image manifest/config/layer 및 회귀 로그로 보관한다.
+
+PR #372의 기존 HEAD에 대한 CI Final은 SUCCESS이고 GitOps 담당의 APPROVED 리뷰를 확인했다.
+리뷰에 보고된 dev CPU 1m/메모리 4Mi와 worker 4개는 담당자 실측이며 이 작업의 클러스터 직접 검증은 아니다.
+이번 로컬 수정에 대한 원격 CI/추가 리뷰는 후속 제출 뒤 확인해야 한다.
+다른 서비스 배포 PR과 롤링 시간을 나누고 GitOps 담당이 #368 rollout 완료를 확인한 뒤 진행한다.
+
 ### 검증 범위 및 후속 운영 확인
 
 Node **24.22.3**, npm **11.19.1**에서 `npm ci`, `npm test`, `npm run build`,
@@ -297,18 +348,19 @@ Kustomize **v5.8.3**으로 base/dev/prod 변경 전후 6개 렌더링을 비교�
 변경 전과 객체 전체가 동일하다. base/prod는 그대로 동일하고 requests ≤ limits도 확인했다.
 replicas 미지정 상태, 태그, 8080, `/index.html` 두 probe, labels/selector·Route·Service를 보존했다.
 
-산출물은 저장소 밖 `C:/M/Peak_Order-366-qa/`의 이미지 manifest/config/layer,
+산출물은 저장소 밖 별도 QA 디렉터리(예: `<qa-dir>/366/`)의 이미지 manifest/config/layer,
 `benchmark-final.json`, `manifest-results.json`, before/after YAML,
 `frontend-test.log`, `frontend-build.log`, 로컬 실행 도구에 보관했다.
 이번에 생성한 transient Nginx unit만 종료하고 기존 worktree·bin·미커밋 변경·미리보기 서버는 보존한다.
-실제 Kubernetes/OCI 기동·cgroup/노드 경쟁·Argo CD Sync/Healthy·외부 CI/필수 리뷰는 미검증이다.
+실제 Kubernetes/OCI 기동·cgroup/노드 경쟁·Argo CD Sync/Healthy는 직접 검증하지 않았다.
+최초 구현 뒤 확인한 외부 CI/리뷰와 이번 로컬 수정의 미제출 상태는 위 #372 구역과 구분한다.
 128Mi를 초과시켜 OOM killer를 강제로 발생시키는 시험과 장시간 soak도 수행하지 않았다.
 
 dev 반영 전 담당자 외 인프라 리뷰와 CI를 완료하고 기존 자동 Sync/배포 일정을 확인한다.
 저장소의 `web-frontend-dev`는 자동 Sync enabled지만 현재 클러스터 상태를 직접 조회한 것은 아니다.
-시작 시 Open이던 자동 이미지 태그 PR #364는 최종 조회 시 Closed/미병합이었다.
-후속 Frontend 태그 PR #368도 Open이며 dev kustomization의 태그 1파일 변경이다.
-어느 PR도 가져오거나 수정하지 않았다. 태그가 바뀌면 실제 게시 산출물로 재측정한다.
+최초 실측 시 자동 이미지 태그 PR #364는 Closed/미병합, 후속 #368은 Open이었다.
+현재 #368은 main에 병합되어 dev 태그가 `sha-6219d6b…`로 바뀌었다.
+#372 수정은 그 main의 태그와 기존 resources patch를 함께 보존한다. 다음 태그 변경 시에도 실제 게시 산출물로 재검증한다.
 실제 적용은 사용자 승인 후 별도 Git PR → Argo CD로 진행하고 다음을 기록한다.
 
 1. rollout/Ready와 재시작 0, 실제 image ID, resources·probe 보존을 확인한다.
@@ -328,4 +380,7 @@ dev 반영 전 담당자 외 인프라 리뷰와 CI를 완료하고 기존 자�
    이미지·replicas·probe·다른 서비스 변경을 함께 되돌리지 않는다. 자동 Sync 후 rollout/응답을 확인한다.
    자원 상한 제거는 노드 사용량 증가 가능성이 있어 인프라 담당과 조율한다. 긴급 조치는 팀 운영 절차를 따른다.
 
-이번 작업에서는 Commit·Push·PR 생성·Merge·배포 및 클러스터 리소스 변경을 하지 않았다.
+최초 구현은 `456602c590b7fba183b572cdaa60b4f941273a63`으로 커밋되어 PR #372에 제출됐다.
+이번 리뷰 반영에서는 main의 변경을 작업 트리에 3-way 패치로 통합하고 충돌을 정리했다.
+기존 HEAD/브랜치 이력은 유지했으며 추가 Commit·Push·Merge·배포·클러스터 변경은 수행하지 않았다.
+이 로컬 수정이 후속 커밋·Push되기 전에는 원격 PR의 충돌 상태가 갱신되지 않는다.
