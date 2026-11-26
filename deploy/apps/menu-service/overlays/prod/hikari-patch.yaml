@@ -1,0 +1,16 @@
+# #186·#416: prod 초기 1 Pod 연결 예산. dev와 독립적으로 관리한다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: menu-service
+  namespace: peakorder
+spec:
+  template:
+    spec:
+      containers:
+        - name: menu-service
+          env:
+            - name: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE
+              value: "4"
+            - name: SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE
+              value: "1"

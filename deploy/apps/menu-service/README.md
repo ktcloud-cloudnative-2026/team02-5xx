@@ -358,3 +358,103 @@ git diff --check
 4. [#186의 최신 DB 예산 조건](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/186#issuecomment-7153706150)에
    따라 종료 중 Pod와 롤링 추가 Pod를 포함하고 Menu·Payment 풀 적용 전에는
    여러 서비스 동시 롤링을 피한다. 2 Pod·HPA·prod 예산은 후속 담당 작업이다.
+
+## prod 연결 풀 초기 설정 — Issue #416 (2026-11-26)
+
+기준 main은 `d4e2212ac053cb257eea1b22f0e5c285463ed909`, 작업 브랜치는
+`infra/416-menu-prod-hikari`다. 위 #354/#357의 prod Hikari 미지정 기록은
+당시 이력으로 보존하며, 이번 변경부터 prod에도 아래 값을 명시한다.
+병합된 #357의 자원·종료 보호와 #388의 dev HPA를 기준으로 하며,
+미병합 #402/PR #407의 HTTP Probe 변경은 포함하지 않는다.
+
+`overlays/prod/hikari-patch.yaml`을 prod kustomization의 `patches`에 연결한다.
+대상은 `apps/v1` Deployment `peakorder/menu-service`의 `menu-service` 컨테이너다.
+dev와 같은 구조·값을 쓰되 prod 파일로 독립 관리하고 dev 패치를 참조하지 않는다.
+
+| 환경 변수 | prod 값 |
+| --- | --- |
+| `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` | `"4"` |
+| `SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE` | `"1"` |
+
+### 근거와 공유 DB 연결 예산
+
+[#186 DB 담당 11/25 제안](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/186#issuecomment-7157471963)은
+prod 초기 1 Pod·풀 4를 포함해 max_connections 150을 제안했고,
+[11/26 적용 기록](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/186#issuecomment-7178950709)과
+[PostgreSQL 런북](../../../docs/runbook.md#postgresql-t2-db)에 100 → 150 적용이 기록돼 있다.
+이는 담당자의 실행 기록을 확인한 것이며 이번 작업에서 DB에 접속해 재측정하지 않았다.
+dev와 prod는 같은 PostgreSQL VM을 사용하고 서비스별 DB만 분리한다.
+
+| 계산 조건 | 최대 연결 수 |
+| --- | --- |
+| 일반 연결 가능: max_connections 150 − 관리자 예약 3 | 147 |
+| dev 최대 확장: 6서비스 × 3 Pod × 풀 4 | 72 |
+| dev 동시 롤링: 6서비스 × (3 + surge 1) Pod × 풀 4 | 96 |
+| dev 종료 중 Pod 중첩 포함 보수적 계산: 6 × (3 + 1 + 종료 중 1) × 4 | 120 |
+| prod 초기: 6서비스 × 1 Pod × 풀 4 | 24 |
+| 보수적 합계: dev 120 + prod 24 | 144 |
+
+147 − 144 = 3은 **prod 롤링, 추가 DB 연결 및 HPA 확대를 보장하는 여유가 아니다**.
+120도 종료 중 Pod를 서비스당 1개로 가정한 계산이며 반복 롤링 등의 절대 상한이 아니다.
+다른 서비스도 풀 4를 적용하고 prod는 각 1 Pod라는 전제가 필요하다.
+최소 유휴 1은 최대 연결 수를 줄이지 않는다. 여러 서비스의 동시 롤링 제한을 유지하고,
+prod 롤링의 surge·종료 중 연결, 관리·마이그레이션·수동 접속 등 추가 연결과
+확장 계획은 DB 담당과 별도로 예산을 재검토해야 한다. 이번 변경은 replicas/HPA를 정하지 않는다.
+
+### 로컬 검증 결과
+
+Kustomize v5.8.3으로 **변경 전후 base/dev/prod 총 6개 렌더링**을 실행했다.
+실행 파일은 기존 저장소 밖 `C:/M/Peak_Order-354-qa/tools/kustomize.exe`이며
+프로젝트 의존성은 추가하지 않았다. 저장소 루트에서 각 명령을 변경 전후 실행했다.
+
+```powershell
+& C:/M/Peak_Order-354-qa/tools/kustomize.exe build deploy/apps/menu-service/base
+& C:/M/Peak_Order-354-qa/tools/kustomize.exe build deploy/apps/menu-service/overlays/dev
+& C:/M/Peak_Order-354-qa/tools/kustomize.exe build deploy/apps/menu-service/overlays/prod
+python C:/M/Peak_Order-416-qa/validate.py
+git diff --check
+```
+
+- PASS: base 3개·dev 6개 객체 전체 동일. prod 3개 객체는 지정 env 두 개만 추가되고,
+  그 두 항목을 제외한 전체 YAML 객체가 동일하다. Deployment/컨테이너 대상 및 env 중복 없음 확인.
+- PASS: Menu YAML 전체를 중복 키 거부 로더(PyYAML)로 파싱했다.
+  Secret 참조, 이미지 태그/prod placeholder, TCP Probe, Service·HTTPRoute,
+  prod 관리자 false 및 관리자 Route/Policy 부재, CPU·메모리·JVM·ECS,
+  preStop·종료 유예, replicas/HPA 정책을 보존했다.
+- PASS: 변경 범위는 이 README와 prod patch·kustomization 3파일, `git diff --check` 통과.
+  기존 미추적 15개 파일의 SHA-256 보존 확인. 검증 스크립트의 Windows 경로 처리 오류는
+  수정 후 재실행했으며 최종 결과와 구분한다.
+- before/after YAML 6개, 검증 스크립트·`validation.json`과 보존 확인 기록은
+  저장소 밖 `C:/M/Peak_Order-416-qa/`에 보관했다.
+- 과거 #354 등의 테스트 수치는 해당 시점의 기록으로만 보존한다. 이번 PASS로 재사용하지
+  않았으며 Gradle/API/실행 시험은 재실행하지 않았다. 서비스 소스 변경은 없다.
+
+Kustomize/YAML 검증은 API 서버 스키마 검증이나 실행 검증을 대체하지 않는다.
+실제 prod 배포, DB 접속, Hikari 바인딩·연결 풀 실측, 이미지 기동·Flyway,
+Argo CD Sync/Healthy, 롤링 및 고객·내부·관리자 API 실환경 회귀는 **미검증**이다.
+
+### 배포 전 선행 조건과 후속 확인
+
+1. 작성자 외 인프라/DB 담당의 필수 리뷰와 CI 통과 후 별도 배포 이슈에서 진행한다.
+   배포 경로는 **Git PR → Argo CD**이며 prod 직접 apply를 하지 않는다.
+2. DB 담당이 max_connections/예약 연결·현재 연결 수·메모리와 dev/prod 전체 풀·Pod 수,
+   롤링/종료 중 중첩 및 추가 접속 예산을 재확인하고 배포 순서를 조율한다.
+3. prod DB·접속 권한과 `menu-service-db`의 `MENU_DB_URL`·`MENU_DB_USERNAME`·
+   `MENU_DB_PASSWORD` 키를 승인된 방식으로 준비한다. 비밀값을 출력하거나 Git에 넣지 않는다.
+4. prod placeholder를 실제 게시·검증된 이미지 태그로 교체하는 별도 승인 변경과
+   namespace·이미지 접근 권한·GitOps 등록/대상/동기화 정책 확인을 먼저 완료한다.
+   이 작업에서는 이미지·Secret·Argo CD를 변경하지 않았다.
+5. 승인된 배포 후 Pod Ready·재시작·OOM·연결 대기/시간 초과, 풀 최대 4·최소 유휴 1
+   바인딩 및 실제 DB 연결 수를 확인한다. 고객·내부 조회, prod 관리자 차단,
+   기존 Probe/Route와 종료 동작을 검증하고 배포 이슈에 결과를 남긴다.
+
+### rollback
+
+배포 전 취소는 prod kustomization의 `hikari-patch.yaml` 연결과 해당 파일만 제거하고
+렌더링 비교 후 검토한다. 배포 후에도 승인된 Git PR → Argo CD로 복구하며,
+이미지·Secret·기존 dev/base 설정을 함께 되돌리지 않는다.
+**패치 제거는 이전 Hikari 미지정 상태(기본 최대 10)로 복귀할 수 있어 연결 예산을 늘린다.**
+제거 전 실제 이미지의 기본/외부 설정과 전체 연결 예산을 DB 담당이 확인해야 하며,
+예산을 충족하지 못하면 무조건 제거하지 말고 승인된 대체 풀 값과 배포 중지·복구 순서를 정한다.
+롤백 자체의 Pod 교체·종료 중 연결도 포함한다. 복구 후 Argo CD/Pod 상태·풀 설정·DB 연결·
+API 응답을 재확인한다. 공유 DB max_connections를 이번 rollback에서 변경하지 않는다.
