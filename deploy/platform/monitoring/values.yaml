@@ -202,6 +202,53 @@ prometheus:
         - port: http
           path: /actuator/prometheus
           interval: 30s
+    # Auth·Inventory·Payment·Menu 서비스 지표(#400): HTTP histogram, Hikari, JVM.
+    # 4개 모두 Service 라벨 app: <서비스>, 포트 이름 http(8080). NetworkPolicy allow-*-service가 monitoring → 8080 허용.
+    # /actuator는 Gateway에 열지 않는다. 11/26 monitoring namespace에서 4개 모두 200 확인.
+    - name: auth-service
+      selector:
+        matchLabels:
+          app: auth-service
+      namespaceSelector:
+        matchNames:
+          - peakorder
+      endpoints:
+        - port: http
+          path: /actuator/prometheus
+          interval: 30s
+    - name: inventory-service
+      selector:
+        matchLabels:
+          app: inventory-service
+      namespaceSelector:
+        matchNames:
+          - peakorder
+      endpoints:
+        - port: http
+          path: /actuator/prometheus
+          interval: 30s
+    - name: payment-service
+      selector:
+        matchLabels:
+          app: payment-service
+      namespaceSelector:
+        matchNames:
+          - peakorder
+      endpoints:
+        - port: http
+          path: /actuator/prometheus
+          interval: 30s
+    - name: menu-service
+      selector:
+        matchLabels:
+          app: menu-service
+      namespaceSelector:
+        matchNames:
+          - peakorder
+      endpoints:
+        - port: http
+          path: /actuator/prometheus
+          interval: 30s
   prometheusSpec:
     # 차트가 만든 것만이 아니라 다른 namespace(peakorder)의 ServiceMonitor·PodMonitor·규칙도 읽는다.
     serviceMonitorSelectorNilUsesHelmValues: false
