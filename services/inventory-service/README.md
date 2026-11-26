@@ -70,7 +70,7 @@ export DB_USER=<사용자> DB_PASSWORD=<비밀번호>
 | 역할이 `STORE_ADMIN` | 통과 |
 
 - IN-02는 삭제되지 않은 재고만 id순으로 잠금 없이 읽는다. `lowStockOnly`(기본 `false`)가 `true`면 부족한 것만.
-- IN-06은 행을 지우지 않고 `deleted_at`을 기록한 뒤 메뉴 연결을 푼다(그 메뉴는 다른 재고에 다시 연결할 수 있다). 연결된 메뉴로 결제 대기(`RESERVED`)이거나 복원될 수 있는 확정(`CONFIRMED`) 주문이 있으면 409 `STOCK_ITEM_IN_USE`, 없거나 이미 삭제된 재고는 404 `INVENTORY_NOT_FOUND`. 삭제된 재고는 IN-01·IN-02·IN-04·IN-05·II-01~04에서 없는 것으로 본다.
+- IN-06 성공은 200과 공통 ApiResponse의 StockItemResponse를 반환한다(초기 204 제안과 구분). IN-06은 행을 지우지 않고 `deleted_at`을 기록한 뒤 메뉴 연결을 푼다(그 메뉴는 다른 재고에 다시 연결할 수 있다). 연결된 메뉴로 결제 대기(`RESERVED`)이거나 복원될 수 있는 확정(`CONFIRMED`) 주문이 있으면 409 `STOCK_ITEM_IN_USE`, 없거나 이미 삭제된 재고는 404 `INVENTORY_NOT_FOUND`. 삭제된 재고는 IN-01·IN-02·IN-04·IN-05·II-01~04에서 없는 것으로 본다.
 
 ## 내부 API (Order → Inventory)
 
@@ -86,7 +86,7 @@ export DB_USER=<사용자> DB_PASSWORD=<비밀번호>
 | II-01 | 같은 `orderId`면 기존 확보 반환(같은 orderId 동시 요청도 같은 확보를 돌려준다) | 409 `INSUFFICIENT_STOCK`, 409 `STOCK_NOT_LINKED` |
 | II-02 | 이미 `CONFIRMED` | 409 `HOLD_NOT_ACTIVE`(만료·해제), 404 `HOLD_NOT_FOUND` |
 | II-03 | 이미 `RELEASED`·`EXPIRED` | 409 `HOLD_NOT_ACTIVE`(확정됨), 404 `HOLD_NOT_FOUND` |
-| II-04 | 이미 `RESTORED` | 409 `RESTORE_NOT_APPLICABLE`(확정된 확보 없음) |
+| II-04 | 이미 `RESTORED` | 200, `restored=true` (추가 재고 변경 없음, 멱등 성공) |
 
 - 확보·재고 행은 비관적 락으로 잠그며, 교착 방지를 위해 메뉴 ID 순서로 잠근다.
 - 만료 스케줄러는 `expires_at`이 지난 `RESERVED` 확보를 `EXPIRED`로 바꾸고 `reserved_qty`를 되돌린다. 처리 직전 상태를 다시 확인하므로 그 사이 확정된 확보는 건드리지 않는다.
