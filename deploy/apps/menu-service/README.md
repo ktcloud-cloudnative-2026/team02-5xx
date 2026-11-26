@@ -25,6 +25,9 @@ menu-service/
   overlays/
     dev/kustomization.yaml
     dev/hikari-patch.yaml
+    dev/admin-enabled-patch.yaml
+    dev/admin-httproute.yaml
+    dev/admin-securitypolicy.yaml
     prod/kustomization.yaml
 ```
 
@@ -45,11 +48,11 @@ menu-service/
 별도로 준비해야 합니다. 다음은 이 배포 구성에서 사용하는 이름·키 계약이며,
 기존 Secret이 이미 존재한다는 뜻은 아닙니다.
 
-| 컨테이너 환경 변수 | Secret 이름 | Secret 키 | 용도 |
-| --- | --- | --- | --- |
-| `MENU_DB_URL` | `menu-service-db` | `MENU_DB_URL` | Menu PostgreSQL JDBC URL |
-| `MENU_DB_USERNAME` | `menu-service-db` | `MENU_DB_USERNAME` | Menu DB 사용자 |
-| `MENU_DB_PASSWORD` | `menu-service-db` | `MENU_DB_PASSWORD` | Menu DB 비밀번호 |
+| 컨테이너 환경 변수 | Secret 이름       | Secret 키          | 용도                     |
+| ------------------ | ----------------- | ------------------ | ------------------------ |
+| `MENU_DB_URL`      | `menu-service-db` | `MENU_DB_URL`      | Menu PostgreSQL JDBC URL |
+| `MENU_DB_USERNAME` | `menu-service-db` | `MENU_DB_USERNAME` | Menu DB 사용자           |
+| `MENU_DB_PASSWORD` | `menu-service-db` | `MENU_DB_PASSWORD` | Menu DB 비밀번호         |
 
 세 환경 변수 모두 `valueFrom.secretKeyRef`로 주입하며 `optional: false`입니다.
 Secret이나 키가 없으면 컨테이너를 시작할 수 없습니다.
@@ -176,10 +179,10 @@ Kubernetes 변경은 `CLAUDE.md` 6절의 필수 리뷰 대상입니다.
 base를 사용하는 dev/prod 렌더링에 모두 포함됩니다. 이미지·Deployment·Service는
 변경하지 않으며 실제 prod 적용은 수행하지 않습니다.
 
-| 메서드 | 경로 | 매칭 |
-| --- | --- | --- |
-| GET | `/api/v1/menus` | Exact (ME-01) |
-| GET | `/api/v1/menus/{menuId}` | RegularExpression `^/api/v1/menus/[^/]+$` (ME-02) |
+| 메서드 | 경로                     | 매칭                                              |
+| ------ | ------------------------ | ------------------------------------------------- |
+| GET    | `/api/v1/menus`          | Exact (ME-01)                                     |
+| GET    | `/api/v1/menus/{menuId}` | RegularExpression `^/api/v1/menus/[^/]+$` (ME-02) |
 
 상세는 비어 있지 않은 한 세그먼트만 허용합니다. 숫자로만 제한하지 않아
 `0`, `-1`, `abc`, `1.5`, Long 범위 초과 ID도 서비스에 도달하여
@@ -208,21 +211,51 @@ Auth #155·Cooking PR #266 선례 및
 server dry-run·실제 배포·Argo CD Sync는 실행하지 않았습니다.
 Gateway 담당자 리뷰 승인과 CI 성공 후 Git PR → Argo CD 절차로 후속 검증합니다.
 
+## dev 관리자 API 연동 (#280)
 
-## 자원·연결 풀·정상 종료 보호 (#354)
+`overlays/dev/`에 `admin-httproute.yaml`, `admin-securitypolicy.yaml`,
+`admin-enabled-patch.yaml`을 추가했다. ME-03~07 GET·POST·PATCH의 정확한 경로만
+별도 Route로 공개하며 Order dev와 같은 JWT provider를 사용한다.
+JWT Route에는 헤더 remove를 넣지 않고, 기존 공개 Route의 remove는 유지한다.
+base/prod는 `MENU_ADMIN_ENABLED=false`이며 관리자 Route/Policy를 포함하지 않는다.
+Service·포트·Secret·probe·이미지 태그·NetworkPolicy와 내부 호출 관계는 유지한다.
+#280 자체는 자원·Hikari·종료 보호를 추가하지 않았다. 현재 통합 결과는 병합된 #357의
+자원·JVM·dev Hikari 4/1·종료 보호를 함께 보존한다. Menu HPA·모니터링은 추가하지 않는다.
+
+`MENU_ADMIN_ENABLED=true`는 Gateway 경유를 증명하지 않는다. 기존 #112/#280의
+Gateway JWT + NetworkPolicy + 서비스 신원/역할 검사와 운영 통제를 전제로 하는 활성화다.
+허용된 내부 Pod·노드 수준의 우회 위험은 남는다.
+
+### 적용 전 필수 게이트
+
+**새 관리자 코드가 포함된 이미지를 Gateway 보호 검증 전에 활성화하지 않는다.**
+Kustomize의 파일 순서나 단순 sync-wave로 JWT Policy의 실제 준비 완료를 보장할 수 없다.
+현재 main 태그의 게시 JAR에는 관리자 컨트롤러/활성화 설정이 없어 true 환경 변수에도
+관리자 API를 제공하지 않는다. main 소스의 상시 false/403과 구 이미지의 엔드포인트 부재는 구분한다.
+GitOps 담당이 이 구 이미지 차단을 확인한 단계 적용 또는
+명시적 토글 false/자동 Sync 조율을 사용하여 Route/Policy·NetworkPolicy·운영 통제를 먼저 확인한다.
+그 이후에만 승인된 새 이미지·활성화를 반영한다. 구 이미지가 바뀌면 차단 전제를 재확인한다.
+이 작업에서 실제 클러스터나 Application을 변경하지 않았다.
+
+롤백은 **토글 false → 서비스 차단 확인 → 관리자 Route 비공개/Policy 정리** 순서다.
+활성 서비스·공개 Route를 남긴 채 Policy만 제거하지 않는다.
+세부 시험 목록과 실패 시 절차는
+[최신 Menu 인증 연동 문서](../../../docs/api/menu-admin-auth-integration.md)를 따른다.
+
+## 자원·연결 풀·정상 종료 보호 (#354, 병합 PR #357)
 
 기준 main `8c319af4abe5550ead0bf765b06e67a80dec85ac`, 작업 브랜치
 `infra/354-menu-resource-readiness`. #280의 미커밋 검토 문서를 보존하기 위해
 기존 경로를 유지하고 이 작업만 별도 worktree에서 수행했다.
 
-| 항목 | 변경 전 | 변경 후 | 적용 범위 |
-| --- | --- | --- | --- |
-| CPU requests / limits | 미지정 | `100m` / `1` | base → dev·prod 렌더링 |
-| 메모리 requests / limits | 미지정 | `384Mi` / `768Mi` | base → dev·prod 렌더링 |
-| `JAVA_TOOL_OPTIONS` | 미지정 | `-XX:MaxRAMPercentage=60.0` | base → dev·prod 렌더링 |
-| Hikari 최대 / 최소 유휴 | 명시값 없음(기본 최대 10) | `4` / `1` | **dev overlay만** |
-| `preStop` | 없음 | `["sh", "-c", "sleep 10"]` | base → dev·prod 렌더링 |
-| `terminationGracePeriodSeconds` | 미지정(Kubernetes 기본 30초) | `50` | base → dev·prod 렌더링 |
+| 항목                            | 변경 전                      | 변경 후                     | 적용 범위              |
+| ------------------------------- | ---------------------------- | --------------------------- | ---------------------- |
+| CPU requests / limits           | 미지정                       | `100m` / `1`                | base → dev·prod 렌더링 |
+| 메모리 requests / limits        | 미지정                       | `384Mi` / `768Mi`           | base → dev·prod 렌더링 |
+| `JAVA_TOOL_OPTIONS`             | 미지정                       | `-XX:MaxRAMPercentage=60.0` | base → dev·prod 렌더링 |
+| Hikari 최대 / 최소 유휴         | 명시값 없음(기본 최대 10)    | `4` / `1`                   | **dev overlay만**      |
+| `preStop`                       | 없음                         | `["sh", "-c", "sleep 10"]`  | base → dev·prod 렌더링 |
+| `terminationGracePeriodSeconds` | 미지정(Kubernetes 기본 30초) | `50`                        | base → dev·prod 렌더링 |
 
 ### 범위 판단
 
@@ -304,8 +337,9 @@ git diff --check
 
 ### dev 반영 후 확인할 것
 
-이번에는 Commit·Push·PR 생성·병합·배포·클러스터 접근을 하지 않았다.
-후속 제출·배포 시 서비스 및 공통 인프라 담당의 필수 리뷰와 CI, DB 담당 확인이 필요하다.
+위 2026-11-25 기록은 #354의 최초 로컬 검증이다. 이후 PR #357은 main `ca7c82b`로 병합됐다.
+현재 #360 통합 작업은 이 설정을 보존하며 Commit·Push·PR 병합·배포·클러스터 접근을 하지 않는다.
+후속 #360 제출·배포 시 서비스 및 공통 인프라 담당 리뷰와 CI, DB 담당 확인이 필요하다.
 
 1. 다른 서비스 배포 PR과 동시에 병합하지 않고, Argo CD 자동 Sync·Healthy 및
    rollout 완료를 확인한다. 현재 자동 Sync 여부는 이 작업에서 현장 조회하지 않았다.

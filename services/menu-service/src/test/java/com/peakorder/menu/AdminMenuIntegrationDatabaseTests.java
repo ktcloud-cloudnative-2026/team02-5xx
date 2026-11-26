@@ -1,12 +1,11 @@
 package com.peakorder.menu;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doReturn;
 
 import com.peakorder.menu.entity.Category;
 import com.peakorder.menu.repository.CategoryRepository;
-import com.peakorder.menu.service.AdminMenuGatewayTrust;
+import com.peakorder.menu.service.AdminMenuActivation;
 import java.net.URI;
 import java.net.http.*;
 import java.util.stream.Stream;
@@ -20,20 +19,23 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Real integrated HTTP/services/PostgreSQL. Only ingress trust is simulated, never JWT validation.
+ * Real integrated HTTP/services/PostgreSQL. Real activation property; only the off-state is
+ * simulated. Identity headers are local test inputs, not JWT validation.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = "menu.admin.enabled=true")
 @EnabledIfEnvironmentVariable(named = "MENU_DB_TEST_URL", matches = "jdbc:postgresql:.+")
 class AdminMenuIntegrationDatabaseTests {
   @LocalServerPort int port;
   @Autowired CategoryRepository categories;
   @Autowired JdbcTemplate jdbc;
-  @MockitoBean AdminMenuGatewayTrust trust;
+  @MockitoSpyBean AdminMenuActivation activation;
   private long categoryId;
   private final ObjectMapper mapper = new ObjectMapper();
   private final HttpClient client = HttpClient.newHttpClient();
@@ -48,7 +50,6 @@ class AdminMenuIntegrationDatabaseTests {
   @BeforeEach
   void fixture() {
     categoryId = categories.saveAndFlush(new Category("integration-245", 0)).getId();
-    when(trust.isVerified(any())).thenReturn(true);
   }
 
   @AfterEach
@@ -163,7 +164,7 @@ class AdminMenuIntegrationDatabaseTests {
 
   @ParameterizedTest
   @MethodSource("endpoints")
-  void allFiveOperationsShareTrustAnd401403PolicyBeforeParsingOrDatabase(String endpoint)
+  void allFiveOperationsShareActivationAnd401403PolicyBeforeParsingOrDatabase(String endpoint)
       throws Exception {
     var parts = endpoint.split(" ");
     var anonymous = request(parts[0], parts[1], "{", null);
@@ -172,7 +173,7 @@ class AdminMenuIntegrationDatabaseTests {
     var customer = request(parts[0], parts[1], "{", "CUSTOMER");
     assertThat(customer.statusCode()).isEqualTo(403);
     assertThat(customer.body()).contains("FORBIDDEN");
-    when(trust.isVerified(any())).thenReturn(false);
+    doReturn(false).when(activation).isEnabled();
     var forged = request(parts[0], parts[1], "{", "STORE_ADMIN");
     assertThat(forged.statusCode()).isEqualTo(403);
     assertThat(

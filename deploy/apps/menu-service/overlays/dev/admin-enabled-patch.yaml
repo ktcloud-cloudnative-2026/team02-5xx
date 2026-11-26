@@ -1,0 +1,15 @@
+# #280: Gateway JWT/NetworkPolicy 실제 검증 후에만 dev에 적용한다.
+# README의 staged GitOps 절차를 따르며 자동 Sync 상태로 선행 병합하지 않는다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: menu-service
+  namespace: peakorder
+spec:
+  template:
+    spec:
+      containers:
+        - name: menu-service
+          env:
+            - name: MENU_ADMIN_ENABLED
+              value: "true"

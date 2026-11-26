@@ -37,9 +37,9 @@ public class AdminMenuCreateController {
   }
 
   @Operation(
-      summary = "ME-05: Create menu (currently disabled)",
+      summary = "ME-05: Create menu (disabled by default)",
       description =
-          "Default denied until Gateway JWT/identity forwarding and bypass protection are verified. Proposed 201 contract is tested with a mocked authorization boundary only.",
+          "Disabled by default (MENU_ADMIN_ENABLED=false). When enabled behind the Gateway, canonical identity headers and STORE_ADMIN are required.",
       requestBody =
           @io.swagger.v3.oas.annotations.parameters.RequestBody(
               required = true,
@@ -58,7 +58,7 @@ public class AdminMenuCreateController {
         content = @Content(schema = @Schema(implementation = ApiResponse.class))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "403",
-        description = "FORBIDDEN: default deny",
+        description = "FORBIDDEN: disabled or insufficient role",
         content = @Content(schema = @Schema(implementation = ApiResponse.class))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "404",

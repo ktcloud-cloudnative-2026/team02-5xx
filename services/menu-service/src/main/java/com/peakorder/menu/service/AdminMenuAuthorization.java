@@ -7,19 +7,19 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-/** Shared ME-03~07 policy. Identity headers require a verified ingress boundary. */
+/** Shared ME-03~07 policy under the agreed Gateway/NetworkPolicy trust model (#112, #280). */
 @Component
 public final class AdminMenuAuthorization {
-  private final AdminMenuGatewayTrust gatewayTrust;
+  private final AdminMenuActivation activation;
 
-  public AdminMenuAuthorization(AdminMenuGatewayTrust gatewayTrust) {
-    this.gatewayTrust = gatewayTrust;
+  public AdminMenuAuthorization(AdminMenuActivation activation) {
+    this.activation = activation;
   }
 
   public void requireStoreAdmin() {
     if (!(RequestContextHolder.getRequestAttributes()
             instanceof ServletRequestAttributes attributes)
-        || !gatewayTrust.isVerified(attributes.getRequest())) {
+        || !activation.isEnabled()) {
       throw AdminMenuAccessException.forbidden();
     }
     var request = attributes.getRequest();

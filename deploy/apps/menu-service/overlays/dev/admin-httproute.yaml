@@ -1,0 +1,40 @@
+# #280: ME-03~07만 JWT 보호 경로로 공개한다. 공개 Route의 헤더 제거는 유지한다.
+# JWT Route에는 remove를 넣지 않는다(#112 11/25, #286: claim 헤더도 지워지는 문제).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: menu-service-admin
+  namespace: peakorder
+  labels:
+    app: menu-service
+    team: team02
+spec:
+  parentRefs:
+    - name: peakorder-gateway
+      namespace: envoy-gateway-system
+      sectionName: http
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /api/v1/admin/menus
+          method: GET
+        - path:
+            type: Exact
+            value: /api/v1/admin/menus
+          method: POST
+        - path:
+            type: RegularExpression
+            value: ^/api/v1/admin/menus/[^/]+$
+          method: GET
+        - path:
+            type: RegularExpression
+            value: ^/api/v1/admin/menus/[^/]+$
+          method: PATCH
+        - path:
+            type: RegularExpression
+            value: ^/api/v1/admin/menus/[^/]+/status$
+          method: PATCH
+      backendRefs:
+        - name: menu-service
+          port: 8080

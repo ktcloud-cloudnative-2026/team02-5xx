@@ -36,9 +36,9 @@ public class MenuUpdateController {
   }
 
   @Operation(
-      summary = "ME-06: Update menu information/options (currently disabled)",
+      summary = "ME-06: Update menu information/options (disabled by default)",
       description =
-          "Default deny until Gateway trust is verified. Omission preserves; null clears description/imageUrl only. Options are per-item upserts, never replacements. Sales status is excluded.",
+          "Disabled by default (MENU_ADMIN_ENABLED=false); enabled access requires canonical identity headers and STORE_ADMIN. Omission preserves; null clears description/imageUrl only. Options are per-item upserts, never replacements. Sales status is excluded.",
       requestBody =
           @io.swagger.v3.oas.annotations.parameters.RequestBody(
               required = true,
@@ -58,7 +58,7 @@ public class MenuUpdateController {
         content = @Content(schema = @Schema(implementation = ApiResponse.class))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "403",
-        description = "FORBIDDEN: actual default deny",
+        description = "FORBIDDEN: disabled or insufficient role",
         content = @Content(schema = @Schema(implementation = ApiResponse.class))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "404",

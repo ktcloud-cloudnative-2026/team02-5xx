@@ -27,6 +27,9 @@ spec:
               containerPort: 8080
               protocol: TCP
           env:
+            # 기본 차단. dev도 Gateway/NetworkPolicy 검증 이후에만 활성화한다(#280).
+            - name: MENU_ADMIN_ENABLED
+              value: "false"
             - name: MENU_DB_URL
               valueFrom:
                 secretKeyRef:
