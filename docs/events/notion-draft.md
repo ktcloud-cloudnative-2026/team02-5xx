@@ -6,13 +6,13 @@
 - 원본 최종 수정: 2026-11-16T03:27:49.697Z (UTC)
 - 가져온 날짜: 2026-11-13 (Asia/Seoul)
 - 공통 확정 규칙: [CLAUDE.md](../../CLAUDE.md)
-- 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
+- 최근 확인: 2026-11-26, main `340cda0` 기준 1차 대조(#193).
 - 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
 - 구현 기준(현재, 2026-11-19): main `b4724aa`에는 Order Flyway V1~V5와 주문 생성·조회·결제·취소 API(PR #28·#29·#46·#61)·관리자 영업·접수 API(PR #133)·취소 후속 처리 재시도 상한(PR #135)·주문 상세 조리 상태(PR #142), Order의 이벤트 발행·수신(OrderConfirmed 발행·CookingCompleted 수신, PR #52), Cooking의 OrderConfirmed 수신(PR #57)·자동 조리 진행과 CookingCompleted 발행([PR #78](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/78))·전표 등록 시각 DB 기록(PR #109)·메뉴 이름·옵션 요약 길이 초과 시 잘라 저장(PR #113)이 병합되어 있습니다. 두 서비스를 함께 띄운 실제 이벤트 연동은 아직 확인하지 않았으며, 열린 PR의 구현을 main 반영 완료로 표시하지 않습니다.
 
 ---
 
-> HTTP API와 구분해 관리합니다. 아래 상세는 2026-11-16 Order·Cooking 담당자 합의를 명시한 PR #52·#57을 기준으로 최신화했습니다. Order #52, Cooking #57·#78은 main에 병합됐습니다. 계약은 확정됐고 양방향 구현이 모두 main에 있으나, 두 서비스를 함께 띄운 실제 연동 확인은 아직 하지 않았습니다.
+> HTTP API와 구분해 관리합니다. 아래 상세는 2026-11-16 Order·Cooking 담당자 합의를 명시한 PR #52·#57을 기준으로 최신화했습니다. Order #52, Cooking #57·#78은 main에 병합됐습니다. 계약 및 양방향 구현은 main에 반영됐으며, 11/24 dev 백엔드 정상 주문 흐름에서 실제 양방향 연동 성공이 보고되었습니다(#259 댓글). 브라우저·Gateway 전체 E2E 및 장애/재시도 전수 검증은 별도입니다.
 
 | ID | 이벤트명 | 발신자 | 수신자 | 기능 |
 | --- | --- | --- | --- | --- |
@@ -90,7 +90,13 @@ Cooking 저장 규칙은 `cook_time_sec = cookTimeSec + Σ options.extraCookTime
 
 completedAt은 ISO 8601(+09:00)입니다. Order PR은 PAID·WAITING·COOKING인 주문을 완료 처리하고, 이미 처리한 eventId는 무시합니다. 취소·미확정 주문 등 처리 불가능한 상태는 아래 재시도 분류를 따릅니다.
 
-**구현 상태:** Cooking의 자동 조리 시작·완료 스케줄러와 CookingCompleted 발행기는 [Cooking PR #78](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/78)로 main에 병합됐습니다. 양방향 구현이 모두 main에 있으나 서비스끼리의 실제 연동은 확인하지 않았으므로 연동 완료로 보지 않습니다. Order의 중간 WAITING·COOKING 상태 반영 방식도 미확정입니다.
+**구현 상태:** Cooking의 자동 조리 시작·완료 스케줄러와 CookingCompleted 발행기는 [Cooking PR #78](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/78)로 main에 병합됐습니다. 11/24 dev 정상 주문 시험에서 양방향 실제 연동 및 Order COMPLETED 반영 확인 보고(#259). Order 상세는 Cooking 조회로 진행 상태를 제공하며, Order 중간 상태의 DB 반영과 구분합니다.
+
+## dev 검증 기록 (2026-11-26 기준)
+
+- [11/24 #259 결과](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/259#issuecomment-7125722314): Order port-forward로 정상 주문 생성·모의 결제, EV-01→조리→EV-02→Order COMPLETED. 큐 잔량·DLQ 0. 실제 백엔드 연동 보고이며 Gateway/브라우저 E2E가 아닙니다.
+- 11/25 [#313](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/313) 2 Pod 시험에서 전표 중복 없음, 동시 조리 1건 이하, 조리 중 Pod 삭제 뒤 정상 완료 및 Order COMPLETED 보고. FIFO는 DB 등록 순서이며 결제 순서를 엄격히 보장하지 않습니다.
+- 재시도·DLQ·Outbox 알림은 [#237](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/237)·[#292](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/292)·[#310](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/310)에서 구성/반영 보고. 실제 장애 주입·복구 및 최신 이미지 전체 통합 테스트 결과는 후속 반영합니다.
 
 ## 발행·재시도·DLQ
 
