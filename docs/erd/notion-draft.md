@@ -377,7 +377,7 @@ erDiagram
     inventory_reservations {
         bigint id PK "임시 확보 ID"
         bigint order_id UK "임시 주문 ID (FK 없음)"
-        varchar status "RESERVED CONFIRMED RELEASED EXPIRED"
+        varchar status "RESERVED CONFIRMED RELEASED EXPIRED RESTORED"
         timestamptz expires_at "만료 시각 (생성 후 5분)"
         timestamptz created_at "만든 시각"
         timestamptz updated_at "고친 시각"
