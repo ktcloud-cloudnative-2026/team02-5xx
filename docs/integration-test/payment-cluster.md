@@ -49,7 +49,7 @@
 | ID | 내용 | 역할 | 상태 | 비고 |
 |---|---|---|---|---|
 | CT-04 | 결제 실패·중복·응답 유실 | 주관 | NOT RUN | Order 담당(주문 상태), Frontend(F-04)와 함께 진행. P-02·P-04 결과를 바탕으로 함. 11/27 진행 예정 |
-| CT-05 | 주문 취소·재고 복원·환불 (Payment 쪽 근거) | 참여 | PASS(Payment 쪽) | 9028(주문 17) `REFUNDED`, 9026(주문 15, 취소 거절) `SUCCESS` 내부 API로 확인(16:55). 환불 실패 시험: 17:05쯤 Payment Pod 삭제 → 새 Pod 약 21초 뒤 Ready → 17:07:11 `환불 완료 orderId=22 paymentId=9032` 한 줄(재시도 성공, 중복 없음). 전체 결과는 Order 담당 #411 |
+| CT-05 | 주문 취소·재고 복원·환불 (Payment 쪽 근거) | 참여 | PASS(Payment 쪽) | 9028(주문 17) `REFUNDED`, 9026(주문 15, 취소 거절) `SUCCESS` 내부 API로 확인(16:55). 환불 실패 시험: Order 담당이 Payment를 약 11초 0개로 줄였다가 17:06:13에 1개로 복원 → 새 Pod(rgfx8) 1/1 Running·재시작 0 → 17:07:11 `환불 완료 orderId=22 paymentId=9032` 한 줄(Order 재시도로 성공, 중복 없음). 전체 결과는 Order 담당 #411 |
 
 ## 5. 기타 확인 기록
 
