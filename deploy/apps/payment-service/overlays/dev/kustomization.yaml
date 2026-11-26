@@ -5,3 +5,5 @@ resources:
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/payment
     newTag: sha-5675838fe251862e7ffc4b4c7edb9503bf12faa5
+patches:
+  - path: hikari-patch.yaml
