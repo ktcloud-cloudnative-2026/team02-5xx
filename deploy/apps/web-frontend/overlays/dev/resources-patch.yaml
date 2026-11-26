@@ -1,0 +1,18 @@
+# #186/#366: dev measurement starting point; prod sizing requires separate validation.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-frontend
+  namespace: peakorder
+spec:
+  template:
+    spec:
+      containers:
+        - name: web-frontend
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
