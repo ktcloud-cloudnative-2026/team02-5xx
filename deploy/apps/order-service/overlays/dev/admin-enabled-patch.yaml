@@ -1,0 +1,15 @@
+# Issue #398: dev에서만 관리자 API(OR-06~09)를 켠다.
+# Gateway JWT(admin-securitypolicy.yaml, #303·#337·#348 방식)와 서비스 STORE_ADMIN 권한 검사(#263)가 모두 있는 상태에서만 켠다.
+# prod는 이 패치에 포함하지 않는다(base 값 "false" 유지).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: order-service
+          env:
+            - name: ORDER_ADMIN_ENABLED
+              value: "true"

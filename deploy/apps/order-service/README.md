@@ -38,8 +38,10 @@ Inventory·Cooking은 아직 배포 구성이 없다. 해당 서비스가 없으
 
 ## 관리자 API와 외부 노출
 
-- `ORDER_ADMIN_ENABLED=false`를 명시한다. 관리자 API(OR-06·07)는 인증(STORE_ADMIN, 이슈 #112)이 확정되기 전까지 켜지 않으며, 켜면 인증 없이 누구나 영업·접수 상태를 바꿀 수 있다. 격리되지 않은 dev와 prod에서는 켜지 않는다.
-- Gateway `HTTPRoute`는 이 PR에 없다. 사용자 식별이 임시 헤더(`X-User-Id`)이므로 인증 교체 전에는 `/api/v1/orders`를 외부에 열지 않는다([서비스 README](../../../services/order-service/README.md)). Order는 클러스터 안에서만 접근 가능하다.
+- base는 `ORDER_ADMIN_ENABLED=false`를 명시한다. 관리자 API(OR-06~09)는 Gateway JWT(#112 A안)와 서비스의 STORE_ADMIN 검사(#263)가 함께 있어야 켤 수 있고, 켜면 영업·접수 상태 변경과 전체 주문 조회가 가능하다. **dev overlay에서만** `admin-enabled-patch.yaml`로 `true`를 켠다(Issue #398, Inventory #337·Cooking #348·Menu #360과 같은 방식). prod는 base 값 `false`를 유지하고 관리자 Route·SecurityPolicy도 만들지 않는다.
+- 고객 경로: base `httproute.yaml`(`order-service`)이 `/api/v1/orders` GET·POST만 Gateway에 연결하고, dev `securitypolicy.yaml`(`order-service-jwt`)이 JWT를 검증한다(#303).
+- 관리자 경로(dev 전용, #398): `admin-httproute.yaml`(`order-service-admin`)이 OR-06·07 `/api/v1/admin/store/operations`(GET·PATCH), OR-08 `/api/v1/admin/orders`(GET), OR-09 `/api/v1/admin/orders/{orderId}`(GET)만 연결한다. 고정 경로는 `Exact` + method, `orderId` 경로는 `RegularExpression`이며 `/internal/**`·`/actuator/**`는 열지 않는다. `admin-securitypolicy.yaml`(`order-service-admin-jwt`)이 JWT를 검증하고 `sub`→`X-User-Id`, `role`→`X-User-Role`로 전달하며, STORE_ADMIN 확인은 서비스가 한다. JWT 경로라 `RequestHeaderModifier(remove)`는 넣지 않는다(#286).
+- 확인(dev, Gateway `10.10.22.100`): 토큰 없이 관리자 경로는 401, CUSTOMER 토큰은 403, STORE_ADMIN 토큰은 200이다. OR-07로 영업·접수 상태를 바꿨다면 시험 후 원래 값으로 되돌린다. 병합하면 Order Deployment에 환경 변수가 추가되어 롤링된다.
 
 ## 자원·검사
 
