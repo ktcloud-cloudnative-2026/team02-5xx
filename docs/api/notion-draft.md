@@ -6,7 +6,7 @@
 - 원본 최종 수정: 2026-11-16T03:27:49.697Z (UTC)
 - 가져온 날짜: 2026-11-13 (Asia/Seoul)
 - 공통 확정 규칙: [CLAUDE.md](../../CLAUDE.md)
-- 최근 계약 확인: 2026-11-17. Notion 최신 API·ERD와 관련 Order·Cooking PR의 합의 및 코드를 대조했습니다. 아래에 별도 표시하지 않은 기존 초안의 승인 상태는 유지합니다.
+- 최근 확인: 2026-11-26, main `340cda0` 기준 1차 변경 대조(#193). 아래 원문·과거 기록은 보존하되 최신 구현 상태 및 상세 계약은 추가 보완을 우선 확인합니다.
 - Order API 상세 갱신: 2026-11-18. Order PR(#28·#29·#46·#52·#56)의 구현과 Menu PR #90·Payment PR #71의 호출 계약을 확인해 Order Service 절과 Menu·Payment 내부 API 절에 보완 내용을 추가했습니다. Notion 원본의 같은 부분도 맞춰 수정해야 합니다.
 - 구현 기준(작성 당시, 2026-11-13): main `4fbbb66`에는 관련 업무 API·Flyway·이벤트 처리가 아직 없었습니다.
 - 구현 기준(현재, 2026-11-20): main `b57c266`에는 Order Flyway V1~V6와 주문 생성·조회·결제·취소 API(OR-01~05, PR #28·#29·#46·#61), 관리자 영업·주문 접수 상태 API(OR-06·07, PR #133), 취소 후속 처리의 재시도 상한·수동 확인 표시·지표(PR #135), 주문 상세의 Cooking 조리 상태(OR-04 `cooking`, PR #142), 관리자 주문 목록·검색·상세(OR-08·09, V6 인덱스, PR #170), Order의 RabbitMQ 이벤트 발행·수신(PR #52)과 Cooking 장애 차단(PR #56), Menu MI-01·MI-02(PR #90·#100)와 고객 메뉴 목록·상세 ME-01·ME-02(PR #105), Cooking의 OrderConfirmed 수신(PR #57)·CI-03 취소 API(PR #62)·자동 조리 진행과 CookingCompleted 발행(PR #78)·전표 등록 시각 DB 기록(PR #109)·표시용 문자열 길이 초과 처리(PR #113), Inventory 초기 구성(PR #70)과 내부 API(II-01~04, PR #115), Payment 모의 결제·조회·환불 내부 API(PR #71), Cooking CI-02 예상 시간을 CO-02와 같게 조리 시작까지·완료까지로 나눈 변경(PR #141)이 병합되어 있습니다. 열린 PR의 구현은 main 반영 완료로 표시하지 않습니다.
@@ -18,6 +18,8 @@
 > 초안. 팀 승인 필요
 
 ## 공통 규칙
+
+**11/24 확정(#112)·11/26 현황:** [Auth 세션 계약](auth-session-contract.md), [#303](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/303). 보호 경로 JWT 검증 및 X-User-Id/X-User-Role 전달; Gateway JWT 오류는 일반 텍스트 401일 수 있으며 서비스의 공통 JSON 401/403과 구분합니다. HTTP 상태 기반 처리, GET만 Refresh 후 최대 1회 재시도, 변경 요청 자동 재전송 금지([#331](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/331)). HTTPS 브라우저 통합 검증은 [#287](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/287) 후속. 내부 API는 Gateway에 노출하지 않습니다. Order 관리자는 계속 비공개이며 Inventory·Cooking dev 관리자 경로만 별도 활성화([#337](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/337), [#349](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/349)).
 
 - 공통 응답: success, data, message. 실패 시 errorCode 추가. JSON 필드명은 camelCase.
 - 각 MSA는 springdoc-openapi·Swagger UI를 제공하며 RabbitMQ 이벤트는 HTTP API와 별도 관리한다.
@@ -159,6 +161,8 @@
 
 ## Menu Service
 
+> 2026-11-26 구현 상태: ME-03~07은 [#251](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/251) main 병합. 아래 수정 후 표가 현재 구현 경로이며 ME-07 /status를 사용하고 ME-08 별도 DELETE는 사용하지 않습니다. 제품 기본 403 차단을 유지하며 실제 dev 관리자 공개는 [#280](https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/280)/[#360](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/360) 진행 중입니다.
+
 | ID | Method | URL 초안 | 기능 | 권한 |
 | --- | --- | --- | --- | --- |
 | ME-01 | GET | /api/v1/menus | 판매 메뉴 목록 조회 | 전체 |
@@ -202,7 +206,7 @@ PAUSED 조회 허용·HIDDEN 비노출, 상세 옵션과 오류 계약은
 | IN-01 | GET | /api/v1/inventory/availability | 메뉴별 주문가능 품절 여부 조회 | 전체 |
 | IN-02 | GET | /api/v1/admin/inventory/items | 재고 목록 검색 재고 부족 조회 | STORE\_ADMIN |
 | IN-03 | POST | /api/v1/admin/inventory/items | 재고 항목 등록 | STORE\_ADMIN |
-| IN-04 | POST | /api/v1/admin/inventory/items/\{stockItemId\}/adjustments | 재고 입고 차감 | STORE\_ADMIN |
+| IN-04 | POST | /api/v1/admin/inventory/items/\{stockItemId\}/adjustments | 재고 입고(양수 추가만) | STORE\_ADMIN |
 | IN-05 | PUT | /api/v1/admin/inventory/items/\{stockItemId\}/menu-link | 메뉴와 재고 연결 변경 | STORE\_ADMIN |
 | IN-06 | DELETE | /api/v1/admin/inventory/items/\{stockItemId\} | 재고 항목 삭제 비활성화 | STORE\_ADMIN |
 
@@ -211,6 +215,8 @@ PAUSED 조회 허용·HIDDEN 비노출, 상세 옵션과 오류 계약은
 - 연결시 menuId 와 stockItemId 를 사용한다
 - 재고 미연결 또는 주문 가능 수량 0인 메뉴는 주문 불가 처리한다
 - 임시 확보 수량은 시스템 내부에서 관리
+
+**2026-11-26 구현 보완:** [#143](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/143)·[#202](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/202)·[#232](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/232). IN-01은 menuIds와 {menuId, orderable, availableQty} (재고 기준, 미연결 false). 고객 화면은 orderable과 Menu 판매 상태를 함께 판단합니다. IN-02는 lowStockOnly 조회, 미삭제 재고만 id순. IN-03은 재고 미연결 등록(201), IN-04 quantity는 1 이상만, IN-05 menuId=null은 해제. IN-06은 논리 삭제(204, 본문 없음), deleted_at 기록·menu_id 해제; RESERVED/CONFIRMED 예약이 남으면 IN-05·06은 409 STOCK_ITEM_IN_USE, 삭제된 재고는 404. IN-05의 메뉴 검증 및 오류는 [Inventory README](../../services/inventory-service/README.md)를 따릅니다. 관리자 권한 [#247](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/247), dev JWT 경로 [#337](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/337), 실제 관리자 JWT 200은 별도 확인합니다. prod 기본 차단 유지.
 
 ## Order Service
 
@@ -262,7 +268,7 @@ Order PR([#28](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/28)·
 | OR-09 | 경로 `orderId` | `200`, `data`에 OR-04의 주문·항목 값에 더해 `userId`, `cancelReason`, `failReason`, `paymentId`, `cancelRequestedAt`, `stockRestoredAt`, `refundedAt`, `manualReviewRequired`, `manualReviewReason`, `cancelFollowUpAttempts` | 모든 사용자의 주문을 조회. 없는 주문은 `404 ORDER_NOT_FOUND`. Cooking을 호출하지 않아 `cooking`·`expectedWaitSec`·`holdExpiresAt`은 없음. 값이 없는 필드는 응답에서 생략. **main 병합**(PR #170), 인증 전에는 설정으로 꺼져 있음 |
 
 - **관리자 API(OR-06~09) 노출 정책:** 관리자 권한(STORE_ADMIN) 확인은 신원 헤더로 구현했지만(이슈 #263), 이 헤더는 Gateway의 JWT 검증이 dev에서 확인되기 전에는 믿을 수 없으므로 설정을 켜면 **신원을 위조해 누구나** 영업을 열고 닫을 수 있고, 전체 사용자의 주문(결제 ID 포함)을 조회할 수 있습니다(OR-08·09는 `manualReviewRequired` 등 취소·환불 정보도 포함). OR-06·07과 OR-08·09는 같은 설정(`order.admin.enabled`) 하나로 함께 켜고 끕니다. 그래서 `order.admin.enabled`(환경 변수 `ORDER_ADMIN_ENABLED`, 기본 `false`)는 꺼 두는 것이 기본이고, 꺼져 있으면 경로가 없는 것처럼 `404 NOT_FOUND`입니다. **인증이 구현되기 전에는 격리된 로컬 검증 환경에서만 켜며, 외부에서 접근할 수 있거나 여러 사람이 함께 쓰는 dev와 운영(prod)에서는 켜지 않습니다.** (dev에서 테스트가 필요하면 `kubectl port-forward`처럼 클러스터 밖에서 열리지 않는 방식으로만 접근하고, Gateway 라우트에 관리자 경로가 없는지 함께 확인합니다.) Cooking 관리자 API(`COOKING_ADMIN_ENABLED`)와 같은 방식이며, 인증 적용은 #112 결정 후 별도 작업입니다. Gateway 담당(정진혁)은 Order HTTPRoute를 `/api/v1/orders` 등 필요한 경로만 등록하고 `/api/v1/admin/**`은 #112 전까지 넣지 않기로 했습니다(Cooking 관리자 API도 같은 기준). 보안 리뷰(이태훈)의 승인 범위는 "기본 비활성 임시 구현"이며, 위 조건 밖에서 켜는 것은 승인되지 않았습니다.
-- **사용자 식별(이슈 #263):** `X-User-Id`(양의 정수)와 `X-User-Role`(`CUSTOMER`·`STORE_ADMIN`) 헤더를 씁니다. 클라이언트가 보낸 같은 이름의 헤더는 Gateway가 제거합니다. 두 헤더 중 하나라도 없거나 두 번 이상 오거나 형식이 틀리면 `401 UNAUTHORIZED`(형식 오류를 역할 판단보다 먼저, 요청 본문 검증보다도 먼저 확인), 고객 API(OR-01부터 OR-05까지)에 `STORE_ADMIN`이 오면 `403 FORBIDDEN`(관리자 계정은 주문·결제 불가), 관리자 API(OR-06부터 OR-09까지)에 `STORE_ADMIN`이 아니면 `403 FORBIDDEN`입니다. 다른 사용자의 주문은 기존대로 `404 ORDER_NOT_FOUND`입니다. 이 헤더는 Gateway를 거칠 때만 믿을 수 있으므로, Gateway의 JWT 검증이 dev에서 확인되고 Order 라우트가 합의되기 전에는 서비스를 외부에 직접 노출하지 않습니다.
+- **사용자 식별(이슈 #263):** `X-User-Id`(양의 정수)와 `X-User-Role`(`CUSTOMER`·`STORE_ADMIN`) 헤더를 씁니다. 클라이언트가 보낸 같은 이름의 헤더는 Gateway가 제거합니다. 두 헤더 중 하나라도 없거나 두 번 이상 오거나 형식이 틀리면 `401 UNAUTHORIZED`(형식 오류를 역할 판단보다 먼저, 요청 본문 검증보다도 먼저 확인), 고객 API(OR-01부터 OR-05까지)에 `STORE_ADMIN`이 오면 `403 FORBIDDEN`(관리자 계정은 주문·결제 불가), 관리자 API(OR-06부터 OR-09까지)에 `STORE_ADMIN`이 아니면 `403 FORBIDDEN`입니다. 다른 사용자의 주문은 기존대로 `404 ORDER_NOT_FOUND`입니다. 이 헤더는 Gateway를 거칠 때만 믿을 수 있으므로, 고객 Order JWT 경로는 #303에서 적용했으며 서비스 직접 외부 노출은 금지합니다.
 - 주문번호(`orderNo`)는 `yyMMdd-0001` 형식(날짜별 일련번호)이며 결제·재고 확정 시 발급합니다. 형식은 Order 구현 기준이며 팀 최종 확정은 아닙니다.
 - 조리 시간은 Order DB에 저장하지 않습니다. 결제를 시작할 때 Menu(MI-01)에서 다시 받아 `OrderConfirmed` 이벤트(`cookTimeSec`, 옵션 `extraCookTimeSec`)에 담아 Cooking에 전달합니다.
 
@@ -588,7 +594,7 @@ MI-01의 요청·응답은 [Menu PR #90](https://github.com/ktcloud-cloudnative-
 
 ### Inventory 내부 계약 보완 (2026-11-17)
 
-아래 오류 의미와 복원 요청은 [PR #61의 Inventory 담당자 합의](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)를 반영합니다. **확정·구현 완료(main 병합):** Inventory 초기 구성(PR #70)과 내부 API 구현([PR #115](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/115))이 병합됐습니다. 다만 Order와 함께 띄운 실제 연동 확인은 아직 없습니다. II-03·II-04 응답은 담당자(남규리)가 PR #115 구현과 대조해 확인했습니다.
+아래 오류 의미와 복원 요청은 [PR #61의 Inventory 담당자 합의](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/61)를 반영합니다. **확정·구현 완료(main 병합):** Inventory 초기 구성(PR #70)과 내부 API 구현([PR #115](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/115))이 병합됐습니다. 11/24 dev 정상 주문 전체 흐름에서 재고 확보·확정 확인 보고(#259); 해제·복원 전체 시나리오는 별도 검증합니다. II-03·II-04 응답은 담당자(남규리)가 PR #115 구현과 대조해 확인했습니다.
 
 | API | 확정된 요청·응답 의미 | Order 호출측 현황 |
 | --- | --- | --- |
@@ -674,7 +680,7 @@ PR #62(main 병합)는 전표를 `PESSIMISTIC_WRITE` 행 잠금으로 읽고 상
 
 CO-04의 WAITING 대기열은 `queued_at, id` 오름차순입니다.
 
-**CO-03·CO-04 관리자 권한(이슈 #99, #112 계약):** Gateway가 전달하는 `X-User-Id`(양의 정수)와 `X-User-Role`(`CUSTOMER`·`STORE_ADMIN`)을 Order(#263)와 같은 규칙으로 확인합니다. 두 헤더 중 하나라도 없거나 두 번 이상 오거나 형식이 틀리면 `401 UNAUTHORIZED`(형식 오류를 역할 판단보다 먼저 확인), `STORE_ADMIN`이 아니면 `403 FORBIDDEN`입니다. 오류 코드·메시지는 Order와 같습니다. 이 헤더는 Gateway의 JWT 검증이 dev에서 확인되기 전에는 믿을 수 없으므로 `cooking.admin.enabled`(환경 변수 `COOKING_ADMIN_ENABLED`, 기본 `false`)는 계속 꺼 두고, 꺼져 있으면 경로가 없는 것처럼 `404`입니다. `/api/v1/admin/**`은 그 전까지 HTTPRoute에 넣지 않습니다(Cooking 공개 경로는 CO-01·CO-02만, #266).
+**CO-03·CO-04 관리자 권한(이슈 #99, #112 계약):** Gateway가 전달하는 X-User-Id(양의 정수)·X-User-Role(CUSTOMER/STORE_ADMIN)를 서비스가 검사([#288](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/288)). 누락·중복·형식 오류 401 UNAUTHORIZED, 역할 부족 403 FORBIDDEN. 기본/base/prod `COOKING_ADMIN_ENABLED=false` 유지; [#349](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/349)로 dev만 CO-03·04 Exact GET JWT 보호 경로와 활성화를 적용했습니다. 11/25 무토큰·위조 헤더 401, 공개 CO-01 200, 내부/미허용 경로 404 확인 보고. 실제 CUSTOMER/STORE_ADMIN 토큰 및 관리자 화면 통합 검증은 남았습니다.
 
 | HTTP | errorCode | 의미 (CO-03·CO-04) |
 | --- | --- | --- |
