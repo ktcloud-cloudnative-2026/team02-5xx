@@ -7,7 +7,7 @@ resources:
   - hpa.yaml
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/menu
-    newTag: sha-46d1801215997aa767ab12fa53249acd06b710d1
+    newTag: sha-23a47d5763f03230c3dda9b1a0da93c514d54ced
 patches:
   - path: hikari-patch.yaml
   - path: admin-enabled-patch.yaml
