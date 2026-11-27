@@ -62,8 +62,8 @@
 
 | ID | 내용 | 상태 | 기대 결과 | 실제 결과 | 근거 | 일시 |
 |---|---|---|---|---|---|---|
-| I-17 | 재고 변동 이력(`inventory_histories`) | NOT RUN | README는 `RESERVE`·`CONFIRM`·`RELEASE`·`RESTORE`·`RESTOCK`·`ADJUST` 이력을 기록한다고 설명하지만 main의 코드에는 이 테이블을 쓰는 곳이 없음(마이그레이션 V1에 테이블만 존재). 시험으로 행이 생기는지 확인해 사실로 기록한다. 요구사항·API 명세에 이력 기록·조회 요구는 없어 결함으로 올리지 않고 알려진 한계로 관리한다(팀장 이은제 11/27 15:40: 발표 전 추가 구현 불필요, 후속 Issue로 관리) | | | |
-| I-18 | 지표·로그 | NOT RUN | `/actuator/prometheus`에 `application` 공통 라벨과 HTTP histogram(#430), ECS JSON 로그에 비밀·개인정보 없음 | | | |
+| I-17 | 재고 변동 이력(`inventory_histories`) | PASS(알려진 한계) | README는 `RESERVE`·`CONFIRM`·`RELEASE`·`RESTORE`·`RESTOCK`·`ADJUST` 이력을 기록한다고 설명하지만 main의 코드에는 이 테이블을 쓰는 곳이 없음(마이그레이션 V1에 테이블만 존재). 시험으로 행이 생기는지 확인해 사실로 기록한다. 요구사항·API 명세에 이력 기록·조회 요구는 없어 결함으로 올리지 않고 알려진 한계로 관리한다(팀장 이은제 11/27 15:40: 발표 전 추가 구현 불필요, 후속 Issue로 관리) | 11/27 16:0x 시험 전체(확보·확정·해제·복원·만료 수십 건) 뒤 `inventory_histories` 행 수 0: 이력을 기록하는 코드가 없다는 점을 사실로 확인. 요구사항·API 명세에 없는 기능이라 발표 전 구현하지 않고 알려진 한계로 관리(팀장 확인 11/27 15:40, 후속 Issue) | `inventory_histories` 행 수 조회 | 11/27 16:0x |
+| I-18 | 지표·로그 | PASS(관찰) | `/actuator/prometheus`에 `application` 공통 라벨과 HTTP histogram(#430), ECS JSON 로그에 비밀·개인정보 없음 | 지표: `/actuator/prometheus`에 `application="inventory-service"` 라벨 줄 1,737개와 `http_server_requests_seconds_bucket`(HTTP histogram) 확인(#430 반영). 로그에 비밀번호·토큰·secret·authorization 검색 결과 0. 관찰: Inventory 로그는 전체 52줄이 모두 기동 로그이고 업무 로그가 없으며(오늘 수백 건 처리 후에도 한 시간 로그 0줄) 형식도 ECS JSON이 아닌 일반 텍스트(`docs/observability.md` 3절은 ECS JSON·`orderId` 키 로그를 제안, Menu·Auth Deployment에는 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`가 있으나 Inventory에는 없음). 12/1 CT-08에서 Inventory 흐름을 `orderId`로 추적하기 어려움 | `/actuator/prometheus`, `kubectl logs`(전체 줄 수 52), `docs/observability.md` | 11/27 16:0x |
 | I-19 | DB 정합성 점검 | NOT RUN | 시험 전체 뒤 모든 메뉴에서 `reserved_qty`가 `RESERVED` 예약 수량의 합과 같고, 시험 전 값으로 원복, `CONFIRMED` 예약 수량의 합이 `stock_qty` 변화와 일치 | | | |
 
 ## 6. 관련 시험 참조(다른 문서)
@@ -77,6 +77,7 @@
 | 항목 | 내용 | 상태 |
 |---|---|---|
 | `inventory_histories` 이력 미기록 | ERD(3-7)·README는 재고 변동 이력 테이블을 설계·설명하지만(`RESERVE`·`CONFIRM`·`RELEASE`·`RESTORE`·`RESTOCK`·`ADJUST`) main에는 이 테이블에 쓰는 코드가 없고 어떤 API도 읽거나 쓰지 않는다. 요구사항·API 명세에는 포함되지 않은 기능이라 발표 전에는 구현하지 않고 별도 후속 Issue로 관리한다 | 알려진 한계(팀장 확인 11/27) |
+| Inventory 로그 형식·업무 로그 없음 | dev 로그가 일반 텍스트이고 업무 로그가 없음(I-18). `docs/observability.md` 3절 제안(ECS JSON, `orderId` 키 로그)과 다름. 발표 전 필수 여부를 팀장에게 확인 요청 | 확인 대기 |
 
 ## 8. 기타 기록
 
