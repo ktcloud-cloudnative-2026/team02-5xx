@@ -13,11 +13,11 @@
 | 항목 | 값 |
 |---|---|
 | 환경 | dev (클러스터 `kubectl`, `inventory_dev` DB) |
-| Inventory 이미지 | 시험 직전 `kubectl`로 확인해 기록(dev 매니페스트 기준 `sha-f4201cc…`) |
+| Inventory 이미지 | `sha-f4201cc02da14433832d1fd2bd9e773b6a133439`(11/27 15:42 `kubectl` 확인, Pod 1개·재시작 0, 시험 전 `inventory_reservations` 상태 분포 `CONFIRMED 49`·`EXPIRED 56`·`RELEASED 19`·`RESTORED 15`) |
 | Inventory 설정 | `STOCK_HOLD_TTL` 5분, 만료 스케줄러 5초 간격, Hikari 4/1, HPA min 1·max 3·CPU 70%, 관리자 API dev 공개(#337) |
 | 내부 API 호출 | `/internal/v1/...`는 Gateway로 노출되지 않아 Pod에 `kubectl port-forward`로 직접 호출(2 Pod 시험은 Pod별 포트 포워딩) |
 | 관리자 API 호출 | Gateway 경유, admin-demo(STORE_ADMIN)·customer-demo(CUSTOMER) 토큰 (비밀번호는 기록하지 않음) |
-| 시험용 데이터 | 시험 order_id는 920001~929999(다른 시험의 910001~919099, 999001·999002와 겹치지 않음). 메뉴 7(프렌치프라이, 가용 3)·메뉴 11(바닐라 아이스크림, 가용 20)을 임시로 사용하고 시험 뒤 `reserved_qty`를 시험 전 값으로 되돌린 것을 확인한다 |
+| 시험용 데이터 | 시험 order_id는 920001~929999(다른 시험의 910001~919099, 999001·999002와 겹치지 않음). 메뉴 7(프렌치프라이, 시험 전 `stock_qty 2`·`reserved_qty 0`, 시드 3에서 다른 시험으로 1 감소)·메뉴 11(바닐라 아이스크림, `stock_qty 20`·`reserved_qty 0`)을 임시로 사용하고 시험 뒤 `reserved_qty`를 시험 전 값으로 되돌린 것을 확인한다 |
 | 공유 설정 변경 | 없음(TTL·영업 상태 변경 없음). 시험 전 Discord 공지 |
 
 시험 전후에 기록할 값: `inventories`의 메뉴 7·11 `stock_qty`·`reserved_qty`, `inventory_reservations`의 시험 order_id별 상태.
@@ -26,10 +26,10 @@
 
 | ID | 내용 | 상태 | 기대 결과 | 실제 결과 | 근거 | 일시 |
 |---|---|---|---|---|---|---|
-| I-01 | 확보(II-01) 정상·멱등·거절 | NOT RUN | 정상 `200 {holdId, expiresAt}`과 `reserved_qty` 증가·예약 `RESERVED`. 같은 `orderId` 재호출은 기존 확보 반환(`reserved_qty` 한 번만 증가). 재고보다 많은 수량 `409 INSUFFICIENT_STOCK`, 재고 미연결 메뉴 `409 STOCK_NOT_LINKED`, 잘못된 본문 `400 INVALID_REQUEST`. 같은 메뉴를 한 주문에 두 번 담으면 합산 | | | |
-| I-02 | 확정(II-02) 정상·멱등·거절 | NOT RUN | 정상 `200`, `stock_qty`·`reserved_qty` 함께 차감·예약 `CONFIRMED`. 재호출 `200`(변화 없음). 해제·만료된 확보 `409 HOLD_NOT_ACTIVE`, 없는 holdId `404 HOLD_NOT_FOUND` | | | |
-| I-03 | 해제(II-03) 정상·멱등·거절 | NOT RUN | 정상 `200`, `reserved_qty`만 차감·`RELEASED`. 재호출 `200`. 이미 `EXPIRED`도 `200`. 확정된 확보 `409 HOLD_NOT_ACTIVE`, 없는 holdId `404` | | | |
-| I-04 | 복원(II-04) 정상·멱등·거절 | NOT RUN | 확정된 확보 `200 {restored:true}`, `stock_qty`만 증가·`RESTORED`. 재호출 `200`. 확정되지 않은 확보·없는 주문 `409 RESTORE_NOT_APPLICABLE`. 주문 연동 경로는 CT-05(Order 쪽)에서 확인 | | | |
+| I-01 | 확보(II-01) 정상·멱등·거절 | PASS | 정상 `200 {holdId, expiresAt}`과 `reserved_qty` 증가·예약 `RESERVED`. 같은 `orderId` 재호출은 기존 확보 반환(`reserved_qty` 한 번만 증가). 재고보다 많은 수량 `409 INSUFFICIENT_STOCK`, 재고 미연결 메뉴 `409 STOCK_NOT_LINKED`, 잘못된 본문 `400 INVALID_REQUEST`. 같은 메뉴를 한 주문에 두 번 담으면 합산 | 11/27 15:45 메뉴 11(가용 20): 정상(수량 2) `200 holdId 140`(만료 5분 뒤)·같은 orderId 재호출 `200` 같은 holdId(`reserved_qty` 한 번만 증가), 가용 초과 `409 INSUFFICIENT_STOCK`, 미연결 메뉴 `409 STOCK_NOT_LINKED`, 수량 0·빈 항목 `400 INVALID_REQUEST`, 같은 메뉴 두 번 담기 `200`에 예약 항목 한 줄(수량 2)로 합산, 거절 요청(920002)은 예약 미생성. 관찰: 재호출 응답의 `expiresAt`은 DB 왕복으로 마이크로초 정밀도(값 동일) | `ij`(내부 API 포트 포워딩) 응답, `inventories`·`inventory_reservations`·`inventory_reservation_items` 조회 | 11/27 15:45 |
+| I-02 | 확정(II-02) 정상·멱등·거절 | PASS | 정상 `200`, `stock_qty`·`reserved_qty` 함께 차감·예약 `CONFIRMED`. 재호출 `200`(변화 없음). 해제·만료된 확보 `409 HOLD_NOT_ACTIVE`, 없는 holdId `404 HOLD_NOT_FOUND` | 11/27 15:46 확정 140 `200`(재고 20→18, `reserved_qty` 2 차감), 재호출 `200`(수량 변화 없음), 확정된 확보 해제 `409 HOLD_NOT_ACTIVE`, 해제된 141 확정 `409 HOLD_NOT_ACTIVE`, 없는 holdId `404 HOLD_NOT_FOUND`. 예약 140 `CONFIRMED` | `ij` 응답, `inventories`·`inventory_reservations` 조회 | 11/27 15:46 |
+| I-03 | 해제(II-03) 정상·멱등·거절 | PASS | 정상 `200`, `reserved_qty`만 차감·`RELEASED`. 재호출 `200`. 이미 `EXPIRED`도 `200`. 확정된 확보 `409 HOLD_NOT_ACTIVE`, 없는 holdId `404` | 11/27 15:46 해제 141 `200`(`reserved_qty`만 2 차감, `stock_qty` 불변), 재호출 `200`(변화 없음), 없는 holdId `404 HOLD_NOT_FOUND`. 예약 141 `RELEASED`. 만료(`EXPIRED`) 예약 해제는 I-07에서 확인 | `ij` 응답, `inventories`·`inventory_reservations` 조회 | 11/27 15:46 |
+| I-04 | 복원(II-04) 정상·멱등·거절 | PASS | 확정된 확보 `200 {restored:true}`, `stock_qty`만 증가·`RESTORED`. 재호출 `200`. 확정되지 않은 확보·없는 주문 `409 RESTORE_NOT_APPLICABLE`. 주문 연동 경로는 CT-05(Order 쪽)에서 확인 | 11/27 15:48 복원 920001 `200 {restored:true}`(재고 18→20), 재호출 `200`(22로 늘지 않음), 해제된 예약·없는 주문·확정 전(`RESERVED`) 예약 복원 모두 `409 RESTORE_NOT_APPLICABLE`. 예약 920001 `RESTORED`. 시험 뒤 메뉴 11 `stock_qty 20`·`reserved_qty 0`으로 원복 | `ij` 응답, `inventories`·`inventory_reservations` 조회 | 11/27 15:48 |
 | I-05 | 이미 해제된 orderId로 재확보(경계 관찰) | NOT RUN | 코드상 같은 `orderId`의 기존 확보를 상태와 무관하게 반환한다(해제된 확보를 `200`으로 돌려줄 수 있음). Order는 orderId를 재사용하지 않으므로 업무 영향은 없는지 확인해 기록(결함이 아닌 관찰) | | | |
 
 ## 2. TTL·만료 (II-01 만료, HoldExpiryScheduler)
@@ -44,7 +44,7 @@
 
 | ID | 내용 | 상태 | 기대 결과 | 실제 결과 | 근거 | 일시 |
 |---|---|---|---|---|---|---|
-| I-09 | 같은 메뉴 동시 확보(초과 판매 방지) | NOT RUN | 메뉴 7(가용 3)에 서로 다른 order_id 8건을 동시에 확보 요청 → 정확히 3건 `200`, 5건 `409 INSUFFICIENT_STOCK`, `reserved_qty 3`(가용 0). 이후 전부 해제해 원복 | | | |
+| I-09 | 같은 메뉴 동시 확보(초과 판매 방지) | NOT RUN | 메뉴 7(가용 2)에 서로 다른 order_id 8건을 동시에 확보 요청 → 정확히 2건 `200`, 6건 `409 INSUFFICIENT_STOCK`, `reserved_qty 2`(가용 0). 이후 전부 해제해 원복 | | | |
 | I-10 | 같은 orderId 동시 확보 | NOT RUN | 같은 orderId 8건 동시 → 모두 같은 holdId, 예약 1행, `reserved_qty` 한 번만 증가(500 없음) | | | |
 | I-11 | 같은 확보에 확정·해제 경쟁 | NOT RUN | 확정과 해제를 동시에 → 한쪽만 성공하고 반대쪽은 `409 HOLD_NOT_ACTIVE`(또는 멱등 `200`), 최종 상태가 한 가지(`CONFIRMED` 또는 `RELEASED`)이고 `stock_qty`·`reserved_qty`와 일치 | | | |
 | I-12 | 여러 메뉴 동시 확보(교착 방지) | NOT RUN | 두 메뉴를 서로 반대 순서로 담은 요청을 동시에 → 교착·타임아웃 없이 완료(코드는 메뉴 ID 순서로 잠금) | | | |
