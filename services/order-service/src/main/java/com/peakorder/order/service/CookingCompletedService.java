@@ -1,5 +1,6 @@
 package com.peakorder.order.service;
 
+import com.peakorder.order.entity.OrderStatus;
 import com.peakorder.order.messaging.CookingCompletedEvent;
 import com.peakorder.order.repository.OrderRepository;
 import com.peakorder.order.repository.ProcessedEventRepository;
@@ -47,6 +48,22 @@ public class CookingCompletedService {
                 () ->
                     new IllegalArgumentException(
                         "존재하지 않는 주문에 대한 CookingCompleted입니다 orderId=" + event.orderId()));
+    if (order.getStatus() == OrderStatus.COMPLETED) {
+      // 다른 이벤트로 이미 완료된 주문이다. 상태가 바뀌지 않으므로 반영 로그가 아니라 무시 로그를 남긴다.
+      log.warn(
+          "이미 완료된 주문에 대한 CookingCompleted를 무시합니다 orderId={} eventId={}",
+          event.orderId(),
+          event.eventId());
+      return;
+    }
     order.markCompleted(event.completedAt(), now);
+    String orderNo = order.getOrderNo();
+    AfterCommit.run(
+        () ->
+            log.info(
+                "조리 완료 반영 orderId={} orderNo={} eventId={}",
+                event.orderId(),
+                orderNo,
+                event.eventId()));
   }
 }

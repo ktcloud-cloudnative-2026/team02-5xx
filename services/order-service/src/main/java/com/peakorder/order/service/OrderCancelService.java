@@ -175,6 +175,7 @@ public class OrderCancelService {
     if (!txService.markCanceled(orderId, lock, CUSTOMER_CANCEL)) {
       throw new BusinessException(ErrorCode.ORDER_PAY_IN_PROGRESS);
     }
+    log.info("결제 전 주문 취소 orderId={} reason={}", orderId, CUSTOMER_CANCEL);
     return latest(orderId);
   }
 
@@ -200,6 +201,7 @@ public class OrderCancelService {
     if (!txService.markCanceled(orderId, lock, CUSTOMER_CANCEL)) {
       throw new BusinessException(ErrorCode.ORDER_PAY_IN_PROGRESS);
     }
+    log.info("주문 취소 확정 orderId={} reason={}", orderId, CUSTOMER_CANCEL);
     return finishFollowUps(orderId, lock, txService.findCancelTargetById(orderId));
   }
 
@@ -297,7 +299,11 @@ public class OrderCancelService {
       keepLockOrStop(orderId, lock);
       RestoreResult restored = inventoryClient.restore(orderId);
       if (restored == RestoreResult.RESTORED) {
-        return txService.markStockRestored(orderId, lock) ? StepResult.done() : StepResult.lost();
+        boolean saved = txService.markStockRestored(orderId, lock);
+        if (saved) {
+          log.info("취소 후 재고 복원 완료 orderId={}", orderId);
+        }
+        return saved ? StepResult.done() : StepResult.lost();
       }
       log.error("재고를 복원할 수 없다는 응답입니다. 영구 실패 orderId={}", orderId);
       return StepResult.permanent("RESTORE_NOT_APPLICABLE");
@@ -321,7 +327,11 @@ public class OrderCancelService {
     try {
       keepLockOrStop(orderId, lock);
       paymentClient.refund(paymentId);
-      return txService.markRefunded(orderId, lock) ? StepResult.done() : StepResult.lost();
+      boolean saved = txService.markRefunded(orderId, lock);
+      if (saved) {
+        log.info("취소 후 환불 완료 orderId={} paymentId={}", orderId, paymentId);
+      }
+      return saved ? StepResult.done() : StepResult.lost();
     } catch (BusinessException e) {
       if (e.errorCode() == ErrorCode.ORDER_PAY_IN_PROGRESS) {
         return StepResult.lost();

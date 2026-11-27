@@ -20,6 +20,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +33,8 @@ public class OrderTxService {
 
   /** 외부 호출 타임아웃(연결 2초·읽기 3초)으로 환불까지 이어져도 끝나는 시간보다 충분히 길게 잡는다. */
   static final java.time.Duration PAY_LOCK_TTL = java.time.Duration.ofSeconds(60);
+
+  private static final Logger log = LoggerFactory.getLogger(OrderTxService.class);
 
   private static final List<OrderStatus> PAY_LOCK_STATUSES = List.of(OrderStatus.CREATED);
 
@@ -325,6 +329,8 @@ public class OrderTxService {
             .findWithLockById(orderId)
             .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
     if (order.getStatus() != OrderStatus.CREATED) {
+      // 다른 요청이 먼저 처리한 주문이다. 상태를 바꾸지 않고 현재 상태를 돌려줄 뿐이므로 확정 로그와 구분해 남긴다.
+      log.info("이미 처리된 주문이라 확정하지 않고 현재 상태를 응답합니다 orderId={} status={}", orderId, order.getStatus());
       return OrderDetailResponse.from(order);
     }
     if (!holds(order, lockToken)) {
@@ -332,6 +338,9 @@ public class OrderTxService {
     }
     OffsetDateTime now = now();
     order.markConfirmed(issueOrderNo(LocalDate.now(clock)), paymentId, now);
+    String confirmedOrderNo = order.getOrderNo();
+    AfterCommit.run(
+        () -> log.info("결제 완료 주문 확정 orderId={} orderNo={} status=PAID", orderId, confirmedOrderNo));
 
     UUID eventId = UUID.randomUUID();
     String payload =
@@ -420,6 +429,7 @@ public class OrderTxService {
         .map(
             order -> {
               order.markFailed(reason, now());
+              logOrderEnded(orderId, reason);
               return true;
             })
         .orElse(false);
@@ -435,7 +445,16 @@ public class OrderTxService {
     orderRepository
         .findWithLockById(orderId)
         .filter(order -> order.getStatus() == OrderStatus.CREATED)
-        .ifPresent(order -> order.markFailed(reason, now()));
+        .ifPresent(
+            order -> {
+              order.markFailed(reason, now());
+              logOrderEnded(orderId, reason);
+            });
+  }
+
+  /** 주문이 실제로 종료(FAILED)로 바뀐 경우에만, 커밋이 끝난 뒤에 남긴다. */
+  private void logOrderEnded(Long orderId, String reason) {
+    AfterCommit.run(() -> log.info("주문 종료 orderId={} reason={}", orderId, reason));
   }
 
   private String issueOrderNo(LocalDate today) {

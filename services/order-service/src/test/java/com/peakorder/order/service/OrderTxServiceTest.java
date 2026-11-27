@@ -357,6 +357,94 @@ class OrderTxServiceTest {
     verify(outboxRepository, never()).insertPending(any(), any(), any(), any());
   }
 
+  private ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>
+      captureLogs() {
+    var logger =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(OrderTxService.class);
+    var appender =
+        new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+    appender.start();
+    logger.addAppender(appender);
+    return appender;
+  }
+
+  private void stopCapturing(
+      ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender) {
+    ((ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(OrderTxService.class))
+        .detachAppender(appender);
+  }
+
+  private static java.util.List<String> messages(
+      ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender) {
+    return appender.list.stream()
+        .map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
+        .toList();
+  }
+
+  @Test
+  void confirm_logs_confirmation_only_when_the_order_really_changes() {
+    Order created = lockedBy(TOKEN);
+    Order paid = orderWithItems();
+    paid.markConfirmed("261113-0001", 9L, now);
+    when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(created));
+    when(orderRepository.findWithLockById(101L)).thenReturn(Optional.of(paid));
+    when(orderNoRepository.nextSequence(any())).thenReturn(1);
+    var logs = captureLogs();
+    try {
+      service.confirmOrder(100L, TOKEN, 9L, menus());
+      service.confirmOrder(101L, TOKEN, 9L, menus());
+    } finally {
+      stopCapturing(logs);
+    }
+
+    assertThat(messages(logs))
+        .anyMatch(m -> m.startsWith("결제 완료 주문 확정 orderId=100 orderNo="))
+        .noneMatch(m -> m.startsWith("결제 완료 주문 확정 orderId=101"))
+        .contains("이미 처리된 주문이라 확정하지 않고 현재 상태를 응답합니다 orderId=101 status=PAID");
+  }
+
+  @Test
+  void confirm_log_waits_for_the_commit() {
+    Order created = lockedBy(TOKEN);
+    when(orderRepository.findWithLockById(100L)).thenReturn(Optional.of(created));
+    when(orderNoRepository.nextSequence(any())).thenReturn(1);
+    var logs = captureLogs();
+    org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+    try {
+      service.confirmOrder(100L, TOKEN, 9L, menus());
+      assertThat(messages(logs)).noneMatch(m -> m.startsWith("결제 완료 주문 확정"));
+
+      org.springframework.transaction.support.TransactionSynchronizationManager
+          .getSynchronizations()
+          .forEach(org.springframework.transaction.support.TransactionSynchronization::afterCommit);
+      assertThat(messages(logs)).anyMatch(m -> m.startsWith("결제 완료 주문 확정 orderId=100"));
+    } finally {
+      org.springframework.transaction.support.TransactionSynchronizationManager
+          .clearSynchronization();
+      stopCapturing(logs);
+    }
+  }
+
+  @Test
+  void mark_failed_logs_order_end_only_for_orders_that_really_end() {
+    Order created = orderWithItems();
+    Order paid = orderWithItems();
+    paid.markConfirmed("261113-0001", 9L, now);
+    when(orderRepository.findWithLockById(1L)).thenReturn(Optional.of(created));
+    when(orderRepository.findWithLockById(2L)).thenReturn(Optional.of(paid));
+    var logs = captureLogs();
+    try {
+      service.markFailed(1L, "OUT_OF_STOCK");
+      service.markFailed(2L, "OUT_OF_STOCK");
+    } finally {
+      stopCapturing(logs);
+    }
+
+    assertThat(messages(logs))
+        .contains("주문 종료 orderId=1 reason=OUT_OF_STOCK")
+        .doesNotContain("주문 종료 orderId=2 reason=OUT_OF_STOCK");
+  }
+
   @Test
   void mark_failed_only_affects_orders_still_in_created() {
     Order created = orderWithItems();

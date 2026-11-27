@@ -127,12 +127,19 @@ public class OrderService {
       txService.markFailed(orderId, reason);
       throw e;
     }
+    OrderDetailResponse held;
     try {
-      return txService.markHeld(orderId, hold);
+      held = txService.markHeld(orderId, hold);
     } catch (RuntimeException e) {
       compensateHoldSaveFailure(orderId, hold);
       throw e;
     }
+    log.info(
+        "주문 생성 orderId={} status={} itemCount={}",
+        held.orderId(),
+        held.status(),
+        held.items() == null ? 0 : held.items().size());
+    return held;
   }
 
   /**

@@ -10,6 +10,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.peakorder.order.client.CookingClient;
 import com.peakorder.order.client.InventoryClient;
 import com.peakorder.order.client.InventoryClient.HoldLine;
@@ -40,6 +43,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -274,6 +278,7 @@ class OrderServiceTest {
                     1L, "아메리카노", 3000, List.of(new ValidatedOption(10L, "샷 추가", 500)))));
     when(txService.createTemporaryOrder(eq(7L), any())).thenReturn(100L);
     when(inventoryClient.hold(eq(100L), any())).thenReturn(new StockHold(55L, now.plusMinutes(5)));
+    when(txService.markHeld(eq(100L), any())).thenReturn(mock(OrderDetailResponse.class));
 
     service.createOrder(7L, req);
 
@@ -346,6 +351,40 @@ class OrderServiceTest {
 
   private PaymentTarget payable() {
     return target(OrderStatus.CREATED, 55L, now.plusMinutes(3));
+  }
+
+  private ListAppender<ILoggingEvent> captureLogs() {
+    Logger logger = (Logger) LoggerFactory.getLogger(OrderService.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    return appender;
+  }
+
+  private void stopCapturing(ListAppender<ILoggingEvent> appender) {
+    ((Logger) LoggerFactory.getLogger(OrderService.class)).detachAppender(appender);
+  }
+
+  @Test
+  void create_success_logs_order_id_and_status_without_amounts_or_user() {
+    when(menuClient.validatePurchase(any())).thenReturn(menuResponse());
+    when(txService.createTemporaryOrder(eq(7L), any())).thenReturn(100L);
+    StockHold hold = new StockHold(55L, now.plusMinutes(5));
+    when(inventoryClient.hold(eq(100L), any())).thenReturn(hold);
+    OrderDetailResponse held = mock(OrderDetailResponse.class);
+    when(held.orderId()).thenReturn(100L);
+    when(held.status()).thenReturn(OrderStatus.CREATED);
+    when(txService.markHeld(100L, hold)).thenReturn(held);
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    try {
+      service.createOrder(7L, request());
+    } finally {
+      stopCapturing(logs);
+    }
+
+    assertThat(logs.list)
+        .extracting(ILoggingEvent::getFormattedMessage)
+        .contains("주문 생성 orderId=100 status=CREATED itemCount=0");
   }
 
   @Test
@@ -987,6 +1026,8 @@ class OrderServiceTest {
   void pay_fetches_cook_times_from_menu_before_charging() {
     when(txService.findPaymentTarget(7L, 100L)).thenReturn(payable());
     when(paymentClient.pay(100L, 11000, "order-100")).thenReturn(new PaymentResult(9L, "SUCCESS"));
+    when(txService.confirmOrder(eq(100L), eq(LOCK), eq(9L), any()))
+        .thenReturn(mock(OrderDetailResponse.class));
 
     service.payOrder(7L, 100L);
 
