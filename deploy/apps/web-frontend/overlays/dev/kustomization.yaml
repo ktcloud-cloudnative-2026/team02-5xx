@@ -4,6 +4,6 @@ resources:
   - ../../base
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/web-frontend
-    newTag: sha-6219d6bf419ca733376c317fcbc4bbbd4d38ba5b
+    newTag: sha-4d2bb9611412986366d875c61ea30e44fee68782
 patches:
   - path: resources-patch.yaml
