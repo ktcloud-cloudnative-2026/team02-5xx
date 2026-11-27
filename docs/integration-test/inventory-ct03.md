@@ -22,6 +22,13 @@
 
 시험 전후에 기록할 값: `inventories`의 메뉴 7·11 `stock_qty`·`reserved_qty`, `inventory_reservations`의 시험 order_id별 상태.
 
+## 결과 요약 (11/27)
+
+- 시험 19건(I-01~I-19)을 11/27 15:45~16:30에 수행했고 모두 PASS(I-05 관찰, I-17 알려진 한계, I-18 관찰 표기). 결함으로 올린 것은 없다.
+- 확보·확정·해제·복원은 정상·멱등·거절 경로가 모두 README·코드 기대와 같다. 같은 메뉴 동시 확보(1 Pod·2 Pod)에서 초과 판매가 없고, 같은 orderId 동시 요청은 확보 한 개, 확정·해제 경쟁은 한 가지 결말, 만료 경계는 시각대로 갈린다.
+- 알려진 한계·관찰: ① `inventory_histories` 이력 미기록(팀장 확인으로 발표 전 구현 없음, 후속 Issue) ② 재확보 시 해제된 예약을 `200`으로 반환(Order는 orderId 재사용 없음) ③ Inventory 로그가 일반 텍스트이고 업무 로그가 없음 → 팀장 요청으로 #459에서 ECS JSON·재고 상태 변경 로그를 추가하는 중(반영 뒤 Loki `orderId` 추적 확인과 로그 시험을 이 문서에 추가).
+- 시험 데이터는 모두 원복했다(메뉴 7·10·11, 메뉴 6 연결, 진행 중 확보 0건).
+
 ## 1. 재고 확보·확정·해제·복원 (II-01~II-04)
 
 | ID | 내용 | 상태 | 기대 결과 | 실제 결과 | 근거 | 일시 |
@@ -64,7 +71,7 @@
 |---|---|---|---|---|---|---|
 | I-17 | 재고 변동 이력(`inventory_histories`) | PASS(알려진 한계) | README는 `RESERVE`·`CONFIRM`·`RELEASE`·`RESTORE`·`RESTOCK`·`ADJUST` 이력을 기록한다고 설명하지만 main의 코드에는 이 테이블을 쓰는 곳이 없음(마이그레이션 V1에 테이블만 존재). 시험으로 행이 생기는지 확인해 사실로 기록한다. 요구사항·API 명세에 이력 기록·조회 요구는 없어 결함으로 올리지 않고 알려진 한계로 관리한다(팀장 이은제 11/27 15:40: 발표 전 추가 구현 불필요, 후속 Issue로 관리) | 11/27 16:0x 시험 전체(확보·확정·해제·복원·만료 수십 건) 뒤 `inventory_histories` 행 수 0: 이력을 기록하는 코드가 없다는 점을 사실로 확인. 요구사항·API 명세에 없는 기능이라 발표 전 구현하지 않고 알려진 한계로 관리(팀장 확인 11/27 15:40, 후속 Issue) | `inventory_histories` 행 수 조회 | 11/27 16:0x |
 | I-18 | 지표·로그 | PASS(관찰) | `/actuator/prometheus`에 `application` 공통 라벨과 HTTP histogram(#430), ECS JSON 로그에 비밀·개인정보 없음 | 지표: `/actuator/prometheus`에 `application="inventory-service"` 라벨 줄 1,737개와 `http_server_requests_seconds_bucket`(HTTP histogram) 확인(#430 반영). 로그에 비밀번호·토큰·secret·authorization 검색 결과 0. 관찰: Inventory 로그는 전체 52줄이 모두 기동 로그이고 업무 로그가 없으며(오늘 수백 건 처리 후에도 한 시간 로그 0줄) 형식도 ECS JSON이 아닌 일반 텍스트(`docs/observability.md` 3절은 ECS JSON·`orderId` 키 로그를 제안, Menu·Auth Deployment에는 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`가 있으나 Inventory에는 없음). 12/1 CT-08에서 Inventory 흐름을 `orderId`로 추적하기 어려움 | `/actuator/prometheus`, `kubectl logs`(전체 줄 수 52), `docs/observability.md` | 11/27 16:0x |
-| I-19 | DB 정합성 점검 | NOT RUN | 시험 전체 뒤 모든 메뉴에서 `reserved_qty`가 `RESERVED` 예약 수량의 합과 같고, 시험 전 값으로 원복, `CONFIRMED` 예약 수량의 합이 `stock_qty` 변화와 일치 | | | |
+| I-19 | DB 정합성 점검 | PASS | 시험 전체 뒤 모든 메뉴에서 `reserved_qty`가 `RESERVED` 예약 수량의 합과 같고, 시험 전 값으로 원복, `CONFIRMED` 예약 수량의 합이 `stock_qty` 변화와 일치 | 11/27 16:2x 시험 전체 뒤 `inventory_dev`: 모든 재고 항목(10개)에서 `reserved_qty`가 진행 중(`RESERVED`) 확보 수량 합과 같음(전부 0), 불변식(`stock_qty<0`·`reserved_qty<0`·`reserved_qty>stock_qty`) 위반 0건, 진행 중 확보 0건. 시험 대상 메뉴 7·10·11은 시험 전 값(`2`·`94`·`20`)으로 원복. 메뉴 9 `stock_qty 87`은 같은 날 Order 시험의 확정 주문 12건(99→87)과 계산이 맞음(작성자 계산) | `inventories`·`inventory_reservation_items`·`inventory_reservations` 조회 | 11/27 16:2x |
 
 ## 6. 관련 시험 참조(다른 문서)
 
