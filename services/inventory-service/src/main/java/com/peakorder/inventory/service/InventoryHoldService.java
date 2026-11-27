@@ -19,12 +19,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class InventoryHoldService {
+
+  private static final Logger log = LoggerFactory.getLogger(InventoryHoldService.class);
 
   private final InventoryRepository inventoryRepository;
   private final InventoryReservationRepository reservationRepository;
@@ -90,6 +95,15 @@ public class InventoryHoldService {
           new InventoryReservationItem(reservation.getId(), entry.getKey(), entry.getValue()));
     }
 
+    // 새로 확보했을 때만 남긴다(같은 주문의 재호출·거절은 상태가 바뀌지 않으므로 남기지 않는다). 커밋 뒤에 남긴다.
+    String items =
+        quantities.entrySet().stream()
+            .map(entry -> entry.getKey() + "x" + entry.getValue())
+            .collect(Collectors.joining(","));
+    Long orderId = reservation.getOrderId();
+    Long holdId = reservation.getId();
+    AfterCommit.run(() -> log.info("재고 확보 orderId={} holdId={} items={}", orderId, holdId, items));
+
     return HoldResponse.from(reservation);
   }
 
@@ -116,6 +130,7 @@ public class InventoryHoldService {
 
     // 5. 예약 상태를 확정으로 바꾼다
     reservation.confirm();
+    logTransition("재고 확보 확정", reservation);
   }
 
   @Transactional
@@ -140,6 +155,7 @@ public class InventoryHoldService {
 
     // 5. 예약 상태를 해제로 바꾼다
     reservation.release();
+    logTransition("재고 확보 해제", reservation);
   }
 
   @Transactional
@@ -167,6 +183,7 @@ public class InventoryHoldService {
 
     // 5. 예약 상태를 복원으로 바꾼다
     reservation.restore();
+    logTransition("재고 복원", reservation);
     return new RestoreResponse(orderId, true);
   }
 
@@ -188,9 +205,17 @@ public class InventoryHoldService {
 
     // 4. 예약 상태를 만료로 바꾼다
     reservation.expire();
+    logTransition("재고 확보 만료", reservation);
   }
 
   // ===== 반복되는 일을 묶은 도우미 =====
+
+  // 상태가 실제로 바뀐 경우에만 부른다. 커밋이 끝난 뒤에 orderId·holdId로 한 줄을 남긴다.
+  private void logTransition(String message, InventoryReservation reservation) {
+    Long orderId = reservation.getOrderId();
+    Long holdId = reservation.getId();
+    AfterCommit.run(() -> log.info("{} orderId={} holdId={}", message, orderId, holdId));
+  }
 
   private InventoryReservation findHoldForUpdate(Long holdId) {
     return reservationRepository

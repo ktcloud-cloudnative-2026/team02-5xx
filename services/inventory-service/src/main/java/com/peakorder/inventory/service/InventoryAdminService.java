@@ -13,12 +13,16 @@ import com.peakorder.inventory.repository.InventoryRepository;
 import com.peakorder.inventory.repository.InventoryReservationItemRepository;
 import java.util.List;
 import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class InventoryAdminService {
+
+  private static final Logger log = LoggerFactory.getLogger(InventoryAdminService.class);
 
   private final InventoryRepository inventoryRepository;
   private final InventoryReservationItemRepository itemRepository;
@@ -45,6 +49,9 @@ public class InventoryAdminService {
   public StockItemResponse create(StockItemCreateRequest request) {
     Inventory saved =
         inventoryRepository.save(new Inventory(request.stockQty(), request.lowStockThreshold()));
+    Long stockItemId = saved.getId();
+    int stockQty = saved.getStockQty();
+    AfterCommit.run(() -> log.info("재고 항목 등록 stockItemId={} stockQty={}", stockItemId, stockQty));
     return StockItemResponse.from(saved);
   }
 
@@ -52,6 +59,12 @@ public class InventoryAdminService {
   public StockItemResponse restock(Long stockItemId, StockRestockRequest request) {
     Inventory inventory = lockStockItem(stockItemId);
     inventory.addStock(request.quantity());
+    int quantity = request.quantity();
+    int stockQty = inventory.getStockQty();
+    AfterCommit.run(
+        () ->
+            log.info(
+                "재고 추가 stockItemId={} quantity={} stockQty={}", stockItemId, quantity, stockQty));
     return StockItemResponse.from(inventory);
   }
 
@@ -86,6 +99,7 @@ public class InventoryAdminService {
     }
 
     // 6. 연결한다 (menuId가 null이면 연결 해제)
+    Long previousMenuId = inventory.getMenuId();
     inventory.linkMenu(menuId);
 
     // 7. 5단계 확인은 다른 재고 행을 잠그지 않아 동시 요청을 막지 못한다. 최종 판정은 menu_id UNIQUE가 하므로
@@ -96,6 +110,15 @@ public class InventoryAdminService {
       } catch (DataIntegrityViolationException e) {
         throw new BusinessException(ErrorCode.MENU_ALREADY_LINKED);
       }
+    }
+    // 연결이 실제로 바뀐 경우에만(3단계에서 같은 메뉴는 이미 돌아갔다) 커밋 뒤에 남긴다.
+    if (menuId == null) {
+      AfterCommit.run(
+          () ->
+              log.info(
+                  "재고 메뉴 연결 해제 stockItemId={} previousMenuId={}", stockItemId, previousMenuId));
+    } else {
+      AfterCommit.run(() -> log.info("재고 메뉴 연결 stockItemId={} menuId={}", stockItemId, menuId));
     }
     return StockItemResponse.from(inventory);
   }
@@ -113,7 +136,10 @@ public class InventoryAdminService {
     }
 
     // 3. 삭제 시각을 남기고 메뉴 연결을 푼다
+    Long previousMenuId = inventory.getMenuId();
     inventory.delete();
+    AfterCommit.run(
+        () -> log.info("재고 항목 삭제 stockItemId={} previousMenuId={}", stockItemId, previousMenuId));
     return StockItemResponse.from(inventory);
   }
 
