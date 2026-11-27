@@ -2,6 +2,12 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+  # #434: prod 관리자 API(CO-03·04). 팀 결정 11/26 — prod도 Gateway JWT + 서비스 역할 검사로 연다.
+  - admin-httproute.yaml
+  - admin-securitypolicy.yaml
+patches:
+  - path: admin-enabled-patch.yaml
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/cooking
-    newTag: sha-c8f13f69c36633b0cc3d45d84a438f5891d7128c
+    # dev 통합 테스트 검증 이미지(#370). 11/30 오전 CT-08 결과에 따라 최종 확정한다.
+    newTag: sha-6219d6bf419ca733376c317fcbc4bbbd4d38ba5b

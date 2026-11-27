@@ -1,0 +1,33 @@
+# prod Gateway(peakorder-gateway)에서 Cooking 관리자 API로 가는 길 안내(#434). dev(#348)와 같은 규칙이다.
+# - CO-03 /api/v1/admin/cooking/overview, CO-04 /api/v1/admin/cooking/queue 의 GET만 연다.
+#   고정 경로라 Exact + method(#266 팀 기준). /internal/**, /actuator/** 는 열지 않는다.
+# - JWT 필수: admin-securitypolicy.yaml이 토큰을 검증하고, 서비스가 STORE_ADMIN을 확인한다(#99, #288).
+# - JWT 필수 경로라 RequestHeaderModifier(remove)를 넣지 않는다.
+#   remove가 있으면 SecurityPolicy claimToHeaders가 넣은 X-User-Id·X-User-Role까지 지워진다(#286 dev 시험).
+#   클라이언트가 보낸 같은 이름의 헤더는 claimToHeaders가 토큰 값으로 덮어쓴다.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: cooking-service-admin
+  namespace: peakorder
+  labels:
+    app: cooking-service
+    team: team02
+spec:
+  parentRefs:
+    - name: peakorder-gateway
+      namespace: envoy-gateway-system
+      sectionName: http
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /api/v1/admin/cooking/overview
+          method: GET
+        - path:
+            type: Exact
+            value: /api/v1/admin/cooking/queue
+          method: GET
+      backendRefs:
+        - name: cooking-service
+          port: 8080
