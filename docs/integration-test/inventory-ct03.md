@@ -54,9 +54,9 @@
 
 | ID | 내용 | 상태 | 기대 결과 | 실제 결과 | 근거 | 일시 |
 |---|---|---|---|---|---|---|
-| I-14 | 권한·입력 검증 | NOT RUN | 토큰 없음·위조 신원 헤더 `401`, CUSTOMER `403`, STORE_ADMIN `200`. 잘못된 본문 `400`, 없는 항목 `404 INVENTORY_NOT_FOUND`, 허용 안 한 메서드·`/internal` 외부 호출 `404` | | | |
-| I-15 | 등록·추가·연결·삭제 | NOT RUN | IN-03 `201`, IN-04 재고 증가(1 이상만), IN-05 메뉴 연결(숨김 메뉴 `409 MENU_NOT_LINKABLE`, 이미 연결 `409 MENU_ALREADY_LINKED`, 진행 중 주문 `409 STOCK_ITEM_IN_USE`), IN-06 논리 삭제 후 IN-01·IN-02에서 제외 | | | |
-| I-16 | 고객 재고 조회(IN-01) | NOT RUN | `[{menuId, orderable, availableQty}]`, 미연결 메뉴는 `orderable:false`, `menuIds` 누락·0 이하·100개 초과 `400` | | | |
+| I-14 | 권한·입력 검증 | PASS | 토큰 없음·위조 신원 헤더 `401`, CUSTOMER `403`, STORE_ADMIN `200`. 잘못된 본문 `400`, 없는 항목 `404 INVENTORY_NOT_FOUND`, 허용 안 한 메서드·`/internal` 외부 호출 `404` | 11/27 16:1x Gateway 경유(admin-demo·customer-demo 토큰): 토큰 없음 `401`, 토큰 없이 `X-User-Id`·`X-User-Role: STORE_ADMIN` 헤더만 위조 `401`, CUSTOMER 목록·등록 `403`(등록 안 됨), STORE_ADMIN 목록 `200`(항목 10개)·`lowStockOnly=true` 부족 항목 2개(메뉴 7·8), 잘못된 본문(`stockQty -1`)·조정 수량 0 `400 INVALID_REQUEST`, 없는 항목 조정 `404 INVENTORY_NOT_FOUND`, 외부에서 `/internal/v1/inventory/holds` 호출 `404` | curl(Gateway 경유) 응답 | 11/27 16:1x |
+| I-15 | 등록·추가·연결·삭제 | PASS | IN-03 `201`, IN-04 재고 증가(1 이상만), IN-05 메뉴 연결(숨김 메뉴 `409 MENU_NOT_LINKABLE`, 이미 연결 `409 MENU_ALREADY_LINKED`, 진행 중 주문 `409 STOCK_ITEM_IN_USE`), IN-06 논리 삭제 후 IN-01·IN-02에서 제외 | 등록 `201`(`stockItemId 12`, 메뉴 미연결), 재고 추가 5 `200`(`stockQty 10→15`), 숨김 메뉴 연결 `409 MENU_NOT_LINKABLE`, 이미 연결된 메뉴 `409 MENU_ALREADY_LINKED`, 없는 메뉴 `404 MENU_NOT_FOUND`, `null` 연결 해제 `200`, 삭제 `200`, 삭제된 항목 추가·재삭제 `404 INVENTORY_NOT_FOUND`, 삭제 후 목록 항목 수 원복. 연결 성공 경로: 새 항목(13)을 `PAUSED` 메뉴 6에 연결 `200`(메뉴 6의 기존 항목 5를 먼저 해제), 항목 5 재연결 시도 `409 MENU_ALREADY_LINKED`, 해제 후 항목 5를 다시 연결해 복구, 새 항목 삭제. 확정 주문이 있는 메뉴 9의 연결 해제 `409 STOCK_ITEM_IN_USE`(연결 유지). 최종 상태: 항목 10개, 메뉴 6은 항목 5(재고 20)로 시험 전과 같음. 확정 주문이 있는 재고 항목의 삭제 거절은 데이터 보호를 위해 시험하지 않음 | curl(Gateway 경유) 응답, 목록 조회 | 11/27 16:1x |
+| I-16 | 고객 재고 조회(IN-01) | PASS | `[{menuId, orderable, availableQty}]`, 미연결 메뉴는 `orderable:false`, `menuIds` 누락·0 이하·100개 초과 `400` | 토큰 없이 `GET /api/v1/inventory/availability?menuIds=3,7,8,11,999` → `200`, 메뉴 7 `orderable true`·가용 2, 메뉴 8 `false`·0(품절), 미연결 메뉴 999 `false`·0(오류 아님). `menuIds` 누락·0·숫자 아님 `400 INVALID_REQUEST`, 101개 `400`, 100개(경계) `200` | curl(Gateway 경유) 응답 | 11/27 16:2x |
 
 ## 5. 정합성·관측
 
