@@ -7,6 +7,6 @@ resources:
   - hpa.yaml
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/inventory
-    newTag: sha-f4201cc02da14433832d1fd2bd9e773b6a133439
+    newTag: sha-6d22f538fb0e6455d12a3b84460fae39336ffefb
 patches:
   - path: admin-enabled-patch.yaml
