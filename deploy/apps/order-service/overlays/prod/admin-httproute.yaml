@@ -1,0 +1,43 @@
+# Gateway(peakorder-gateway)에서 Order 관리자 API로 가는 길 안내. prod 전용(#435).
+# - OR-06·07 /api/v1/admin/store/operations (GET·PATCH), OR-08 /api/v1/admin/orders (GET),
+#   OR-09 /api/v1/admin/orders/{orderId} (GET)만 연다.
+#   고정 경로는 Exact + method(#266 팀 기준), orderId가 들어가는 경로는 RegularExpression(Menu #360 방식)이다.
+#   /internal/**, /actuator/** 는 열지 않는다.
+# - JWT 필수: admin-securitypolicy.yaml(#303·#337·#348 방식)이 토큰을 검증하고, 서비스가 STORE_ADMIN을 확인한다(#263).
+# - JWT 필수 경로라 RequestHeaderModifier(remove)를 넣지 않는다.
+#   remove가 있으면 SecurityPolicy claimToHeaders가 넣은 X-User-Id·X-User-Role까지 지워진다(#286 dev 시험).
+#   클라이언트가 보낸 같은 이름의 헤더는 claimToHeaders가 토큰 값으로 덮어쓴다.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: order-service-admin
+  namespace: peakorder
+  labels:
+    app: order-service
+    team: team02
+spec:
+  parentRefs:
+    - name: peakorder-gateway
+      namespace: envoy-gateway-system
+      sectionName: http
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /api/v1/admin/store/operations
+          method: GET
+        - path:
+            type: Exact
+            value: /api/v1/admin/store/operations
+          method: PATCH
+        - path:
+            type: Exact
+            value: /api/v1/admin/orders
+          method: GET
+        - path:
+            type: RegularExpression
+            value: ^/api/v1/admin/orders/[^/]+$
+          method: GET
+      backendRefs:
+        - name: order-service
+          port: 8080

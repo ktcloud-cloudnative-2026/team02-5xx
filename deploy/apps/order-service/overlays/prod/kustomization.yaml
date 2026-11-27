@@ -2,8 +2,12 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+  - securitypolicy.yaml
+  - admin-httproute.yaml
+  - admin-securitypolicy.yaml
 images:
   - name: ghcr.io/ktcloud-cloudnative-2026/team02-5xx/order
-    newTag: sha-b05b9c0981ad9e12c60af8ab544dd9cd4da77c0b
+    newTag: sha-6219d6bf419ca733376c317fcbc4bbbd4d38ba5b
 patches:
   - path: hikari-patch.yaml
+  - path: admin-enabled-patch.yaml

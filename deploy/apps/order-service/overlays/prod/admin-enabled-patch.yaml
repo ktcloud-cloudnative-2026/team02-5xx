@@ -1,0 +1,15 @@
+# Issue #435: prod에서 관리자 API(OR-06~09)를 켠다(11/26 팀 결정: Gateway JWT + 서비스 권한 검사를 전제로 prod에도 개방).
+# Gateway JWT(admin-securitypolicy.yaml)와 서비스 STORE_ADMIN 권한 검사(#263)가 있는 상태에서만 켠다.
+# 이 패치는 prod 정책이 먼저 적용된 뒤에 Order를 동기화해야 한다(정책 없이 올리면 위조 헤더가 서비스까지 전달된다).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: order-service
+          env:
+            - name: ORDER_ADMIN_ENABLED
+              value: "true"
