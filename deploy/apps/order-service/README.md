@@ -117,11 +117,11 @@ prod overlay에 Gateway JWT 검증과 관리자 API 개방 설정을 dev와 같�
 | `admin-securitypolicy.yaml` | 관리자 `order-service-admin-jwt` |
 | `admin-enabled-patch.yaml` | prod에서 `ORDER_ADMIN_ENABLED=true`(base 값은 `false` 유지) |
 
-JWT 검증 값(고객용·관리자용 공통): issuer `https://peakorder.jpexstudio.com/`, audience `peakorder-api-prod`, JWKS `http://auth-service.peakorder.svc.cluster.local:8080/api/v1/auth/jwks`, `sub`→`X-User-Id`, `role`→`X-User-Role`. 관리자 경로에는 `RequestHeaderModifier(remove)`를 넣지 않는다(#286). STORE_ADMIN 확인은 서비스가 한다(#263).
+JWT 검증 값(고객용·관리자용 공통): issuer `https://peakorder.jpexstudio.com`(끝에 `/` 없음), audience `peakorder-api-prod`, JWKS `http://auth-service.peakorder.svc.cluster.local:8080/api/v1/auth/jwks`, `sub`→`X-User-Id`, `role`→`X-User-Role`. 관리자 경로에는 `RequestHeaderModifier(remove)`를 넣지 않는다(#286). STORE_ADMIN 확인은 서비스가 한다(#263).
 
-- **issuer는 토큰의 `iss`와 문자열이 정확히 같아야 한다.** 안내받은 값은 끝에 `/`가 있다(dev는 `http://10.10.22.100`으로 없음). 병합 전에 prod에서 발급한 토큰의 `iss`로 확인한다.
-- **동기화 순서**: prod Gateway의 JWT 정책이 먼저 적용된 뒤에 Order를 동기화한다. 정책 없이 Order를 올리면 위조 헤더가 서비스까지 전달된다. `ORDER_ADMIN_ENABLED=true`가 들어가므로 관리자 경로의 Gateway 정책을 먼저 확인한다.
-- **prod Gateway 리스너**: Order 고객용 HTTPRoute(base `httproute.yaml`)와 관리자 HTTPRoute는 `peakorder-gateway`의 `sectionName: http`에 붙는다. prod Gateway의 리스너 이름이 다르면(예: HTTPS) prod overlay에서 `parentRefs`를 조정해야 한다(Gateway 담당 확인 필요).
+- **issuer는 토큰의 `iss`와 문자열이 정확히 같아야 한다.** prod `auth-service-runtime`의 issuer는 끝에 `/`가 없다(정진혁 님이 런타임 설정에서 확인, 11/27). 처음 안내받은 표기(`.../`)와 달라 PR에서 이태훈 님께 최종 확인을 요청했고, 병합 전에 prod에서 발급한 토큰의 `iss`로도 확인한다.
+- **동기화 순서**: Gateway 전체에 거는 JWT 정책은 없고 서비스마다 SecurityPolicy를 둔다(정진혁 님 11/27). 그래서 이 정책은 Order와 같은 동기화에서 함께 올라가며, Auth는 이미 prod에 떠 있어야 한다. 정책 없이 Order만 올리면 위조 헤더가 서비스까지 전달되므로 이 overlay를 한 번에 적용한다.
+- **prod Gateway 리스너**: prod Gateway는 dev와 같은 `gateway.yaml`로 만든 `peakorder-gateway`(envoy-gateway-system)이고 리스너는 `http`/80이다. HTTPS는 Cloudflare에서 끝나고 Gateway까지는 HTTP이므로 `sectionName: http`를 그대로 쓴다(정진혁 님 11/27).
 - 이 변경은 이미지 태그·Secret·replicas·HPA를 바꾸지 않는다. prod 이미지 태그 승격은 dev 통합 테스트를 통과한 태그로 11/30 오전에 별도 PR로 한다. prod `rabbitmq-secret`(username·password)은 정진혁 님이 만들 예정이며 없으면 Order가 시작하지 않는다.
 - prod에 직접 `kubectl apply`하지 않는다. 배포 경로는 Git PR → Argo CD(수동 동기화)다.
 

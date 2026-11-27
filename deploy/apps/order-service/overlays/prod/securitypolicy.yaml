@@ -1,6 +1,6 @@
 # Order 고객용 HTTPRoute(order-service)에 JWT 검증을 붙인다(#112 A안, #286, #435). prod 전용.
-# - issuer·audience는 Auth prod 값(이태훈 님 11/27 안내)이며 dev 값과 다르다. dev는 overlays/dev에서 따로 관리한다.
-# - issuer는 Auth가 발급하는 토큰의 iss와 문자열이 정확히 같아야 한다(끝의 "/" 포함). 병합 전에 prod 토큰의 iss로 확인한다.
+# - issuer·audience는 Auth prod 값이며 dev 값과 다르다. dev는 overlays/dev에서 따로 관리한다.
+# - issuer는 Auth가 발급하는 토큰의 iss와 문자열이 정확히 같아야 한다. prod auth-service-runtime의 issuer는 끝에 "/"가 없다(정진혁 님 11/27 확인).
 # - Auth JWKS로 서명·issuer·audience 검증, 실패하면 Gateway가 401.
 # - sub → X-User-Id, role → X-User-Role 로 Order에 전달한다.
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -19,7 +19,7 @@ spec:
   jwt:
     providers:
       - name: peakorder-auth
-        issuer: https://peakorder.jpexstudio.com/
+        issuer: https://peakorder.jpexstudio.com
         audiences:
           - peakorder-api-prod
         remoteJWKS:
