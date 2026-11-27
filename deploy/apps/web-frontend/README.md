@@ -125,12 +125,12 @@ Sync/Healthy·rollout/Ready·실제 resources·오류율·지연 및 재시작 �
 
 ## 이미지 태그 교체
 
-Base와 prod의 이미지 참조는 아래 **미배포 플레이스홀더**입니다.
+Base의 이미지 참조는 아래 **미배포 플레이스홀더**입니다. #452에서 prod 최초 환경 구축용 태그를 별도로 지정합니다.
 현재 dev 태그는 #368로 main에 반영된 `sha-6219d6bf419ca733376c317fcbc4bbbd4d38ba5b`입니다.
 아래 최초 자원 실측은 이전 dev 이미지 `sha-eac2e88c7da2ed894689d4868713467c975ee3f4`와
 당시 main의 로컬 production 빌드를 대상으로 했습니다. 이전 실측의 이미지 SHA와 결과는 보존하며,
 현재 게시 이미지의 확인 결과는 별도 구역에 기록합니다. #372 수정에서는 최신 main의 태그를 유지합니다.
-Base/prod 플레이스홀더를 유지한 채 동기화하거나 배포하면 안 됩니다.
+플레이스홀더가 남은 렌더 결과를 동기화하거나 배포하면 안 됩니다.
 
 ```text
 ghcr.io/ktcloud-cloudnative-2026/team02-5xx/web-frontend:sha-REPLACE_WITH_PUBLISHED_40_CHAR_COMMIT_SHA
@@ -468,3 +468,27 @@ dev 반영 전 담당자 외 인프라 리뷰와 CI를 완료하고 기존 자�
 이번 리뷰 반영에서는 main의 변경을 작업 트리에 3-way 패치로 통합하고 충돌을 정리했다.
 기존 HEAD/브랜치 이력은 유지했으며 추가 Commit·Push·Merge·배포·클러스터 변경은 수행하지 않았다.
 이 로컬 수정이 후속 커밋·Push되기 전에는 원격 PR의 충돌 상태가 갱신되지 않는다.
+
+## #452 prod 최초 환경 구축용 이미지 (2026-11-27)
+
+기준 main `533aeafe887a703da16eb747a17dfe1caa1d7d44`. 최종 릴리스 확정과 최초 환경 구축을 분리한다.
+prod kustomization의 newTag만 현재 dev 검증 이미지 `sha-6219d6bf419ca733376c317fcbc4bbbd4d38ba5b`로 교체한다.
+#372 게시 이미지 검증 기록의 linux/amd64 manifest digest는
+`sha256:c04582f1e66a264fa8a5f41a7806c873ca886b749750b88355fa79bfe243b515`이다.
+#414의 RUN-20261127-03~05는 해당 Frontend 태그의 dev 고객 주문/인증/관리자 조회 근거이며,
+전체 통합 테스트 완료를 의미하지 않는다. #431 이미지 보완을 포함하는 이후 이미지는 이번 초기 후보가 아니다.
+최종 승격 시 실제 검증한 태그와 digest를 별도 확정한다. #417의 CPU 25m/250m, memory 32Mi/128Mi,
+기본 1 Pod, Service/Route/Probe 및 base/dev는 그대로 유지하며 HPA를 추가하지 않는다.
+
+- 변경 전후 base/dev/prod Kustomize 렌더링 및 diff 검사를 통해 base/dev 동일,
+  prod는 이미지 줄 외 동일, Deployment·Service·HTTPRoute 총 3개를 확인한다.
+  실제 렌더링은 사용자 실행 결과로 확인하며 이 문서 작성 시 미실행이다.
+- 필수 리뷰 및 CI 후 병합하고 실제 배포는 승인된 Argo CD 수동 Sync로만 진행한다.
+  NetworkPolicy/백엔드/인증/초기 데이터·클러스터 여유와 게시 이미지 pull 및 digest를 확인한다.
+  기존 이미지 사용권과 제품 적합성 미확인 사항을 해결하거나 승인된 접근 제한을 확보하기 전
+  외부 공개 Sync를 하지 않는다. 초기 구성 준비를 공개 서비스 개시로 간주하지 않는다.
+- 배포 시 Pod Ready, imageID, 재시작/OOM, 도메인 루트·정적 자산, 인증/API 연결을 최소 확인한다.
+  최종 이미지 승격 이후 핵심 스모크 검증만 수행하며 상세 dev 검증을 불필요하게 반복하지 않는다.
+  prod 부하/모니터링은 별도 승인 범위이며 #417 측정값은 역사적 근거로 보존한다.
+- 최초 배포 실패 시 추가 Sync를 중단하고 승인된 GitOps 복구 절차를 따른다.
+  배포 불가능한 placeholder로 되돌려 Sync하지 않는다. 실제 prod 배포 및 검증은 미실시다.
