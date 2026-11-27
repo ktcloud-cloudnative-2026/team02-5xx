@@ -27,7 +27,7 @@
 | O-05 | 관리자 API(OR-06~09) | PASS | OR-06 조회 `200`, OR-07 PATCH `200`(영업·접수 켬, 재조회 `true`/`true`), 잘못된 본문(문자열 `"true"`·숫자 `1`·빈 `{}`)은 `400`으로 거절되고 상태 불변. OR-08 목록 `200`, `status=CANCELED`(17·10·7·5)·`orderNo`(주문 17 한 건)·날짜 `from/to`(오늘 11건)·`manualReviewRequired=true`(0건) 필터 동작, 잘못된 날짜 형식 `400`. OR-09 상세 `200`, 없는 주문 `404`. 미확인: OR-08 페이지 이동, 관리자 화면(프런트) 연동(이은제) | Gateway 경유 curl(관리자 토큰, 토큰 값은 기록하지 않음), #398 댓글 | 11/26 14:19~16:2x |
 | O-06 | 인증·신원·권한 | PASS | 토큰 없음 401, 위조 헤더(`X-User-Role: STORE_ADMIN`)만 401, 허용하지 않은 메서드·`/internal/**`·`/actuator/**` 404, CUSTOMER 토큰으로 관리자 경로 403, STORE_ADMIN 토큰으로 고객 경로 403 | Gateway 경유 curl(토큰 값은 기록하지 않음), #398 댓글 | 11/26 |
 | O-07 | 이벤트·Outbox: OrderConfirmed 발행·중복·지연·복구 | IN PROGRESS | 정상 경로 PASS: 주문 20 결제(16:37:37) 직후 Order `outbox_events`에 `OrderConfirmed` 한 건이 만들어져 0.65초 만에 `SENT`, Cooking 전표 한 건(`COOKING`), 조리 완료 후 Cooking `DONE`·Order `COMPLETED`(`completed_at 16:39:38`). 이벤트 중복·지연·RabbitMQ 장애 복구는 장애 주입이라 `NOT RUN`(공지·조율 후). 11/25 Order 2 Pod 시험의 outbox 중복 없음 결과(이전 이미지)도 있음 | `outbox_events`·`cooking_tickets`·`orders` 조회, curl | 11/26 16:37~16:40 |
-| O-08 | 관측성: `order_outbox_pending`, `order_inventory_hold_rejected_total`, ECS 로그 | IN PROGRESS | `order_inventory_hold_rejected_total{reason="insufficient_stock"}`가 재고 부족 요청(수량 99) 직후 `1.0`으로 노출됨(거절 전에는 지표 자체가 없었음, #270 설계). 재고 부족 거절은 로그가 아니라 지표로만 구분(`STOCK_NOT_LINKED`만 경고 로그). `order_outbox_pending`·ECS 로그 확인은 미진행 | `port-forward` 후 `/actuator/prometheus` | 11/26 16:0x |
+| O-08 | 관측성: `order_outbox_pending`, `order_inventory_hold_rejected_total`, ECS 로그 | PASS | 지표: `order_outbox_pending 0.0`, `order_inventory_hold_rejected_total{reason="insufficient_stock"}`가 재고 부족 요청 후 노출(11/26~27, 읽기). 로그(#425 이미지 `sha-7ba14a6`, 11/27 11:07 주문 39~42): 요청당 INFO 한 줄로 `주문 생성`, `결제 완료 주문 확정`(orderNo), `주문 취소 확정`, `취소 후 재고 복원 완료`, `취소 후 환불 완료`(paymentId), `결제 전 주문 취소`, `주문 종료`(reason=OUT_OF_STOCK), `조리 완료 반영`(orderNo·eventId)이 `orderId`로 이어짐. 최근 15분 로그에서 password·Bearer·eyJ·secret·token 검색 결과 없음. 미확인: 같은 주문 재취소의 멱등 재처리 문구, 이미 완료된 주문에 CookingCompleted가 다시 올 때의 WARN(CT-06 M-02) | `kubectl logs deploy/order-service`(orderId 검색), `/actuator/prometheus` | 11/26~27 11:07 |
 
 ## 2. HPA·리소스·오토스케일링
 
@@ -66,6 +66,7 @@
 - 11/26 17:06 환불 실패 시험(CT-05): Payment를 `kubectl scale --replicas=0`으로 약 11초 동안 0개로 두었다가 `--replicas=1`로 복원했다(Discord 공지·정진혁 확인 후 진행, cp available 1236Mi 확인). 그 사이 한 취소 요청이 `200`으로 끝나고 환불은 재시도로 완료됐다.
 - 11/27 10:00경 응답 유실 시험(CT-04·05): Pod를 끊지 않고 Payment 내부 API(`port-forward`)를 직접 호출해 Payment가 먼저 처리한 상태를 만들었다(정진혁에게 사전 안내, 환불 쪽 주문 30·결제 9040, 결제 쪽 주문 31·결제 9041, 조리 차단 주문 28·29). 공유 설정은 바꾸지 않았고 시험 주문은 삭제하지 않았다.
 - Payment 결제 상태 표기: DB `payments.status`의 `APPROVED`는 Payment API 응답에서 `SUCCESS`로 내보낸다(`PaymentResponse` 매핑). 이 문서의 `APPROVED`는 DB 값이고 정진혁의 Payment 조회·응답 기준 표기는 `SUCCESS`다.
+- 11/27 10:45 #425(Order 상태 변경 로그, 이슈 #423) 병합 후 이태훈 자동 태그 PR #439로 dev Order 이미지를 `sha-7ba14a6f…`로 갱신했고 롤링은 정상(새 Pod 1/1·재시작 0). 이은제 요청 변경(실제 전이만·커밋 뒤에만 로그, 이미 처리/완료 구분, `eventId` 추가)을 반영한 커밋(`79a1031`)이 들어 있다.
 
 ## 관련 이슈·PR
 
