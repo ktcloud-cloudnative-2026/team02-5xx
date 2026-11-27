@@ -62,7 +62,7 @@
 
 | ID | 내용 | 상태 | 기대 결과 | 실제 결과 | 근거 | 일시 |
 |---|---|---|---|---|---|---|
-| I-17 | 재고 변동 이력(`inventory_histories`) | NOT RUN | README는 `RESERVE`·`CONFIRM`·`RELEASE`·`RESTORE`·`RESTOCK`·`ADJUST` 이력을 기록한다고 설명하지만 main의 코드에는 이 테이블을 쓰는 곳이 없음(마이그레이션 V1에 테이블만 존재). 시험으로 행이 생기는지 확인하고, 명세(ERD·API)가 이력 기록을 요구하는지 확인한 뒤 결함 Issue로 올릴지 결정 | | | |
+| I-17 | 재고 변동 이력(`inventory_histories`) | NOT RUN | README는 `RESERVE`·`CONFIRM`·`RELEASE`·`RESTORE`·`RESTOCK`·`ADJUST` 이력을 기록한다고 설명하지만 main의 코드에는 이 테이블을 쓰는 곳이 없음(마이그레이션 V1에 테이블만 존재). 시험으로 행이 생기는지 확인해 사실로 기록한다. 요구사항·API 명세에 이력 기록·조회 요구는 없어 결함으로 올리지 않고 알려진 한계로 관리한다(팀장 이은제 11/27 15:40: 발표 전 추가 구현 불필요, 후속 Issue로 관리) | | | |
 | I-18 | 지표·로그 | NOT RUN | `/actuator/prometheus`에 `application` 공통 라벨과 HTTP histogram(#430), ECS JSON 로그에 비밀·개인정보 없음 | | | |
 | I-19 | DB 정합성 점검 | NOT RUN | 시험 전체 뒤 모든 메뉴에서 `reserved_qty`가 `RESERVED` 예약 수량의 합과 같고, 시험 전 값으로 원복, `CONFIRMED` 예약 수량의 합이 `stock_qty` 변화와 일치 | | | |
 
@@ -76,7 +76,7 @@
 
 | 항목 | 내용 | 상태 |
 |---|---|---|
-| `inventory_histories` 미기록 | 테이블만 있고 기록 코드가 없음(I-17 참조) | 확인 필요 |
+| `inventory_histories` 이력 미기록 | ERD(3-7)·README는 재고 변동 이력 테이블을 설계·설명하지만(`RESERVE`·`CONFIRM`·`RELEASE`·`RESTORE`·`RESTOCK`·`ADJUST`) main에는 이 테이블에 쓰는 코드가 없고 어떤 API도 읽거나 쓰지 않는다. 요구사항·API 명세에는 포함되지 않은 기능이라 발표 전에는 구현하지 않고 별도 후속 Issue로 관리한다 | 알려진 한계(팀장 확인 11/27) |
 
 ## 8. 기타 기록
 
