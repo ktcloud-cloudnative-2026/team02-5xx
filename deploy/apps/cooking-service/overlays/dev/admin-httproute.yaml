@@ -1,4 +1,4 @@
-# Gateway(peakorder-gateway)에서 Cooking 관리자 API로 가는 길 안내. dev 전용(#348).
+# Gateway(peakorder-gateway)에서 Cooking 관리자 API로 가는 길 안내(dev, #348). prod는 overlays/prod에 같은 규칙(#434).
 # - CO-03 /api/v1/admin/cooking/overview, CO-04 /api/v1/admin/cooking/queue 의 GET만 연다.
 #   고정 경로라 Exact + method(#266 팀 기준). /internal/**, /actuator/** 는 열지 않는다.
 # - JWT 필수: admin-securitypolicy.yaml(#303·#337 방식)이 토큰을 검증하고, 서비스가 STORE_ADMIN을 확인한다(#99, #288).

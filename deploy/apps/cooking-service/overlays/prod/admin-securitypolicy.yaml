@@ -1,0 +1,31 @@
+# Cooking 관리자 HTTPRoute에 JWT 검증을 붙인다(#434, dev #348과 같은 구조).
+# - issuer·audience는 prod Auth와 같은 값이어야 한다. 한 글자라도 다르면 관리자 요청이 모두 401이 된다(#419 README).
+#   issuer는 끝의 "/"까지 포함한 값이다.
+# - Auth JWKS로 서명·issuer·audience 검증, 실패하면 Gateway가 401.
+# - sub → X-User-Id, role → X-User-Role 로 Cooking에 전달하고, STORE_ADMIN 확인은 서비스가 한다(#288).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: cooking-service-admin-jwt
+  namespace: peakorder
+  labels:
+    app: cooking-service
+    team: team02
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: cooking-service-admin
+  jwt:
+    providers:
+      - name: peakorder-auth
+        issuer: https://peakorder.jpexstudio.com/
+        audiences:
+          - peakorder-api-prod
+        remoteJWKS:
+          uri: http://auth-service.peakorder.svc.cluster.local:8080/api/v1/auth/jwks
+        claimToHeaders:
+          - header: X-User-Id
+            claim: sub
+          - header: X-User-Role
+            claim: role

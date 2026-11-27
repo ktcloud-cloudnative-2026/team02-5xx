@@ -1,0 +1,15 @@
+# Issue #434: prod에서도 관리자 API(CO-03·04)를 켠다(팀 결정 11/26 — prod 관리자 API 허용, #419).
+# Gateway JWT(admin-securitypolicy.yaml)와 서비스 STORE_ADMIN 권한 검사(#288)가 모두 있는 상태에서만 켠다.
+# dev(overlays/dev/admin-enabled-patch.yaml, #348)와 같은 값이며 base 값은 "false"로 유지한다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cooking-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: cooking-service
+          env:
+            - name: COOKING_ADMIN_ENABLED
+              value: "true"
