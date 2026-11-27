@@ -10,7 +10,7 @@ PR #76·#79와 참고 구성인
 [PR #82](https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/82)는
 모두 main에 병합됐습니다(2026-11-19 확인). 이 브랜치에는 해당 PR의
 소스나 파일을 별도로 가져오지 않고 배포 참조만 정의했습니다.
-현재 구성은 실제 배포 가능한 상태로 검증되지 않았습니다.
+초기 구성 당시 기록입니다. dev 실환경 검증 및 현재 prod 최초 배포 준비 상태는 아래 #450 절을 따릅니다.
 
 ## 구조와 리소스
 
@@ -30,6 +30,11 @@ menu-service/
     dev/admin-httproute.yaml
     dev/admin-securitypolicy.yaml
     prod/kustomization.yaml
+    prod/hikari-patch.yaml
+    prod/probes-patch.yaml
+    prod/admin-enabled-patch.yaml
+    prod/admin-httproute.yaml
+    prod/admin-securitypolicy.yaml
 ```
 
 - Deployment와 ClusterIP Service의 이름은 `menu-service`입니다.
@@ -71,8 +76,8 @@ DB 환경 변수를 참조하는 것만으로 연결·마이그레이션 성공�
 
 ## Probe와 한계
 
-#365에서 Actuator가 추가됐고 #394의 dev 이미지에 포함됐다. #402는 dev overlay에서만
-아래 HTTP Probe를 적용한다. `port: http`는 컨테이너 8080을 가리킨다.
+#365에서 Actuator가 추가됐고 #394의 dev 이미지에 포함됐다. #402는 dev overlay에 먼저
+아래 HTTP Probe를 적용했고 #450은 검증된 설정을 prod에 승격한다. `port: http`는 컨테이너 8080을 가리킨다.
 
 | Probe | 경로 | 주기 | 실패 임계값 |
 | --- | --- | --- | --- |
@@ -85,7 +90,7 @@ startup은 약 120초의 기동 검사 예산이며 실제 dev 기동·롤링 �
 명시하지 않은 timeoutSeconds(1초), successThreshold(1회) 등은 Kubernetes 기본값을 쓴다.
 readiness/liveness는 `$patch: replace`로 교체해 base의 `tcpSocket`이 함께 남지 않게 한다.
 
-base/prod는 기존 TCP Probe를 유지한다. TCP 연결 성공은 포트 개방만 확인한다.
+base는 기존 TCP Probe를 유지한다. #450부터 prod는 dev와 같은 HTTP Probe를 사용한다. TCP 연결 성공은 포트 개방만 확인한다.
 **현재 기본 HTTP readiness도 DB 준비 완료를 보장하지 않는다.** #365의 격리 DB 장애 시험에서
 전체 health는 503 DOWN이었지만 readiness/liveness는 200 UP이었다.
 DB를 liveness에 넣거나 readiness health group을 변경하지 않았다.
@@ -94,9 +99,9 @@ DB를 liveness에 넣거나 readiness health group을 변경하지 않았다.
 
 ## GHCR 이미지 태그 교체
 
-Base와 prod Overlay는 아래 **미배포 플레이스홀더**를 유지합니다.
-dev는 #394에서 적용한 `sha-46d1801215997aa767ab12fa53249acd06b710d1`를 사용하며,
-#402에서는 이미지 태그를 갱신하지 않습니다. 플레이스홀더는 배포 가능 여부를 나타내지 않습니다.
+Base는 아래 **미배포 플레이스홀더**를 유지합니다.
+#450의 prod 후보는 #394에서 적용하고 #402 및 #409에서 실제 dev 검증한
+`sha-46d1801215997aa767ab12fa53249acd06b710d1`입니다. dev 태그 갱신은 별도 PR로 관리합니다.
 
 ```text
 ghcr.io/ktcloud-cloudnative-2026/team02-5xx/menu:sha-REPLACE_WITH_PUBLISHED_40_CHAR_COMMIT_SHA
@@ -140,11 +145,12 @@ git diff --check
 
 각 렌더 결과에서 다음 항목을 확인합니다.
 
-- Deployment·Service·HTTPRoute 각 1개, namespace `peakorder`
+- base Deployment·Service·HTTPRoute 각 1개, dev는 관리자 Route/Policy 및 HPA 추가,
+  prod는 관리자 Route/Policy 추가(총 5개), namespace `peakorder`
 - 리소스 및 Pod의 공통 라벨과 selector 일치
 - ClusterIP 및 Service 8080 → `http` → containerPort 8080 연결
 - DB 환경 변수 3개의 `menu-service-db` Secret 이름과 동일 이름 키 참조
-- base/prod의 TCP Readiness/Liveness 유지, dev의 세 HTTP Probe와 단일 handler 확인
+- base의 TCP Readiness/Liveness 유지, dev/prod의 세 HTTP Probe와 단일 handler 확인
 - 지정 GHCR 경로와 배포 전 실제 게시된 SHA 태그, `latest` 및 플레이스홀더 없음
 
 2026-11-19 리뷰 수정 검증에서는 저장소 밖에 준비한 공식 Kustomize v5.8.3
@@ -233,7 +239,8 @@ Gateway 담당자 리뷰 승인과 CI 성공 후 Git PR → Argo CD 절차로 �
 `admin-enabled-patch.yaml`을 추가했다. ME-03~07 GET·POST·PATCH의 정확한 경로만
 별도 Route로 공개하며 Order dev와 같은 JWT provider를 사용한다.
 JWT Route에는 헤더 remove를 넣지 않고, 기존 공개 Route의 remove는 유지한다.
-base/prod는 `MENU_ADMIN_ENABLED=false`이며 관리자 Route/Policy를 포함하지 않는다.
+#280 당시 base/prod는 `MENU_ADMIN_ENABLED=false`이며 관리자 Route/Policy를 포함하지 않았다.
+#450에서 prod를 별도 활성화하며 base는 계속 기본 차단이다.
 Service·포트·Secret·probe·이미지 태그·NetworkPolicy와 내부 호출 관계는 유지한다.
 #280 자체는 자원·Hikari·종료 보호를 추가하지 않았다. 현재 통합 결과는 병합된 #357의
 자원·JVM·dev Hikari 4/1·종료 보호를 함께 보존한다. Menu HPA·모니터링은 추가하지 않는다.
@@ -466,3 +473,48 @@ Argo CD Sync/Healthy, 롤링 및 고객·내부·관리자 API 실환경 회귀�
 예산을 충족하지 못하면 무조건 제거하지 말고 승인된 대체 풀 값과 배포 중지·복구 순서를 정한다.
 롤백 자체의 Pod 교체·종료 중 연결도 포함한다. 복구 후 Argo CD/Pod 상태·풀 설정·DB 연결·
 API 응답을 재확인한다. 공유 DB max_connections를 이번 rollback에서 변경하지 않는다.
+
+## prod 최초 배포 설정 및 이미지 승격 — Issue #450 (2026-11-27)
+
+기준 main `fb637c420372bf8982cf141113a586ed8616ea79`. prod overlay만 변경하며 #416 Hikari 4/1,
+#354 CPU 100m/1, 메모리 384Mi/768Mi, JVM 60%, preStop 10초 및 종료 유예 50초,
+ECS 로그, DB Secret 참조와 기존 공개 Route를 유지한다. prod는 1 Pod 기본값이며 HPA를 추가하지 않는다.
+#407과 동일한 HTTP Probe 및 #280의 ME-03~07 관리자 Route/활성화 패치를 독립 prod 파일로 추가한다.
+
+### 이미지와 JWT 계약
+
+- prod 후보: `sha-46d1801215997aa767ab12fa53249acd06b710d1`.
+- #402 종료 기록 및 #414 RUN-20261127-02~05의 실제 dev 이미지 digest:
+  `sha256:de53bf04d895785dcdc2ad18d767af7658ca585b58acdb6922314b8ef46ab417`.
+  #402에서 startup 초기 연결 거부 3회 후 회복, Pod Ready 21초, Sync/Healthy 54초,
+  재시작/OOM 0, health 및 고객/관리자/내부 조회 검증을 보고했다.
+- GitHub tree 비교에서 위 이미지 출처와 기준 main 사이 Menu 서비스 파일 차이는 #433 prod Seed SQL/README 2개뿐이다.
+  #449의 새 dev 이미지 후보는 아직 실제 검증 완료를 확인하지 못해 승격하지 않는다.
+  전체 통합 테스트 완료를 의미하지 않으며 Sync 직전에 게시 이미지·digest·관련 변경 및 검증 상태를 재확인한다.
+- 실제 prod Auth 런타임 조회: issuer `https://peakorder.jpexstudio.com`, audience `peakorder-api-prod`.
+  JWKS `http://auth-service.peakorder.svc.cluster.local:8080/api/v1/auth/jwks`.
+  sub → X-User-Id, role → X-User-Role. 관리자 Route에는 remove를 넣지 않고 공개 Route의 remove는 유지한다.
+- prod DB/Secret은 담당자가 생성 및 접속 확인을 보고했다. 실제 Menu 기동 및 권한은 미검증이다.
+
+### 검증과 동기화 조건
+
+1. 로컬 Kustomize로 base/dev/prod를 렌더링하여 base/dev 변경 없음, prod 5개 객체,
+   태그·Probe 단일 handler·Route/Policy 연결·JWT 값·기존 설정 보존을 확인한다.
+   이번 변경은 원격에서 작성하며 실제 렌더링 및 diff 검증은 사용자 실행 후 기록한다.
+2. Gateway/GitOps 담당 리뷰·CI 통과 및 병합 이후에만 수동 Sync를 검토한다.
+   prod 직접 apply 금지. NetworkPolicy Application의 Healthy 표시만으로 적용 성공을 판단하지 않는다.
+   default-deny 및 allow-menu-service/allow-auth-service 실제 적용, Gateway/JWKS 접근,
+   Menu Secret 키 존재, 이미지 pull 권한, DB 연결 예산, cp 메모리, 영업/주문 접수 닫힘을 확인한다.
+3. 최초 배포 전 Gateway 담당과 선택 동기화 순서를 합의한다.
+   기존 Menu Pod/Deployment가 없는 상태에서 Service와 공개/관리자 HTTPRoute 및 SecurityPolicy를 먼저 Sync한다.
+   관리자 Route Accepted/ResolvedRefs, SecurityPolicy Accepted 및 무토큰/위조 헤더 요청 401을 확인한 뒤에만
+   관리자 활성화 Deployment를 Sync한다. 정책 미수락·전파 미확인·보호 경계 검증 실패 시 Deployment Sync 중단.
+   최초 Sync 이후 변경에도 인증 경계가 유지되도록 Gateway 담당과 조율한다.
+4. Deployment Sync 후 실제 imageID, Pod Ready/재시작/OOM, 세 Probe, Flyway V1, Hikari 및 DB 연결을 확인한다.
+   공개 조회, 관리자 무토큰 401/CUSTOMER 403/STORE_ADMIN 정상 조회, 위조 헤더 차단,
+   내부 API·Actuator 외부 비노출을 검증한다. 기본 readiness는 DB 준비를 보장하지 않는다.
+5. #433 승인 SQL의 실행 조건을 별도로 확인한 뒤 최초 메뉴 데이터를 등록하고 실제 메뉴 ID를 Inventory 담당에 인계한다.
+   이번 변경은 DB 접속·Seed 실행·배포를 하지 않는다.
+
+문제 발생 시 추가 Sync를 멈추고 Gateway 담당과 관리자 경로 비활성화/차단 및 승인된 Git PR 복구를 진행한다.
+이전 prod placeholder로 무조건 되돌려 Sync하지 않는다. 실제 prod 검증은 미실시 상태다.

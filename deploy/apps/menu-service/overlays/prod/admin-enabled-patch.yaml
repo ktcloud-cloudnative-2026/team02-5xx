@@ -1,0 +1,15 @@
+# #450: prod JWT/NetworkPolicy 보호 확인 후 Deployment만 선택 Sync한다.
+# README의 최초 배포 순서를 따른다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: menu-service
+  namespace: peakorder
+spec:
+  template:
+    spec:
+      containers:
+        - name: menu-service
+          env:
+            - name: MENU_ADMIN_ENABLED
+              value: "true"
