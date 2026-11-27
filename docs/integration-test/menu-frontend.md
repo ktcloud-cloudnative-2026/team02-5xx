@@ -56,6 +56,7 @@ Menu·Frontend 및 관련 서비스 소스/테스트·배포·CI 입력은 동�
 | RUN-20261127-05 | 2026-11-27 선행11:30 / 메뉴11:43~11:51 / 잔여 조회11:54~11:58 KST | 실제 dev HTTPS / 격리 Chromium | HEAD080065c, Frontend/Auth/Cooking6219d6b·Menu46d1801·Inventoryf4201cc·Order7ba14a6 | Inventory 롤링 종료 후 CT-06 데이터 조회만 수행 | DPAPI 관리자 재사용, 기존30 PASS 보존+추가60 PASS | 9절·run-20261127-05 QA |
 | RUN-20261127-06 | 2026-11-27 12:11~12:21 / 재개15:27~15:35 KST | 실제 dev Chromium·전용 메뉴/재고·읽기 전용 DB | HEADfb17a7f, Menu46d1801/Inventoryf4201cc/Order7ba14a6/Frontend6219d6b | 공유 충돌 없음 재확인, DPAPI·체크포인트 재개 | 유효62 PASS·무효 도구1, 정리 완료. 공동/자동화 재사용 별도 | 9절 RUN-06·run-20261127-06 QA |
 | RUN-20261127-07 | 2026-11-27 선행15:55 / Chromium15:57~15:59 KST | 실제 dev HTTPS·격리 Chromium·기존 주문 조회 | HEAD421605f, Frontend/Auth6219d6b·Order7ba14a6·Paymentaebac79 | CT-03 진행 중, 공유 설정 변경 보류·신규 주문0 | DPAPI 재사용·유효22 PASS/무효 도구2, 기존 근거 대조 | 9절 RUN-07·run-20261127-07 QA |
+| RUN-20261127-08 | 2026-11-27 16:14 KST 인프라/DB 조회·공동 근거 대조 | dev 읽기 전용·공유 DB 설정/집계만 | HEADf58cc3c·origin/main533aeaf, 실행 이미지 RUN-07과 동일 | Inventory2/2·나머지1/1, CT-03 진행 중·추가 부하/변경0 | #186/#411/#412/#457 정본·입력 동일성·DB 예산 검토 | 9절 RUN-08·run-20261127-08 QA |
 
 ## 3. 선행 조건
 
@@ -105,11 +106,11 @@ F-06에서 Order 상태와 Cooking 상태의 표현을 실제 응답·화면 계
 | Menu M-01~05        | 5       | 0       | 1           | 4     | 0     | 0       | 0      | 0       |
 | Frontend F-01~08    | 8       | 0       | 5           | 3     | 0     | 0       | 0      | 0       |
 | 배포·관측성 D-01~04 | 4       | 0       | 2           | 2     | 0     | 0       | 0      | 0       |
-| 공동 J-01~05        | 5       | 1       | 3           | 1     | 0     | 0       | 0      | 0       |
+| 공동 J-01~05        | 5       | 0       | 2           | 3     | 0     | 0       | 0      | 0       |
 | 최종 회귀 R-01      | 1       | 1       | 0           | 0     | 0     | 0       | 0      | 0       |
-| **합계**            | **23**  | **2**   | **11**      | **10** | **0** | **0**   | **0**  | **0**   |
+| **합계**            | **23**  | **1**   | **10**      | **12** | **0** | **0**   | **0**  | **0**   |
 
-부분 성공과 미실행을 합쳐 그룹 PASS로 만들지 않는다. 최신 집계는 NOT RUN 2 / IN PROGRESS 11 / PASS 10, 그 외 0이다. 실행 이후 그룹 상태·이 집계·9절 실행 기록을 함께 갱신한다.
+부분 성공과 미실행을 합쳐 그룹 PASS로 만들지 않는다. 최신 집계는 NOT RUN 1 / IN PROGRESS 10 / PASS 12, 그 외 0이다. 실행 이후 그룹 상태·이 집계·9절 실행 기록을 함께 갱신한다.
 
 ## 5. 테스트 상태 및 우선순위 정의
 
@@ -157,6 +158,7 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
 - **기대 결과·통과 기준:** 등록201·수정/상태변경200, 입력·권한 실패 시 부분 쓰기 없음. 생략 값 보존·옵션 소속·비음수·원자성이 현행 구현과 일치. HIDDEN은 물리 삭제가 아님. 실제 쓰기 경쟁 미확인을 단위 테스트만으로 PASS 처리하지 않음.
 - **재사용·관련:** #280 CRUD, 실제 PostgreSQL/행 잠금 시험을 재사용. #186이 남긴 실제 dev 쓰기 경쟁은 추가 확인 대상. CT-02/10, #245/#280/#357/#360/#186.
 - **현재 상태:** IN PROGRESS. **실제 결과·검증 근거:** RUN-20261127-01 (9절) 실제 전용 CRUD·실패 원자성·상태 전환·DB 읽기 대조·단일 Pod 독립 필드 동시 요청 42 PASS. 메뉴14/15 최종 HIDDEN, 물리 삭제 아님. 이전 모니터링 작업창 차단은 해소. **결함·재검증:** 신규 제품 결함 없음. 다중 Pod 실제 쓰기는 미실행이므로 전체 통합 완료 PASS로 확대하지 않고 CT-07과 조율해 남은 범위를 확인한다. CT-02/CT-10 근거 연결.
+- **RUN-08 잔여 판단:** #367의2 Pod는 공개/내부 조회만 수행했고 관리자 쓰기는 명시적으로 미검증이다. 기존 PostgreSQL 잠금·RUN-01 단일 Pod2요청은 실제2 Pod 쓰기의 대체 근거가 아니다. CT-03 종료·cp1GiB 이상·CT-07 담당자 조율 후, 기존 전용 HIDDEN 메뉴에 독립 필드2요청과 Pod별 처리/최종 DB 값·복원만 확인하는 최소 대표 시험을 남긴다. 이번 스케일/쓰기0, 전수 CRUD 재실행 불필요.
 
 ### M-03. 인증·인가·위조 헤더·Gateway 우회 접근
 
@@ -351,8 +353,7 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
   3. 거부 화면·중복 결제/불필요한 새 주문 없음과 종료 후 확보 정리를 확인한다.
 - **기대 결과·통과 기준:** 확보/판매가 준비 재고를 넘지 않고 음수·중복 처리 없음. Order409 OUT_OF_STOCK 등 현행 오류 변환 준수. 요청 수/동시 수 없는 경쟁 PASS 기록 금지.
 - **재사용·관련:** Inventory 내부 동시성 근거를 참조하고 개인 문서에는 CT-03·UI 증거만 추가. CT-03, #186/#409, 담당 실행 Issue는 합의 후 기입.
-- **현재 상태:** NOT RUN. **실제 결과·검증 근거:** 미실행 / —. **결함·재검증:** —.
-
+- **현재 상태:** IN PROGRESS. **공동 근거 재사용:** RUN-08에서 #457 I-09의 재고2/동시8요청→성공2·409 6·예약2/원복, I-10~12의 멱등/경합·교착 방지와 #312 과거2 Pod 확보44/요청54를 연결했다. 현재 Inventory Java/시험/DB 마이그레이션은 과거 기준과 동일. **미충족:** 이 근거는 내부 확보 API 시험이며 고객 A/B의 실제 OR-01 동시 주문·OUT_OF_STOCK 화면·새 주문/중복 결제 방지 연결을 새로 증명하지 않는다. Frontend 오류 fixture 및 #411 O-01 오류 변환은 기존 부분 근거로만 재사용. CT-03 진행 중이라 추가 경쟁 시험 없음. 신규 제품 결함0.
 ### J-02. 재고 임시 확보·TTL 만료·확정·해제 및 경합
 
 - **우선순위·선행 조건:** P0. Inventory/Order 담당, 실제 TTL/시각·전용 주문. TTL 변경은 합의 없이 하지 않음.
@@ -363,7 +364,7 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
   3. 만료/확정 경쟁·중복 요청은 담당자의 기존 DB시험 또는 조율한 공동 결과를 확보한다.
 - **기대 결과·통과 기준:** RESERVED의 만료/해제/확정에 맞게 재고/예약이 한 번만 변함. 확정된 확보를 만료 처리하지 않음. 만료 시각과 스케줄러 처리 시각을 구분하며 고정 초 즉시 반영을 가정하지 않음.
 - **재사용·관련:** 내부 상태/멱등성은 담당 근거 참조. Frontend 내부holds 조작 기능 추가 금지. CT-03/05, #403/#409와 담당 Issue.
-- **현재 상태:** IN PROGRESS. **실제 결과·검증 근거:** RUN-06 주문62/108의 실제 RESERVED→RELEASED·수량 복원과 전용 DB 읽기, #411 CT-05의 CONFIRMED→RESTORED/환불·멱등 결과를 재사용. **미충족:** 미결제 자연 TTL 만료·만료/확정 경쟁 등 CT-03은 별도 공동 시험이며 아직 완료 아님. 이번 실행에서 TTL/공유 설정 변경 없음.
+- **현재 상태:** PASS. **공동 근거 재사용:** RUN-06 실제62/108 RESERVED→RELEASED, #411 O-01의 OR-01 holdExpiresAt=생성+5분 및 미결제 자연 만료 후 reserved_qty0·CT-05 확정 후 복원, #457 I-01~04/06~12의 현재 이미지 확보·확정·해제·복원 멱등/5분 TTL/만료 경계 경쟁으로 충족한다. 만료−0.5/−0.2초 확정 성공2건과 0/+0.2/+0.5초 거부3건의 상태·수량 및 정리 결과는 담당자 DB 근거다(9절). 이번 새 쓰기/TTL 변경 없음. #457 최종HEADb582f4e I-13의 현재2 Pod 성공도 재사용하되 cp 시작 기준 편차·CT-03 종료 확정과는 구분. 신규 제품 결함0.
 
 ### J-03. 결제 중복·응답 유실·주문 상태 정합성
 
@@ -399,7 +400,7 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
   3. CO-02·주문 상세의 시작/완료 예상 시간, 조리 시작/완료·취소 후 재계산을 같은 RUN으로 비교한다.
 - **기대 결과·통과 기준:** FIFO/조리 제한 준수·주문 중복 처리 없음. expectedWaitSec와 expectedReadySec 구분. 변동하는 예상 시간을 확정 시각이나 Order 완료로 취급하지 않음.
 - **재사용·관련:** CookingRaceIntegrationTest 등 사용, 동일 DB 잠금 시험 신설 없음. CT-01/06, #114/#203/#305/#409.
-- **현재 상태:** IN PROGRESS. **실제 결과·검증 근거:** RUN-20261127-03에서32선조리→33대기→32완료시33시작, 각각520초 및 예상 대기/완료 계산 일치. **결함·재검증:** 다중Pod 경쟁·취소 후 재계산 등은 공동 정본 대기. waitingAhead는 앞선 WAITING 전표 수로, 조리중32는 포함하지 않아33의0이 정상. 도구 기대값1 오류는 제품결함이 아님.
+- **현재 상태:** PASS. **실제/재사용 근거:** RUN-03의32→33 실제 순차 조리/520초·예상시간과 #412 K-04/05의 취소 후 순번/시간 재계산·등록 FIFO·동시조리1건, #313의5537ab2 이미지 실제2 Pod 조리/교체/취소 결과를 결합한다. 현재6219d6b와 과거 이미지의 src(시험/마이그레이션 포함)·build.gradle·Dockerfile diff0이고 Wrapper 차이는 다운로드 networkTimeout10→60초뿐이다(9절). **범위:** 같은 구현의 다중 Pod 안전성 근거를 재사용하므로 불필요한 재부하/삭제를 요구하지 않는다. #412 M-04의 현재 이미지 재실행 NOT RUN은 그대로이며 동시 tick을 강제로 일치시킨 시험으로 주장하지 않는다. 결제 순서와 queued_at/id FIFO의 차이·기존 도구 기대값 오류 보존. CT-07 전체 완료와 구분·신규 제품 결함0.
 
 ### R-01. 기존 자동화 테스트 및 결함 수정·재배포 후 핵심 E2E 재검증
 
@@ -435,11 +436,11 @@ CT-02·CT-09는 이태훈, CT-04는 정진혁, CT-05·CT-07은 김민규, CT-06�
 | --------------------------------------- | ---------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | CT-01. 정상 주문·결제·조리 완료 E2E | M-01/05, F-01/03, J-05 | **Frontend 주관**, 공동담당은 같은orderId 교차확인 | RUN-20261127-03 정상UI2건 완료. 공동 정본은 교차확인 대기로IN PROGRESS |
 | CT-02. 인증·세션·권한·고객 간 정보 격리 | M-01/02/03, F-01/02/06/07/08, D-02 | **이태훈 주관 확정**, 고객 격리는 전용 고객2계정                    | [Auth·CI/CD 초안][auth-cicd], Menu·Order 근거는 최신 환경 확인 후 재사용   |
-| CT-03. 재고 확보·확정·해제·TTL·동시성 | M-04, F-05, J-01/02 | Inventory 공동 관리·Order, 별도 주관/시간 조율 | RUN-06 기본 예약/해제와 CT-05 복원 근거가 있어도 CT-03 전체는 미완료 |
+| CT-03. 재고 확보·확정·해제·TTL·동시성 | M-04, F-05, J-01/02 | **김민규 임시 주관(#456/#457)**, Inventory 공동 관리·Order 연계 | #457 HEADb582f4e I-01~13 성공 범위 재사용. I-13의 cp1GiB 시작 기준 미충족은 별도 관찰. CT-03 종료/공동 판정 확정은 담당자 확인과 구분 |
 | CT-04. 결제 실패·중복·응답 유실 | F-04/05, J-03 | **정진혁 주관 확정**, 공동 시간은 담당자 조율 | [#403][i403]/[#404][pr404], Payment·Order 정본 참조 |
 | CT-05. 주문 취소·재고 복원·환불 | F-06/07, J-02/03 | **김민규 주관 확정** | #411 HEAD464cac6 PASS(재시도 상한은 단위 기준, Inventory 직접 조회 갈음), #404 Payment 교차근거. 사용자 재사용 합의 |
 | CT-06. 이벤트 중복·지연·FIFO·조리 상태 | M-05, F-03/06/07, J-04/05 | **김지윤 주관 확정**, Order 교차확인 | #412 HEADa26926d CT-06 PASS, #411 O-07 복구·중복 근거. Frontend 증거는 별도 매핑 |
-| CT-07. 다중 Pod·HPA·DB 연결 예산 | M-02, D-01/03/04, J-01/05 | **김민규 주관 확정** | #411 최신 Order 범위 PASS/일부 미실시. 다른 서비스 최신 부하·Menu 쓰기·Cooking 다중 Pod는 범위별 미확인 유지 |
+| CT-07. 다중 Pod·HPA·DB 연결 예산 | M-02, D-01/03/04, J-01/05 | **김민규 주관 확정** | #411 Order 최신 시험 및 #186 기존 HPA/롤링 재사용. RUN-08 현 설정·147 DB 예산 확인. Cooking 동일 구현2 Pod는 J-05에서 재사용, Menu 다중 Pod 쓰기와 확대/종료 겹침 DB 실측 등은 미완료. 전체 PASS 아님 |
 | CT-08. 장애 복구·로그·메트릭·알림 | M-04, F-08, D-02/03/04, J-04 | **김지윤 주관 확정**, 클러스터/각 서비스 담당과 조율 | [#408][i408]/[#412][pr412] [공동 정본][cooking-final], [#401 수집 성공 보고][ev401-success]. RUN-20261127-02 D-04 정상 경로 자체 재확인 PASS |
 | CT-09. 순차 배포·롤링 업데이트·롤백     | D-01/03                            | **이태훈 주관 확정**, 11/30 오후 예정·CT-07과 시간 조율             | [Auth·CI/CD 초안][auth-cicd], Git PR→Argo CD 순차 반영/롤백·원래 버전 복원 |
 | CT-10. 최종 회귀 테스트 및 prod 검증    | M-01/02, F-01/02/04/05/08, R-01    | 개인 회귀는 본인, 팀CT주관/prod 범위 미합의                         | R-01 및 prod 읽기 증거 분리                                                |
@@ -919,6 +920,58 @@ Cloud Native 인프라 교육 목적과 남은 일정에 따라 **서비스 간 
 
 **최종/잔여:** F-06 PASS, F-04/F-07 IN PROGRESS, J-03 PASS 및 나머지 상태 유지. 최신23그룹 **NOT RUN2 / IN PROGRESS11 / PASS10**, FAIL/BLOCKED/RETEST/SKIPPED0. RUN-07 종료를 사용자가 승인했다. F-04 실제 Frontend 결과 불명 복구·후속 재주문은 RUN-09 장애 복구와 연계한다. F-07 영업·접수 변경·원래 값 복원은 CT-03 종료 확인 후 시험 주문 범위·담당자와 별도 조율하여 확인한다. 이번 보류를 신규 제품 결함으로 등록하지 않으며 자동 재개·공유 설정 변경을 하지 않는다. 근거: 저장소 밖 `C:\M\Peak_Order-409-qa\run-20261127-07`의 `results.json`, `checkpoint.json`, `reuse-and-environment.json`, 기존 RUN-06 공동 PR snapshot. 자격 증명·토큰·쿠키 값 없음. 종료 승인 후 관리 문서1파일만 Commit하며 Push하지 않는다.
 
+#### RUN-20261127-08 — HPA·다중 Pod·DB 예산 및 CT-03 근거 재사용
+
+**범위:** 기존 worktree/HEADf58cc3c에서 문서만 갱신했다. origin/main533aeaf 및 #411 HEAD464cac6/#412 HEADa26926d는 이전 근거와 같고, 새 [#456 CT-03][i456]·[Draft PR #457 문서 최종HEADb582f4e][r08-inventory]를 확보했다. 최신 main을 병합하거나 다른 PR을 수정하지 않았다. 추가 부하·장애·스케일·Sync·공유 설정/데이터 변경·인증 시험·전체 자동화 재실행0. CT-03 진행 중인 Inventory의 기존 시험 데이터에는 접근·변경하지 않았다. 이 RUN의 실제 실행은 아래 클러스터 조회와 공유 DB 설정/연결 집계뿐이며 새로운 업무 단언 수를 만들지 않는다.
+
+**16:14:14 KST 현재 조회:** Inventory2/2, 나머지 업무6개 각1/1 Ready, 총8 Pod 모두 Ready·재시작0·삭제 중0·워커 배치. HPA6개 min1/max3/CPU70%, Frontend HPA 없음. Argo CD 업무7개 모두 revision533aeafe887a703da16eb747a17dfe1caa1d7d44·Synced/Healthy·진행 중 Sync 없음. Inventory2 Pod는 관찰값일 뿐 이번 RUN의 확대나 I-13 성공 근거가 아니다. cp MemAvailable978160KiB(약955.2MiB)로1GiB보다 작아 추가 확대/배포/장애 시험의 GO를 부여하지 않는다. 원인을 CT-03과 연결해 단정하지 않고 반복 조회/복구 조작하지 않았다.
+
+| 현재 설정/차이 | 확인 결과 | 재사용 범위·한계 |
+| --- | --- | --- |
+| Spring6서비스 | Hikari max4/minIdle1·CPU100m/1·메모리384Mi/768Mi·JVM60%·preStop10초/grace50초·RollingUpdate surge25%/unavailable25% | 현재 실Deployment 조회. HPA 최대/종료 연결 계산 입력이며 쓰기 안전성 증거는 별도 |
+| Application | HPA6개 각각 Deployment /spec/replicas ignoreDifferences와 RespectIgnoreDifferences=true 유지 | 현재 설정 일치와 #186 과거 Sync 후 replicas 보존 결과 재사용. 이번 실제 Sync는 안 함 |
+| Menu | 이미지46d1801·관리자 enabled/ECS·HTTP startup/readiness/liveness 유지. #367 과거2 Pod 조회와 현재 관리자 공개/Actuator/HTTP Probe의 범위 차이 존재 | 과거 조회/HPA 부하 성공을 관리자 쓰기 성공으로 확대하지 않음. #407 자동롤링은 RUN-02 정본 재사용 |
+| Cooking | 현재6219d6b ↔ [#313 과거 실제2 Pod 이미지5537ab2][r08-cooking-2pod]: src(시험/DB migration 포함)·build.gradle·Dockerfile diff0. Gradle9.8.2 유지, Wrapper networkTimeout만10000→60000 | 런타임 잠금/FIFO 계약에 영향 없는 다운로드 설정 차이를 명시하고 과거 실제2 Pod 근거 재사용. 이미지 바이너리/digest 동일이라고 주장하지 않음 |
+| Inventory | 현재f4201cc, #457과 이미지 일치. #186 11/25 기준8ea1f67↔현재의 Java/시험/DB migration diff0, application.yml6행은 Actuator/지표 설정 차이 | 과거2 Pod 확보/멱등/만료 안전성은 같은 업무 구현으로 재사용. 기준8ea1f67은 당시 요약 main이며 과거 실제 이미지 SHA를 확정한 것으로 표시하지 않음. 최종 대조에서 #457 I-13도 현재 이미지의 실제2 Pod PASS로 갱신됨(담당자 근거) |
+| 최신 main 소스 | Menu46d1801/Cooking6219d6b/Inventoryf4201cc 각각 src↔origin/main diff0. dev 이미지 태그도 실제와 같음 | SHA 차이만으로 배포 지연 판정하지 않음. 작업HEAD의 예전 TCP patch를 현재 dev 설정으로 읽지 않고 origin/main과 실제Deployment를 사용 |
+
+**기존 인프라 시험 정본:** [#186 11/26 HPA 마무리][r08-hpa] 및 [분산 보충][r08-distribution]은 6서비스1→3→1·오류0, Menu Gateway12656건·DB최대12 및 새 Pod Ready 후 분산, Payment 배치를 기록한다. [#411][r06-order] H-02/03은 현재Order7ba의2 Pod 동시 결제/취소 및 Gateway6000건 전부200·1→3→1을 기록하므로 반복하지 않는다. 확대 중 DB 재측정/Pod별 CPU 분포는 #411 자체도 미실시다. H-04의 롤링 성공과 RUN-02 Menu 자동롤링·정상종료는 재사용하지만 모든 서비스 동시 롤링의 DB 최대 사용 실측으로 확대하지 않는다. [#313][r08-cooking-2pod]는2 Pod에서 주문6/7/8 전표1개씩·COOKING항상1건 이하·조리 Pod 교체 후 예정200초 유지·대기 취소를 확인했다. 이는 과거 담당자 실행이며 이번 Pod 삭제/새 조리 시험이 아니다.
+
+**DB 연결 예산 — 계산과 실측 분리:** 16:14:16 KST t2-db의 postgres DB에서 BEGIN READ ONLY/statement3초/ROLLBACK으로 설정·pg_stat_activity 집계만 조회했다. max_connections150, superuser_reserved3, reserved_connections0 → 일반 슬롯147. 전체 pg_stat_activity21행에는 background/이번 조회가 포함되므로 “일반 연결21 사용”으로 단정하지 않는다. DB별 합17(이번 조회1 포함), dev6개 합11(auth1/cooking1/inventory5/menu1/order2/payment1), 공유 서버의 다른 DB 합5가 보였다. prod DB 접속/업무 조회는 하지 않았다. 현재 낮은 사용량은 최대 HPA/롤링 안전성 실측이 아니다.
+
+**dev 단독 시나리오 계산:** 아래 수치는 다른 DB·운영 연결을 제외한 설정 기반 풀 합계이며 절대 상한이나 부하/롤링 실측이 아니다.
+
+| 시나리오·가정 | dev 연결 풀 합계 계산 | 판정 |
+| --- | --- | --- |
+| HPA 최대 정상 상태 | 6서비스×3Pod×풀4 =72 | minimumIdle1은 maximumPoolSize4를 줄이지 않음. 최소 유휴와 최대 연결을 구분 |
+| 한 서비스 순차 롤링 | 정상72+surge1Pod×4 =76, 종료 중1Pod까지 겹친 예시80 | 권장 순차 반영·이전 종료/연결 반환 확인. HPA 축소3→1도 종료 중2Pod의 풀이 잠시 남을 수 있음 |
+| 6서비스 동시 롤링 계산 | 6×(3+surge1)×4 =96, 서비스마다 종료 중1Pod 추가 가정 시120 | 147보다 작아도 실측/엄격한 최악 상한은 아님. 다른 DB·운영 연결 및 더 긴 종료 겹침을 추가해야 함 |
+
+**dev/prod 공유 DB 전체 예산:** 동일 기준main533aeaf의 Git 매니페스트만 추가 대조했다. prod6서비스는 HPA 선언 없이 각1 replica(명시값 또는 Menu Deployment 생략 시 기본1), Hikari4/1을 base 또는 연결된 prod patch에서 사용한다. 실제 prod 배포/Pod/연결 풀은 재조회하지 않았으므로 **모두 Git 설정대로 기동한다고 가정한 계산**이며 현재 prod 실측이 아니다. prod 정상 풀 합계는6×1×4=24, surge25%를 각1Pod 추가로 가정하면48, 서비스마다 종료 중1Pod를 더 가정하면72다.
+
+| 공유 DB 시나리오·가정 | dev + prod 풀 합계 계산 | 일반 슬롯147과 비교·한계 |
+| --- | --- | --- |
+| dev HPA 최대 정상 + prod Git 정상 | 72+24=96 | 애플리케이션 풀의 조건부 합계. 운영/다른 DB 연결은 별도 가산 |
+| dev6서비스 surge + prod 정상 | 96+24=120 | dev 계산96만으로 공유 서버 전체를 표현하지 않음 |
+| dev surge·종료1Pod/서비스 겹침 + prod 정상 | 120+24=144 | 운영/다른 연결 전 차이3뿐. 안전한 여유나 엄격한 최악 상한으로 해석하지 않음 |
+| dev/prod 모두 surge | 96+48=144 | 양 환경 동시 롤링을 허용하는 근거가 아님. 종료 중 연결은 아직 제외 |
+| 양 환경 모두 surge·종료1Pod/서비스 겹침 | 120+72=192 | 일반 슬롯147 초과 시나리오. 종료 겹침 수/반환 시각에 따라 달라지는 가정값이며 실측/절대 상한 아님 |
+
+공유 전체 예산은 위 dev/prod 애플리케이션 풀 합계에 운영·모니터링·다른 클라이언트 연결을 더해147과 비교해야 한다. pg_stat_activity의 현재 연결 수를 최대 부하의 여유로 고정하거나 background 행을 일반 클라이언트 슬롯으로 일괄 합산하지 않는다. prod HPA를 dev와 같은3Pod로 가정한 이전 확대 예시는 현 prod Git 설정과 구분하기 위해 위 실제 선언 기반 계산으로 구체화했다.
+
+계산의 surge25%는 replicas3에서 올림1이고 unavailable25%는 내림0이다. [Kubernetes Deployment 공식 기준][r08-deployment]대로 종료 중 Pod가 replicas+surge를 넘어 자원을 보유할 수 있어 **120은 종료1개/서비스라는 가정값이며 절대 상한이 아니다**. #186의 과거100/97은11/26 상향으로 해소됐지만, 현재150/147도 여러 서비스 동시 롤링을 무조건 허용하는 근거가 아니다. 추가 최대 부하·동시 롤링 재현 대신 순차 배포, 종료 완료·연결 반환 관찰 및 필요 시 공동 예산 조정을 우선한다.
+
+**CT-03 확보 근거 — 담당자 결과이며 이번 재실행 아님:** #457 HEADaab4903의 I-01~04는920001 등 확보·확정·해제·복원의 정상/멱등/거절 및 재고 원복을 기록한다. I-06~08은920501~920505, TTL5분·만료 스케줄러5초에서 −0.5/−0.2초 확정2건(CONFIRMED), 0/+0.2/+0.5초 거부3건(EXPIRED), 해제 멱등/확정 후 해제409 및2건 복원/재고20 원복을 기록한다. I-09는 메뉴7재고2에920101~920108 동시8요청 중2성공·6부족409·성공 확보2건 해제/원복, I-10은 같은920201 동시8요청의 같은holdId/예약1행, I-11~12는 확정/해제 경쟁·반대 메뉴 순서의 교착 방지를 기록한다. **최초snapshot aab4903의 I-13은 NOT RUN이었으나 최종 대조 HEADb582f4e에서 PASS로 갱신됐다.** 담당자는16:13~16:16 현재f4201cc의 w1/w2 두 Pod에 메뉴7재고2/8요청을 보내 성공2·부족409 6, 같은order8요청은 같은hold164/1행, 확정/해제 경쟁은 CONFIRMED하나로 수렴했다고 기록했다. 메뉴7 2/0·메뉴11 20/0 원복·1 Pod 축소는 담당자 보고이며 본인의16:14 2/2 관찰과 시점을 구분한다. 운영 관찰: 담당자가 기록한 시작 cp901MiB는 기존1GiB 기준 미충족이다. 기능 시험 성공과 안전 시작 조건을 분리하며 한도 완화나 새 부하 GO로 해석하지 않는다. CT-03 전체 종료 공지나 완료 판정을 대신하지 않는다. #456/#457에서 김민규가 CT-03 임시 주관으로 명시된 점을 반영하며 Inventory 내부 수정/공통DB 운영 책임까지 인수하지 않는다. 알려진 재고 이력 미기록·해제 orderId 재확보 반환 관찰은 정본의 한계로 참조하고 신규 기능 요구/중복 결함으로 등록하지 않는다.
+
+| 그룹 | RUN-08 판정 | 추가 검증 필요성 |
+| --- | --- | --- |
+| M-02 | IN PROGRESS 유지 | [#367 과거2 Pod][r08-menu-2pod]는 읽기만. 단일Pod42 PASS/PG잠금 시험과 구분해 관리자 독립 필드2요청의 Pod별 처리·최종 DB/복원 대표 증거가 남음. CT-03 종료·cp1GiB 이상·담당 조율 전 실행하지 않음 |
+| J-01 | NOT RUN→IN PROGRESS | 내부 초과 확보 방지/정리·과거2 Pod 근거는 확보. 고객 A/B의 실제 Order 요청과 거부 UI/정본 연결은 남음. 내부 확보를 Frontend E2E PASS로 바꾸지 않음 |
+| J-02 | IN PROGRESS→PASS | #457 최신 TTL/경합·멱등, #411 OR-01 +5분/실제 미결제 자연 만료 및 CT-05 복원, RUN-06 예약 해제/DB 대조를 결합. I-13은 최종 #457 담당자 PASS로 별도 연결하며 CT-03 전체 종료를 대신 확정하지 않음 |
+| J-05 | IN PROGRESS→PASS | 같은 Cooking 구현의 실제2 Pod(#313) + 현재 #412 K-04/05 FIFO/취소 후 재계산 + RUN-03 실제 UI/예상시간 조합. 같은 부하/삭제 재시험은 필수로 추가하지 않음. #412 M-04 현재 재실행 NOT RUN·CT-07 전체 상태와 구분 |
+
+최신23그룹은 **NOT RUN1 / IN PROGRESS10 / PASS12**, FAIL/BLOCKED/RETEST/SKIPPED0. J-03 PASS·J-04 IN PROGRESS와 RUN-07 후속 RUN-09/CT-03 조율 계획은 유지한다. 신규 제품 결함0, 새 데이터/주문/미확정 쓰기/정리 잔여0. 근거는 저장소 밖 `C:\M\Peak_Order-409-qa\run-20261127-08`의 `current-infra.json`, `db-capacity.json`, `source-comparison.json`, `issue-186/312/313/367.json`, 공동 문서snapshot 및 `document-validation.json`이다. 자격 증명·Secret 값·토큰은 조회/기록하지 않았다. RUN-08 종료 승인 후 관리 문서1파일만 Commit하며 Push하지 않는다.
+
 ### 결함 관리
 
 이번Smoke의 문제는 #414 관리 문서에 먼저 취합한다. 신규 결함은 **BUG-001부터 순차 발급**하며 이번에는 확정된 신규 제품 결함이 없어 미발급이다. P0 발견 시 영향 테스트를 중단하고, 일반 결함은 독립적인 시험을 계속한다.
@@ -1016,9 +1069,9 @@ CT-09는 이태훈 주관으로 11/30 오후 예정이며 CT-07 부하와 중첩
 
 | 항목                                | 결과                                                                     |
 | ----------------------------------- | ------------------------------------------------------------------------ |
-| 최종 판정                           | 최종미판정. RUN-07 기존 주문 표시·근거 재사용 반영, NOT RUN2 / IN PROGRESS11 / PASS10 |
-| 최종 일시·dev/prod 대상 버전        | 전체최종판정 대기. 최신RUN11/27-07 조회·F-06 완료 근거 결합, Frontend6219d6b, prod 미접근   |
-| 필수/권장 PASS·FAIL·BLOCKED·SKIPPED | 4절 최신 집계 참조. M-01/03/04/05·F-01/05/06·D-01/04·J-03 PASS, 나머지는4절                        |
+| 최종 판정                           | 최종미판정. RUN-08 인프라·CT-03 근거 재사용 반영, NOT RUN1 / IN PROGRESS10 / PASS12 |
+| 최종 일시·dev/prod 대상 버전        | 전체최종판정 대기. 최신RUN11/27-08 읽기 전용·Menu46d1801/Cooking6219d6b/Inventoryf4201cc, prod 미접근 |
+| 필수/권장 PASS·FAIL·BLOCKED·SKIPPED | 4절 최신 집계 참조. M-01/03/04/05·F-01/05/06·D-01/04·J-02/03/05 PASS, 나머지는4절 |
 | 핵심E2E/공동CT 근거                 | RUN-20261127-03 정상UI2건 완료. CT-01 공동담당 교차확인 대기                     |
 | 미해결 결함/제외 승인/잔여 위험     | 신규제품결함0. OBS-03 공동 확인 완료·즉시 탭 동기화 없음은 현행 한계. 미실행 범위는9절                   |
 | 공유 설정 복원/데이터 정리          | 메뉴14/15/16 HIDDEN. 재고11 논리 삭제/연결 해제, 주문62 CANCELED/108 FAILED·예약2건 RELEASED. 공유설정 변경0          |
@@ -1040,6 +1093,7 @@ CT-09는 이태훈 주관으로 11/30 오후 예정이며 CT-07 부하와 중첩
 | 2026-11-27 | RUN-20261127-05 Inventory 롤링/정상화 후 대시보드·재고·주문·조리 조회 누적 | 기존30+추가60 유효PASS, 무효 도구 단언12 별도. F-07/08·집계6/12/5 유지·Commit/Push 안함 |
 | 2026-11-27 | RUN-20261127-06 전용 UI 변경·가격/옵션/판매 상태·DB 읽기·정리, 동일 구현/공동 결과 재사용 | 실제62 PASS/무효도구1, M-04/05·F-05·J-03 PASS·J-04 IN PROGRESS, 집계2/12/9·제품 결함0·추가 반복 축소4개 승인·문서만 Commit/Push 안함 |
 | 2026-11-27 | RUN-20261127-07 CT-03 중 기존 주문/운영 상태 조회·Frontend 및 공동 근거 재사용 | 유효22 PASS/무효 도구2·결함0. F-06 PASS, F-04/07 IN PROGRESS·J-03 유지, 집계2/11/10. 신규 업무 쓰기0·종료 승인 후 문서만 Commit·Push 안함 |
+| 2026-11-27 | RUN-20261127-08 HPA/replicas 정책·공유DB147 연결 예산·CT-03/과거2 Pod 동일 구현 근거 대조 | J-01 IN PROGRESS·J-02/05 PASS·M-02 보류. 집계1/10/12·dev/공유 DB 가정 계산 분리·cp 기준 미충족 보존·종료 승인 후 문서만 Commit·Push 안함 |
 
 <!-- 공통 링크. 실행 전 대상SHA와 소스 차이를 다시 확인한다. -->
 
@@ -1126,3 +1180,11 @@ CT-09는 이태훈 주관으로 11/30 오후 예정이며 CT-07 부하와 중첩
 [r06-order]: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/464cac68447aebafe5f7314b2d316af8a8d282dc/docs/integration-test/order-hpa.md
 [r06-cooking]: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/a26926d6de78327f0ac14fd94b88da9f4cb7f61f/docs/integration-test/cooking-mq-obs.md
 [r06-auth]: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/84033d4f29ceb0bad7acf4a16f816913429778d1/docs/integration-test/auth-cicd.md
+
+[i456]: https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/456
+[r08-inventory]: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/b582f4e4fd2189d1c1327529664e16c569dcada0/docs/integration-test/inventory-ct03.md
+[r08-hpa]: https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/186#issuecomment-7181297814
+[r08-distribution]: https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/186#issuecomment-7181781663
+[r08-cooking-2pod]: https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/313#issuecomment-7150982770
+[r08-menu-2pod]: https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/367#issuecomment-7180699047
+[r08-deployment]: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#rolling-update-deployment
