@@ -57,6 +57,7 @@ Menu·Frontend 및 관련 서비스 소스/테스트·배포·CI 입력은 동�
 | RUN-20261127-06 | 2026-11-27 12:11~12:21 / 재개15:27~15:35 KST | 실제 dev Chromium·전용 메뉴/재고·읽기 전용 DB | HEADfb17a7f, Menu46d1801/Inventoryf4201cc/Order7ba14a6/Frontend6219d6b | 공유 충돌 없음 재확인, DPAPI·체크포인트 재개 | 유효62 PASS·무효 도구1, 정리 완료. 공동/자동화 재사용 별도 | 9절 RUN-06·run-20261127-06 QA |
 | RUN-20261127-07 | 2026-11-27 선행15:55 / Chromium15:57~15:59 KST | 실제 dev HTTPS·격리 Chromium·기존 주문 조회 | HEAD421605f, Frontend/Auth6219d6b·Order7ba14a6·Paymentaebac79 | CT-03 진행 중, 공유 설정 변경 보류·신규 주문0 | DPAPI 재사용·유효22 PASS/무효 도구2, 기존 근거 대조 | 9절 RUN-07·run-20261127-07 QA |
 | RUN-20261127-08 | 2026-11-27 16:14 KST 인프라/DB 조회·공동 근거 대조 | dev 읽기 전용·공유 DB 설정/집계만 | HEADf58cc3c·origin/main533aeaf, 실행 이미지 RUN-07과 동일 | Inventory2/2·나머지1/1, CT-03 진행 중·추가 부하/변경0 | #186/#411/#412/#457 정본·입력 동일성·DB 예산 검토 | 9절 RUN-08·run-20261127-08 QA |
+| RUN-20261127-09 | 2026-11-27 16:29~16:30 KST 읽기 조회·기존 근거 대조 | dev HTTPS/클러스터 읽기 전용 | HEAD1567bc6·origin/main533aeaf, Frontend6219d6b/Menu46d1801 | 관련5서비스1/1·Gateway/Route/Policy 정상·추가 변경0 | Chromium 경계8 PASS, Python403 관찰 별도·공동/자동화 재사용 | 9절 RUN-09·run-20261127-09 QA |
 
 ## 3. 선행 조건
 
@@ -104,13 +105,13 @@ F-06에서 Order 상태와 Cooking 상태의 표현을 실제 응답·화면 계
 | 구분                | 그룹 수 | NOT RUN | IN PROGRESS | PASS  | FAIL  | BLOCKED | RETEST | SKIPPED |
 | ------------------- | ------- | ------- | ----------- | ----- | ----- | ------- | ------ | ------- |
 | Menu M-01~05        | 5       | 0       | 1           | 4     | 0     | 0       | 0      | 0       |
-| Frontend F-01~08    | 8       | 0       | 5           | 3     | 0     | 0       | 0      | 0       |
-| 배포·관측성 D-01~04 | 4       | 0       | 2           | 2     | 0     | 0       | 0      | 0       |
+| Frontend F-01~08    | 8       | 0       | 4           | 4     | 0     | 0       | 0      | 0       |
+| 배포·관측성 D-01~04 | 4       | 0       | 0           | 4     | 0     | 0       | 0      | 0       |
 | 공동 J-01~05        | 5       | 0       | 2           | 3     | 0     | 0       | 0      | 0       |
 | 최종 회귀 R-01      | 1       | 1       | 0           | 0     | 0     | 0       | 0      | 0       |
-| **합계**            | **23**  | **1**   | **10**      | **12** | **0** | **0**   | **0**  | **0**   |
+| **합계**            | **23**  | **1**   | **7**       | **15** | **0** | **0**   | **0**  | **0**   |
 
-부분 성공과 미실행을 합쳐 그룹 PASS로 만들지 않는다. 최신 집계는 NOT RUN 1 / IN PROGRESS 10 / PASS 12, 그 외 0이다. 실행 이후 그룹 상태·이 집계·9절 실행 기록을 함께 갱신한다.
+부분 성공과 미실행을 합쳐 그룹 PASS로 만들지 않는다. 최신 집계는 NOT RUN 1 / IN PROGRESS 7 / PASS 15, 그 외 0이다. 실행 이후 그룹 상태·이 집계·9절 실행 기록을 함께 갱신한다.
 
 ## 5. 테스트 상태 및 우선순위 정의
 
@@ -244,6 +245,7 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
 - **기대 결과·통과 기준:** CREATED 조회만으로 미결제 판단 금지. ORDER_PAY_IN_PROGRESS/5xx/통신 불명은 실패 확정이 아님. 동일 주문·서버 멱등키로 복구하며 중복 지불 없음. Frontend의 내부 Payment 직접 호출 없음.
 - **재사용·관련:** #201 복구 경계와 #403 P-02/P-04·CT-04 결과 참조, 동일 조건 중복 실행 최소화. CT-04/10, #201/#403/#404.
 - **현재 상태:** IN PROGRESS. **실제 결과·검증 근거:** RUN-07에서 동일 Frontend의 HTTP23(결과 불명→명시적 조회·같은 orderId 이어가기·중복 POST 방지), Checkout Mock32(확정 거절 후 새 임시 주문), #404 P-04/C-03 실제 실패 UI 및 #411 CT-04 근거를 재사용했다. 주문108 FAILED 현재 화면도 확인. **미충족:** 실제 dev에서 Frontend 결과 불명→복구·확정 실패 후 후속 재주문을 끝까지 연결한 대표 근거는 남음. 잔여 검증은 RUN-09 장애 복구와 연계한다. CT-03 진행 중 신규 주문·실패 모드 변경을 하지 않았으며 fixture/백엔드 결과를 해당 실환경 완료로 확대하지 않음.
+- **RUN-09 후속:** 기존 근거 재검토로 자동 POST 금지·동일 주문 명시적 복구·확정 실패 후 새 주문의 Frontend fixture는 충족했다. 실제 dev 브라우저 결과 불명→GET 재확인·완료/복구 및 필요한 확정 실패 후 재주문 대표 연결은 11/30 CT-04/08 조율 범위로 남긴다. 오늘 읽기만 수행했고 J-03의 서버 멱등/결제 정합성 시험은 반복하지 않았다.
 
 ### F-05. 가격·옵션·재고·판매 상태 변경 시 주문 처리
 
@@ -292,7 +294,7 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
   3. 기존1440/390/320px 결과를 재사용하고 대표 화면의 가로 넘침·모달 포커스/Escape/배경 스크롤·드래그 중 의도치 않은 닫힘을 확인한다.
 - **기대 결과·통과 기준:** 늦은 응답의 화면 덮어쓰기/기밀 화면 잔류/조작 불가 없음. 입력·장바구니 보존, 필요한 영역만 재시도. GET 회복과 변경 요청의 명시적 재제출을 구분.
 - **재사용·관련:** 기존28개 browser 스크립트 등의 대상 버전을 비교해 사용. 불필요한 단말 전수 자동화 신설 없음. CT-02/08/10, #297/#298/#304/#340/#287.
-- **현재 상태:** IN PROGRESS. **실제 결과·검증 근거:** 기존 RUN-05 관리자 메뉴 직접 URL/새로고침/잘못된 경로/뒤로가기와 이번 대시보드→재고→주문→조리 화면 이동·주문47 상세 직접 URL 성공을 누적. **결함·재검증:** 대시보드/재고/조리 직접 URL·새로고침, 오류 복구·반응형은 미실행/기존 fixture와 구분. UX 평가 별도. 도구의 단위 문자열 오류는 제품 결함이 아님.
+- **현재 상태:** PASS. **실제/재사용 근거:** RUN-03~07 실제 고객/관리자 이동·직접 URL·새로고침·권한/입력 보존 및 RUN-09 HTTPS 경계에, 현재와 같은 Frontend의 #340 통합 Node766/브라우저28스크립트438 시나리오·별도 연속 회귀의 기존 기록을 결합했다. 오류/비JSON/지연·영역별 재시도·늦은 계정 응답 차단·1440/390/320px·모달/드래그는 동일 구현 fixture로 재사용(9절). **한계:** fixture를 새 dev 장애 주입으로 표시하지 않는다. F-02 자연 만료+무효Refresh, F-04 실제 결제 결과 불명 복구, J-04 장애 전후 연결은 별도 IN PROGRESS 유지. OBS-03 즉시 탭 동기화 없음 및 도구 기대값 오류 보존·UX 확대 검수 제외. 신규 제품 결함0.
 
 ### D-01. 최신 dev 이미지 및 Argo CD 배포 상태
 
@@ -316,7 +318,7 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
   3. 외부 `/internal/v1/**`·`/actuator/**` 비노출, 비허용 Frontend Pod→Menu 차단은 #280 증거와 필요한 읽기만 재확인한다.
 - **기대 결과·통과 기준:** 허용 경로만 도달. 공개 경로 위조 헤더 제거·관리자 JWT 보호 보존. Actuator 외부 비노출. 허용 내부 호출자의 잔여 위험은 M-03 기록을 연결.
 - **재사용·관련:** M-03의 같은 RUN 재사용. CT-02/08, #275/#283/#280/#360/#398/#399.
-- **현재 상태:** IN PROGRESS. **실제 결과·검증 근거:** RUN-20261126-01 (9절), Gateway/10 Route/5 Policy·정책9개 일치, 허용/비허용 경로 확인. 전체 경계·권한 조합은 미실행. **결함·재검증:** 확정 신규 제품 결함 없음. 선행 차단/운영 관찰은 9절 참조. RUN-04에서 Auth/Frontend 각1/1 Ready, Gateway Accepted/Programmed 및 두 HTTPRoute Accepted/ResolvedRefs=True와 실제 HTTPS 인증 흐름을 추가 확인. #415 G-01~04는 담당자 서버 근거로 참조하며 이번 Gateway 전체 경로/NetworkPolicy 시험은 반복하지 않음.
+- **현재 상태:** PASS. **실제/재사용 근거:** RUN-09 현재 Gateway1/Route10/Policy5 정상 조건·RUN-01과 같은 Route/Gateway spec·NetworkPolicy9개·JWT Policy의 실효 설정 동일을 확인했다. Chromium8조회에서 HTTPS/공개 Menu·Cooking200, 관리자/위조 헤더401, 외부internal/Actuator404. #415 G-01~04·#280/#360·RUN-01/02의 역할/만료·변조 토큰/신원 헤더·Frontend Pod→Menu timeout 실환경 결과를 설정/버전 일치 범위에서 재사용한다(9절). **한계:** 허용 내부 호출자의 헤더 사칭·노드 우회 등 M-03의 신뢰 경계 잔여 위험은 유지하며 전 경로/권한 조합 전수 성공을 주장하지 않음. Python 클라이언트403은 별도 관찰·신규 제품 결함0.
 
 ### D-03. 담당 서비스 Probe·Pod 재생성·장애 복구
 
@@ -328,7 +330,7 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
   3. 조율한 Pod 재생성/롤링을 담당자가 실행하고 Ready 복구·이벤트·재시작·OOM·대표 고객/관리자/내부 API를 확인한다. 설정/이미지를 임의 변경하지 않는다.
 - **기대 결과·통과 기준:** 새 Pod Probe 성공, 지속적 실패/재시작/HTTP 악화 없음. 종료 보호·HPA·풀 보존. **readiness UP은 DB 정상 보장이 아님**. DB를 liveness에 넣거나 health group을 바꾸지 않음. HTTP 전환 미병합/미반영이면 해당 검증 BLOCKED.
 - **재사용·관련:** #407 로컬630/JAR health200은 선행 근거로만 사용, kubelet 성공과 구분. 기존 복구 시험도 버전 일치 범위만 사용. CT-07/08/09, #402/#407/#186/#354.
-- **현재 상태:** IN PROGRESS. **실제 결과·검증 근거:** RUN-20261127-02에서 실제 Menu HTTP Probe·kubelet 성공 계수·자동롤링/정상종료 확인. 초기startup3회 실패 후 정상화, 재시작/OOM0. **결함·재검증:** Menu 전환 소항목PASS. 별도 Pod 삭제·장애 주입·Frontend 재생성/복구는 미실행이므로 전체 장애복구PASS로 확대하지 않음.
+- **현재 상태:** PASS. **실제/재사용 근거:** RUN-02 Menu #407 실제 자동롤링·새Pod/구RS 종료·kubelet Startup성공1/실패3·Readiness33/Liveness16·회귀와 #368 현재와 같은 Frontend6219d6b 실제 롤링(새Pod Ready1/1·재시작0·구RS0·정적번들200) 근거를 확보했다. RUN-09 실제 Menu HTTP Probe와 Frontend /index.html Probe·각1/1 Ready·정적 응답이 일치한다(9절). **판정 범위:** 원래3단계의 재생성/롤링 중 롤링 경로로 담당 서비스 복구 기준을 충족. Cooking Pod 교체/이어받기(#412 F-01·#313)는 보강 근거로만 참조한다. 초기startup3회·DB장애 시 readiness UP 의미 보존. 별도 장애 주입·CT-08 전체 복구/알림·CT-09 롤백 완료로 확대하지 않음. 신규 제품 결함0.
 
 ### D-04. Menu Health·HTTP·JVM·Hikari 지표 및 로그
 
@@ -353,7 +355,9 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
   3. 거부 화면·중복 결제/불필요한 새 주문 없음과 종료 후 확보 정리를 확인한다.
 - **기대 결과·통과 기준:** 확보/판매가 준비 재고를 넘지 않고 음수·중복 처리 없음. Order409 OUT_OF_STOCK 등 현행 오류 변환 준수. 요청 수/동시 수 없는 경쟁 PASS 기록 금지.
 - **재사용·관련:** Inventory 내부 동시성 근거를 참조하고 개인 문서에는 CT-03·UI 증거만 추가. CT-03, #186/#409, 담당 실행 Issue는 합의 후 기입.
-- **현재 상태:** IN PROGRESS. **공동 근거 재사용:** RUN-08에서 #457 I-09의 재고2/동시8요청→성공2·409 6·예약2/원복, I-10~12의 멱등/경합·교착 방지와 #312 과거2 Pod 확보44/요청54를 연결했다. 현재 Inventory Java/시험/DB 마이그레이션은 과거 기준과 동일. **미충족:** 이 근거는 내부 확보 API 시험이며 고객 A/B의 실제 OR-01 동시 주문·OUT_OF_STOCK 화면·새 주문/중복 결제 방지 연결을 새로 증명하지 않는다. Frontend 오류 fixture 및 #411 O-01 오류 변환은 기존 부분 근거로만 재사용. CT-03 진행 중이라 추가 경쟁 시험 없음. 신규 제품 결함0.
+- **현재 상태:** IN PROGRESS. **공동 근거 재사용:** RUN-08에서 #457 I-09의 재고2/동시8요청→성공2·409 6·예약2/원복, I-10~12의 멱등/경합·교착 방지와 #312 과거2 Pod 확보44/요청54를 연결했다. 현재 Inventory Java/시험/DB 마이그레이션은 과거 기준과 동일. **미충족:** 이 근거는 내부 확보 API 시험이며 고객 A/B의 실제 OR-01 동시 주문·OUT_OF_STOCK 화면·새 주문/중복 결제 방지 연결을 새로 증명하지 않는다. Frontend 오류 fixture 및 #411 O-01 오류 변환은 기존 부분 근거로만 재사용. RUN-08 당시 CT-03 진행 중이어서 추가 경쟁 시험 없음. 신규 제품 결함0.
+- **RUN-09 종료 대조:** [#457 최종19개 시험·원복 기록][r09-inventory-final]으로 내부 재고 검증 완료를 재사용한다. J-01에 남은 것은 고객 주문 경로/거부 화면의 대표 연결이며, 완료된 CT-03 내부 동시성 시험을 반복하거나 별도 Menu 공동 시험을 새로 요구하지 않는다. IN PROGRESS 유지.
+
 ### J-02. 재고 임시 확보·TTL 만료·확정·해제 및 경합
 
 - **우선순위·선행 조건:** P0. Inventory/Order 담당, 실제 TTL/시각·전용 주문. TTL 변경은 합의 없이 하지 않음.
@@ -364,7 +368,8 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
   3. 만료/확정 경쟁·중복 요청은 담당자의 기존 DB시험 또는 조율한 공동 결과를 확보한다.
 - **기대 결과·통과 기준:** RESERVED의 만료/해제/확정에 맞게 재고/예약이 한 번만 변함. 확정된 확보를 만료 처리하지 않음. 만료 시각과 스케줄러 처리 시각을 구분하며 고정 초 즉시 반영을 가정하지 않음.
 - **재사용·관련:** 내부 상태/멱등성은 담당 근거 참조. Frontend 내부holds 조작 기능 추가 금지. CT-03/05, #403/#409와 담당 Issue.
-- **현재 상태:** PASS. **공동 근거 재사용:** RUN-06 실제62/108 RESERVED→RELEASED, #411 O-01의 OR-01 holdExpiresAt=생성+5분 및 미결제 자연 만료 후 reserved_qty0·CT-05 확정 후 복원, #457 I-01~04/06~12의 현재 이미지 확보·확정·해제·복원 멱등/5분 TTL/만료 경계 경쟁으로 충족한다. 만료−0.5/−0.2초 확정 성공2건과 0/+0.2/+0.5초 거부3건의 상태·수량 및 정리 결과는 담당자 DB 근거다(9절). 이번 새 쓰기/TTL 변경 없음. #457 최종HEADb582f4e I-13의 현재2 Pod 성공도 재사용하되 cp 시작 기준 편차·CT-03 종료 확정과는 구분. 신규 제품 결함0.
+- **현재 상태:** PASS. **공동 근거 재사용:** RUN-06 실제62/108 RESERVED→RELEASED, #411 O-01의 OR-01 holdExpiresAt=생성+5분 및 미결제 자연 만료 후 reserved_qty0·CT-05 확정 후 복원, #457 I-01~04/06~12의 현재 이미지 확보·확정·해제·복원 멱등/5분 TTL/만료 경계 경쟁으로 충족한다. 만료−0.5/−0.2초 확정 성공2건과 0/+0.2/+0.5초 거부3건의 상태·수량 및 정리 결과는 담당자 DB 근거다(9절). 이번 새 쓰기/TTL 변경 없음. #457의 RUN-08 기준HEADb582f4e I-13의 현재2 Pod 성공도 재사용하되 cp 시작 기준 편차·CT-03 종료 확정과는 구분. 신규 제품 결함0.
+- **RUN-09 종료 대조:** 최신 #457 HEAD9a40d10의 I-01~19 PASS(관찰·알려진 한계 포함)·DB 불변식·진행 중 확보0·시험 데이터 원복 완료를 추가 반영한다. CT-03 완료 보고를 확보했으며 J-02 PASS 유지. 후속 I-20 로그 추적은 별도 CT-08 범위이고 cp 기준 미충족 이력을 지우지 않는다.
 
 ### J-03. 결제 중복·응답 유실·주문 상태 정합성
 
@@ -389,6 +394,7 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
 - **기대 결과·통과 기준:** 중복 전표/조리 없음. 미전달을 완료로 표시하지 않고 복구 후 누락 없이 현행 상태로 수렴. Outbox 수치만으로 업무 정합성 성공 판단 금지.
 - **재사용·관련:** 담당 멱등/Outbox/재전송 시험 참조, Frontend 지연 안내만 추가. CT-06/08, #403/#408/#409/#412. 김지윤 공동 정본과 연결한다.
 - **현재 상태:** IN PROGRESS. **공동 근거 재사용:** CT-06은 #412 M-01~03의 동일 eventId 전달·전표1건·중복 무시로 PASS. #411 O-07의 RabbitMQ 복구 PENDING→SENT·전표1행·COMPLETED도 backend 복구 근거로 재사용한다. **미충족:** RUN-03 정상 PENDING 관찰과 동일 Frontend Chromium16의 PENDING/UNAVAILABLE 표시·취소 차단은 장애 복구 전후 화면·관리 큐·Outbox를 같은 사건으로 연결한 근거가 아니다. #412 CT-08은 F-02~04·M-05·O-02가 남아 IN PROGRESS다. J-04 자체의 복구 후 수렴 연결 근거가 충분해질 때까지 PASS를 보류하며 CT-08 전체 알림 완료 여부와도 구분한다. 추가 장애 시험은 이번에 수행하지 않는다.
+- **RUN-09 후속:** #411 주문106/event62의 실제 RabbitMQ 복구를 우선 공동 교차확인하고, 새 중단을 반복하기 전에 #412의 큐/전표/로그로 기존 사건을 연결한다. 그래도 부족한 장애 전후 고객 화면·관리 큐·Outbox 연결만 11/30 CT-08의 같은 주문으로 확보한다. 정상 롤링 D-03 PASS와 이벤트/알림 장애 복구의 완료 조건은 별개다.
 
 ### J-05. FIFO·동시 조리 제한·예상 시간
 
@@ -436,7 +442,7 @@ CT-02·CT-09는 이태훈, CT-04는 정진혁, CT-05·CT-07은 김민규, CT-06�
 | --------------------------------------- | ---------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | CT-01. 정상 주문·결제·조리 완료 E2E | M-01/05, F-01/03, J-05 | **Frontend 주관**, 공동담당은 같은orderId 교차확인 | RUN-20261127-03 정상UI2건 완료. 공동 정본은 교차확인 대기로IN PROGRESS |
 | CT-02. 인증·세션·권한·고객 간 정보 격리 | M-01/02/03, F-01/02/06/07/08, D-02 | **이태훈 주관 확정**, 고객 격리는 전용 고객2계정                    | [Auth·CI/CD 초안][auth-cicd], Menu·Order 근거는 최신 환경 확인 후 재사용   |
-| CT-03. 재고 확보·확정·해제·TTL·동시성 | M-04, F-05, J-01/02 | **김민규 임시 주관(#456/#457)**, Inventory 공동 관리·Order 연계 | #457 HEADb582f4e I-01~13 성공 범위 재사용. I-13의 cp1GiB 시작 기준 미충족은 별도 관찰. CT-03 종료/공동 판정 확정은 담당자 확인과 구분 |
+| CT-03. 재고 확보·확정·해제·TTL·동시성 | M-04, F-05, J-01/02 | **김민규 임시 주관(#456/#457)**, Inventory 공동 관리·Order 연계 | [#457 최종HEAD9a40d10][r09-inventory-final] I-01~19 PASS/원복·완료 보고 재사용(관찰·한계 포함). J-02 PASS, J-01 고객 주문 경로 잔여는 별도. I-20 로그 추적은 CT-08 후속이며 cp 시작 기준 미충족 보존 |
 | CT-04. 결제 실패·중복·응답 유실 | F-04/05, J-03 | **정진혁 주관 확정**, 공동 시간은 담당자 조율 | [#403][i403]/[#404][pr404], Payment·Order 정본 참조 |
 | CT-05. 주문 취소·재고 복원·환불 | F-06/07, J-02/03 | **김민규 주관 확정** | #411 HEAD464cac6 PASS(재시도 상한은 단위 기준, Inventory 직접 조회 갈음), #404 Payment 교차근거. 사용자 재사용 합의 |
 | CT-06. 이벤트 중복·지연·FIFO·조리 상태 | M-05, F-03/06/07, J-04/05 | **김지윤 주관 확정**, Order 교차확인 | #412 HEADa26926d CT-06 PASS, #411 O-07 복구·중복 근거. Frontend 증거는 별도 매핑 |
@@ -972,6 +978,41 @@ Cloud Native 인프라 교육 목적과 남은 일정에 따라 **서비스 간 
 
 최신23그룹은 **NOT RUN1 / IN PROGRESS10 / PASS12**, FAIL/BLOCKED/RETEST/SKIPPED0. J-03 PASS·J-04 IN PROGRESS와 RUN-07 후속 RUN-09/CT-03 조율 계획은 유지한다. 신규 제품 결함0, 새 데이터/주문/미확정 쓰기/정리 잔여0. 근거는 저장소 밖 `C:\M\Peak_Order-409-qa\run-20261127-08`의 `current-infra.json`, `db-capacity.json`, `source-comparison.json`, `issue-186/312/313/367.json`, 공동 문서snapshot 및 `document-validation.json`이다. 자격 증명·Secret 값·토큰은 조회/기록하지 않았다. RUN-08 종료 승인 후 관리 문서1파일만 Commit하며 Push하지 않는다.
 
+#### RUN-20261127-09 — 접근 경계·정상 롤링·Frontend 오류 및 장애 복구 근거
+
+**범위/현재성:** 작업HEAD1567bc6·origin/main533aeaf, #411/#412/#415 최신HEAD464cac6/a26926d/84033d4를 다시 확인했다. 16:29:34 KST dev 조회에서 Auth/Menu/Frontend/Order/Cooking 각1/1 Ready, 관련 Menu/Frontend/Cooking Application 모두 Synced/Healthy·진행 중 Sync 없음. 실제 이미지는 기존6219d6b/46d1801/7ba14a6로 동일하다. cp MemAvailable1040988KiB(약1016.6MiB)는1GiB 미만으로 추가 배포/부하/장애 GO가 아니며 RUN-08의 기준 미충족 이력도 보존한다. 오늘은 GET·선언/상태 조회와 로컬 근거 검토만 수행했다. 계정 입력/로그인·새 Pod/포트포워딩·스케일·Sync·공유 설정·DB 조회/쓰기·주문·결제·취소0이다.
+
+| 구분 | 실제 읽기 또는 기존 근거 | 판정·한계 |
+| --- | --- | --- |
+| Gateway/Route/Policy | Gateway1 Accepted/Programmed=True, HTTPRoute10 모두 Accepted/ResolvedRefs=True, SecurityPolicy5 모두 Accepted=True | 현재 구성 정상. Secret 값은 조회 안 함 |
+| 실효 경계 동일성 | Route/Gateway spec과 NetworkPolicy9개가 RUN-01 snapshot과 같음(TCP 기본값/목록 순서 정규화). dev JWT Policy5개는 기준77cafc6↔현재main의 비주석 설정 동일(Cooking은 prod 안내 주석만 변경) | RUN-01 Frontend Pod→Menu3초 timeout 및 #280/#360의 허용·차단 결과 재사용. 정책 선언만으로 새 패킷 차단 시험을 했다고 주장하지 않음 |
+| 공개 Chromium 실제8조회 | HTTPS /·고객 Menu·Cooking200, 외부 /actuator/health 및 /internal/v1/menus/3/existence404, Menu 관리자 무토큰/위조 신원 헤더401, Auth /me 무토큰401 | 8 PASS. 역할 CUSTOMER403/STORE_ADMIN200·서명/만료/위조 헤더는 기존 #415 G-01~04와 Menu RUN-01/02·#280 정본 재사용. 공개경로 신원 헤더 제거는 Route 필터와 기존 M-03 근거로 확인 |
+| 클라이언트 차이 관찰 | 최초 Python urllib의 같은8개 GET은 모두403, 이후 실제 Chromium 내비게이션/API 조회는 기대200/401/404 | 최초 결과는 `public-boundaries.json`에 보존. 클라이언트별 차이이며 Cloudflare/클라이언트 정책 등 원인은 미확정. Chromium 정상 근거 없이 최초403을 앱 차단 성공/제품 장애로 분류하지 않음. 반복 재현/설정 변경 없음 |
+| Menu 정상 롤링 | RUN-02/#407 실제 새Pod·구RS 종료·kubelet Startup성공1/실패3, Readiness33/Liveness16, 직접health200 UP·고객/관리자/내부 API 회귀·이전/신규 Loki | 같은46d1801 이미지의 기존 실환경 정본 재사용. 초기startup3회와 DB장애 시 readiness UP 의미 보존. 오늘 health 직접호출/장애 재실행 안 함 |
+| Frontend 정상 롤링 | [#368 실제 반영 기록][r09-frontend-rollout]: 이미지6219d6b, 새Pod01:05:59Z 시작(11/26 10:05:59 KST), Ready1/1·재시작0·이전RS5465996b8b=0·이전Pod종료·Gateway / 및 assets/index-CER3ad5d.js 응답. #415 J-03 순차 배포 보고와 일치 | 현재도 같은 이미지·Ready1/1, /index.html readiness/liveness·named http 포트 유지·Chromium정적200. D-03의3번 재생성/롤링 중 정상 롤링 경로를 충족. Frontend Pod 삭제/새 장애 시험으로 표시하지 않음 |
+| Cooking 재생성/장애 | #412 F-01 실제 조리 Pod 삭제→26초 뒤 새Pod Ready·재시작0, OR-04 UNAVAILABLE20~30초 후 남은시간 이어서 감소·예정시각DONE/OrderCOMPLETED. #313 과거2 Pod 조리 이어받기도 RUN-08에서 동일 구현 확인 | 담당자 결과 재사용. Cooking 0개/큐 보관·대기 순서·장애 중 취소/복구·알림 전체는 별도 CT-08 잔여 |
+| Frontend 오류·경계 | [#340 통합 근거][ui-integration]의 Node766/브라우저28스크립트438 시나리오·별도 연속 회귀. 원본 browser-final.json 27스크립트 exit0·별도 customer-preview-final.log6 PASS·node-final.log766/0을 실제 확인 | 통합 근거 commit8c319af↔게시6219d6b의 src/tests/package.json/package-lock.json/Vite설정/index.html/Dockerfile diff0. 동일 fixture 오류/비JSON/지연·로그인/계정 변경·직접 URL/이탈·반응형/모달 결과 재사용. 신규 전체 자동화/UX 확대 검수 안 함 |
+
+**완료 기준 대조:** D-02는 현재 선언/상태·실제 경계 및 같은 설정의 기존 JWT/NetworkPolicy 실환경 근거로 PASS. 허용 내부 호출자/노드의 신뢰 경계 잔여 위험은 M-03과 같이 유지하며 모든 우회가 차단됐다고 하지 않는다. D-03은 Menu와 Frontend의 **실제 정상 롤링 증거가 모두 확보**되어 PASS로 전환한다. 별도 Pod 삭제가 아니라 원래3번의 롤링 경로를 사용한 판정이며 CT-08 장애/알림 또는 CT-09 롤백 성공을 의미하지 않는다. F-08은 실제 dev 탐색/권한 조회와 동일 Frontend fixture의 오류/재시도·늦은 응답·1440/390/320px·포커스/Escape/드래그로 PASS. F-02의 자연 만료+무효Refresh 및 OBS-03 탭 동기화 한계, F-04/J-04의 실제 장애 연결은 독립적으로 남긴다. 제외 승인된 전수 조합/UX 확대 검수로 PASS를 부여한 것은 아니다.
+
+**RabbitMQ·Outbox 대조:** #411 O-07은 실제14:22~14:28 중단/복구와 주문106·OrderConfirmed event62의 PAID→Outbox PENDING/전표0→복구 후SENT/전표1→OrderCOMPLETED를 기록한다. #412 CT-06은 주문48~55의 eventId8개·중복 무시를 확인했지만 CT-08 F-04 RabbitMQ 복구는 자기 문서에서 NOT RUN이다. 두 문서의 범위 차이를 숨기지 않고 **이미 수행한 backend 복구를 먼저 교차확인**한다. 동일 Frontend의 unknown-paid GET/같은 orderId 명시적 처리·PENDING/UNAVAILABLE 표시/취소 차단 fixture는 이 과거 사건의 실제 브라우저 전후를 증명하지 않으므로 F-04·J-04는 IN PROGRESS 유지. J-03 멱등/결제 정합성은 PASS로 두고 재실행하지 않는다.
+
+##### 11/30 공동 시험에서 확보할 최소 증거 — 오늘 실행 아님
+
+| 연계/주관 | 기존 근거 우선 재사용 | 추가로 필요한 증거·완료 조건 |
+| --- | --- | --- |
+| CT-02 / 이태훈 | #415 G-01~04·RUN-01/02/04/09 역할/신원/접근 경계, F-06 고객 격리 완료 | F-02에 남은 새로고침 없는 자연 Access 만료+무효Refresh의 로그인 화면 복귀/보호 데이터 제거 근거. 전용 계정 사용·공용 세션 폐기 금지. D-02 전체 재시험 불필요 |
+| CT-04/08 / 정진혁·김지윤, Order 김민규 연계 | #404 실패UI·#411 응답 유실/복구·같은 Frontend HTTP/Mock fixture | F-04는 승인된 대표1주문의 실제 브라우저 결과 불명 안내→명시적 GET→같은orderId 완료/복구를 API시각과 연결. 확정 실패 후 후속 재주문은 기존 근거로 부족한 접점만 확인. 새 주문/POST 자동 재전송 없음·실제 결제 상태와 장바구니 보존 기록. 실패 모드/응답 유실 방식·복원은 별도 조율 전 실행 금지 |
+| CT-08 / 김지윤·관련 담당 | #412 F-01·#313 Pod 이어받기, #411 O-07 RabbitMQ 복구와 현재 D-04 수집 | J-04는 같은orderId/eventId로 장애 전후 Frontend PENDING/UNAVAILABLE·관리 큐·Outbox PENDING→SENT·전표1행·최종Order 상태 연결. 기존106/event62 로그를 우선 교차확인하고 부족한 UI 접점만 공동 시험에서 추가. 같은 RabbitMQ 중단을 무조건 반복하지 않음 |
+| CT-08 미완료 범위 | #412 F-02의 신규 주문/결제 차단503·복구 후 재허용 및 #411 실제 시각 | 조리/대기/결제 전 주문이 있는 0Pod 구간의 큐 보관·유실0·복구 후 순서/이어받기, 장애 중 취소 후 수렴은 담당 정본에 연결. F-02/03/04·M-05 DLQ·O-02 알림의 미완료 부분만 담당 조율. 알림은 규칙/수집 존재와 firing→resolved 증거를 구분. Menu DB장애 readiness UP·5xx 알림 미구현 공백은 해소로 표시하지 않음 |
+| CT-09 / 이태훈 | #415 C-01/02·J-03 순차 배포, #368/#407 정상 롤링 | 예정된11/30 오후에 Git PR→Argo 자동 반영→새/구Pod·revision/image/digest·정적/API·Probe 확인→Git 되돌림PR→Argo 롤백→원래 버전 복원/동일성 확인. 각 단계 시각·Sync/Health·복구 완료를 기록. 직접kubectl변경/수동Sync 대신 합의된 GitOps 경로 사용·CT-07 부하/CT-08 장애와 시간 분리 |
+
+세부 시간·시험 데이터·공유 변경/복원 조작은 담당자와 다시 조율하며 미합의 내용을 확정 일정으로 기록하지 않는다. 시작 전 cp1GiB 이상·다른 롤링/부하 없음 확인, 300MiB 미만 중단·비정상 교체/서비스 장애 시 해당 시험 중단 기준을 유지한다. 쓰기 전후 외부 체크포인트·불명 쓰기 재전송 금지·데이터/버전 복원 조건은 기존 기준을 따른다. 오늘은 이 계획을 실행하지 않았다.
+
+**종료 승인 시 CT-03 최종 근거 추가:** [#457 HEAD9a40d10][r09-inventory-final]은11/27 15:45~16:30의 **I-01~I-19 총19건 PASS**를 보고한다(I-05 관찰, I-17 알려진 한계, I-18 관찰 포함). I-19에서 재고10항목의 reserved_qty가 RESERVED 확보 합과 일치하고 모두0, 음수/예약초과 불변식 위반0·진행 중 확보0을 확인했다. 메뉴7/10/11 재고2/94/20 및 메뉴6 기존 연결을 원복했다는 담당자 DB/정리 결과를 재사용하며 이번 실제 서버/DB 재조회는 하지 않았다. 정본에는16:31 CT-03 완료 처리·개인 통합 테스트 활용 합의와 Menu 연결 검증(I-15/RUN-06) 재사용도 기록돼 있어 별도 공동 Menu 시험을 추가하지 않는다. **J-02 PASS와 J-01 고객 A/B 주문 경로 잔여 조건은 구분**한다. 재고 이력 미기록은 #461 후속, Inventory 로그 보완 #459/#460 반영 뒤 I-20(orderId·Loki 추적)은 NOT RUN/CT-08 후속으로 분리한다. 기존 cp901MiB 시작 기준 미충족과 Python403 원인 미확정 관찰·Chromium8 PASS 기록은 그대로 보존한다.
+
+최신23그룹 **NOT RUN1 / IN PROGRESS7 / PASS15**, FAIL/BLOCKED/RETEST/SKIPPED0. D-02/D-03/F-08만 PASS로 갱신, F-04/J-04 IN PROGRESS·그 외 상태 유지. 확정 신규 제품 결함0. 근거: 저장소 밖 `C:\M\Peak_Order-409-qa\run-20261127-09`의 `current-boundaries.json`, `boundary-comparison.json`, `jwt-policy-comparison.json`, `public-boundaries.json`, `public-browser-results.json`, `reuse-inputs.json`, `pr-368.json`, `reference-pr-457-final.md`, 공동 문서snapshot·최종문서검사. 제품 수정 없음. RUN-09 종료 승인 후 지정 문서만 Commit하며 Push하지 않는다. 자격 증명·토큰·쿠키·Secret 값 수집/저장 없음.
+
 ### 결함 관리
 
 이번Smoke의 문제는 #414 관리 문서에 먼저 취합한다. 신규 결함은 **BUG-001부터 순차 발급**하며 이번에는 확정된 신규 제품 결함이 없어 미발급이다. P0 발견 시 영향 테스트를 중단하고, 일반 결함은 독립적인 시험을 계속한다.
@@ -1069,9 +1110,9 @@ CT-09는 이태훈 주관으로 11/30 오후 예정이며 CT-07 부하와 중첩
 
 | 항목                                | 결과                                                                     |
 | ----------------------------------- | ------------------------------------------------------------------------ |
-| 최종 판정                           | 최종미판정. RUN-08 인프라·CT-03 근거 재사용 반영, NOT RUN1 / IN PROGRESS10 / PASS12 |
-| 최종 일시·dev/prod 대상 버전        | 전체최종판정 대기. 최신RUN11/27-08 읽기 전용·Menu46d1801/Cooking6219d6b/Inventoryf4201cc, prod 미접근 |
-| 필수/권장 PASS·FAIL·BLOCKED·SKIPPED | 4절 최신 집계 참조. M-01/03/04/05·F-01/05/06·D-01/04·J-02/03/05 PASS, 나머지는4절 |
+| 최종 판정                           | 최종미판정. RUN-09 접근 경계·롤링·오류 근거 재사용 반영, NOT RUN1 / IN PROGRESS7 / PASS15 |
+| 최종 일시·dev/prod 대상 버전        | 전체최종판정 대기. 최신RUN11/27-09 읽기 전용·Menu46d1801/Frontend6219d6b, prod 미접근 |
+| 필수/권장 PASS·FAIL·BLOCKED·SKIPPED | 4절 최신 집계 참조. M-01/03/04/05·F-01/05/06/08·D-01~04·J-02/03/05 PASS, 나머지는4절 |
 | 핵심E2E/공동CT 근거                 | RUN-20261127-03 정상UI2건 완료. CT-01 공동담당 교차확인 대기                     |
 | 미해결 결함/제외 승인/잔여 위험     | 신규제품결함0. OBS-03 공동 확인 완료·즉시 탭 동기화 없음은 현행 한계. 미실행 범위는9절                   |
 | 공유 설정 복원/데이터 정리          | 메뉴14/15/16 HIDDEN. 재고11 논리 삭제/연결 해제, 주문62 CANCELED/108 FAILED·예약2건 RELEASED. 공유설정 변경0          |
@@ -1094,6 +1135,7 @@ CT-09는 이태훈 주관으로 11/30 오후 예정이며 CT-07 부하와 중첩
 | 2026-11-27 | RUN-20261127-06 전용 UI 변경·가격/옵션/판매 상태·DB 읽기·정리, 동일 구현/공동 결과 재사용 | 실제62 PASS/무효도구1, M-04/05·F-05·J-03 PASS·J-04 IN PROGRESS, 집계2/12/9·제품 결함0·추가 반복 축소4개 승인·문서만 Commit/Push 안함 |
 | 2026-11-27 | RUN-20261127-07 CT-03 중 기존 주문/운영 상태 조회·Frontend 및 공동 근거 재사용 | 유효22 PASS/무효 도구2·결함0. F-06 PASS, F-04/07 IN PROGRESS·J-03 유지, 집계2/11/10. 신규 업무 쓰기0·종료 승인 후 문서만 Commit·Push 안함 |
 | 2026-11-27 | RUN-20261127-08 HPA/replicas 정책·공유DB147 연결 예산·CT-03/과거2 Pod 동일 구현 근거 대조 | J-01 IN PROGRESS·J-02/05 PASS·M-02 보류. 집계1/10/12·dev/공유 DB 가정 계산 분리·cp 기준 미충족 보존·종료 승인 후 문서만 Commit·Push 안함 |
+| 2026-11-27 | RUN-20261127-09 읽기 경계·기존 정상 롤링/동일 Frontend 오류 자동화·CT-02/08/09 대조 | Chromium8 PASS·Python403 미확정 관찰 구분·#457 최종19 PASS/원복 반영. D-02/03·F-08 PASS, J-02 PASS·J-01 잔여 및 집계1/7/15 유지. 종료 승인 후 문서만 Commit·Push 안함 |
 
 <!-- 공통 링크. 실행 전 대상SHA와 소스 차이를 다시 확인한다. -->
 
@@ -1188,3 +1230,6 @@ CT-09는 이태훈 주관으로 11/30 오후 예정이며 CT-07 부하와 중첩
 [r08-cooking-2pod]: https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/313#issuecomment-7150982770
 [r08-menu-2pod]: https://github.com/ktcloud-cloudnative-2026/team02-5xx/issues/367#issuecomment-7180699047
 [r08-deployment]: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#rolling-update-deployment
+
+[r09-frontend-rollout]: https://github.com/ktcloud-cloudnative-2026/team02-5xx/pull/368#issuecomment-7179440291
+[r09-inventory-final]: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/9a40d10ff531c63e22dd3d273cfd7272451aa06c/docs/integration-test/inventory-ct03.md
