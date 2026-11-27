@@ -1,0 +1,30 @@
+# Order 관리자 HTTPRoute에 JWT 검증을 붙인다(#112 A안, #303·#337·#348·#399 방식). prod 전용(#435).
+# - issuer·audience는 Auth prod 값이다(이태훈 님 11/27 안내). issuer의 끝 "/"까지 토큰의 iss와 같아야 한다.
+# - Auth JWKS로 서명·issuer·audience 검증, 실패하면 Gateway가 401.
+# - sub → X-User-Id, role → X-User-Role 로 Order에 전달하고, STORE_ADMIN 확인은 서비스가 한다(#263).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: order-service-admin-jwt
+  namespace: peakorder
+  labels:
+    app: order-service
+    team: team02
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: order-service-admin
+  jwt:
+    providers:
+      - name: peakorder-auth
+        issuer: https://peakorder.jpexstudio.com/
+        audiences:
+          - peakorder-api-prod
+        remoteJWKS:
+          uri: http://auth-service.peakorder.svc.cluster.local:8080/api/v1/auth/jwks
+        claimToHeaders:
+          - header: X-User-Id
+            claim: sub
+          - header: X-User-Role
+            claim: role

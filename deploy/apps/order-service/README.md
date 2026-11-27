@@ -106,6 +106,25 @@ prod 이미지 태그 승격, Secret(`order-service-db`), 관리자 API 개방�
 
 롤백: 배포 전에는 prod kustomization의 `patches` 항목과 `hikari-patch.yaml`만 제거한다. 다만 제거하면 풀 기본값(최대 10)으로 돌아가 연결 예산이 늘어나므로 제거 전에 DB 담당이 전체 연결 예산을 확인하고, 배포 후에도 같은 Git PR → Argo CD 경로로 복구한다.
 
+## prod 보안 정책과 관리자 API — Issue #435
+
+prod overlay에 Gateway JWT 검증과 관리자 API 개방 설정을 dev와 같은 방식으로 추가한다. 값은 Auth prod 안내(이태훈 님 11/27)를 따른다.
+
+| 파일(`overlays/prod/`) | 내용 |
+| --- | --- |
+| `securitypolicy.yaml` | 고객용 `order-service-jwt`(대상 HTTPRoute `order-service`) |
+| `admin-httproute.yaml` | 관리자 `order-service-admin`: OR-06·07 `/api/v1/admin/store/operations`(GET·PATCH), OR-08 `/api/v1/admin/orders`(GET), OR-09 `/api/v1/admin/orders/{orderId}`(GET). dev(#399)와 같은 경로 |
+| `admin-securitypolicy.yaml` | 관리자 `order-service-admin-jwt` |
+| `admin-enabled-patch.yaml` | prod에서 `ORDER_ADMIN_ENABLED=true`(base 값은 `false` 유지) |
+
+JWT 검증 값(고객용·관리자용 공통): issuer `https://peakorder.jpexstudio.com/`, audience `peakorder-api-prod`, JWKS `http://auth-service.peakorder.svc.cluster.local:8080/api/v1/auth/jwks`, `sub`→`X-User-Id`, `role`→`X-User-Role`. 관리자 경로에는 `RequestHeaderModifier(remove)`를 넣지 않는다(#286). STORE_ADMIN 확인은 서비스가 한다(#263).
+
+- **issuer는 토큰의 `iss`와 문자열이 정확히 같아야 한다.** 안내받은 값은 끝에 `/`가 있다(dev는 `http://10.10.22.100`으로 없음). 병합 전에 prod에서 발급한 토큰의 `iss`로 확인한다.
+- **동기화 순서**: prod Gateway의 JWT 정책이 먼저 적용된 뒤에 Order를 동기화한다. 정책 없이 Order를 올리면 위조 헤더가 서비스까지 전달된다. `ORDER_ADMIN_ENABLED=true`가 들어가므로 관리자 경로의 Gateway 정책을 먼저 확인한다.
+- **prod Gateway 리스너**: Order 고객용 HTTPRoute(base `httproute.yaml`)와 관리자 HTTPRoute는 `peakorder-gateway`의 `sectionName: http`에 붙는다. prod Gateway의 리스너 이름이 다르면(예: HTTPS) prod overlay에서 `parentRefs`를 조정해야 한다(Gateway 담당 확인 필요).
+- 이 변경은 이미지 태그·Secret·replicas·HPA를 바꾸지 않는다. prod 이미지 태그 승격은 dev 통합 테스트를 통과한 태그로 11/30 오전에 별도 PR로 한다. prod `rabbitmq-secret`(username·password)은 정진혁 님이 만들 예정이며 없으면 Order가 시작하지 않는다.
+- prod에 직접 `kubectl apply`하지 않는다. 배포 경로는 Git PR → Argo CD(수동 동기화)다.
+
 ## 로그
 
 - 환경 변수 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`로 로그를 한 줄에 JSON 하나(ECS) 형식으로 출력한다(이슈 #271, `docs/observability.md` 3-1, Cooking #190과 같은 방식). `application.yml`·코드는 바꾸지 않아 로컬 개발은 기존 텍스트 로그 그대로다. `service.name`에는 `order-service`가 자동으로 들어간다.
