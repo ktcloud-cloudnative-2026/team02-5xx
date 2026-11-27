@@ -118,39 +118,46 @@ Application 자체는 이 서비스 Application의 관리 대상에 포함되지
 
 정책 근거와 옵션 설명: [Argo CD 3.6 자동 동기화](https://argo-cd.readthedocs.io/en/release-3.6/user-guide/auto_sync/).
 
-## prod 준비 (초안, 미적용)
+## prod 준비
 
-`prod/` 디렉터리는 prod Argo CD 등록을 위한 **초안**이다. 아래 선행 조건이 모두 확인되기 전에는 prod 클러스터에 적용하지 않는다. prod에 직접 `kubectl apply`로 서비스 리소스를 만들지 않는다(CLAUDE.md 8절). Application·AppProject 등록도 Gateway·플랫폼 담당과 함께 진행한다.
+prod는 Argo CD **수동 동기화**만 쓴다. prod에 직접 `kubectl apply`로 서비스 리소스를 만들지 않는다(CLAUDE.md 8절). 강사님 예외 승인(11/26)은 Argo CD 설치와 Secret 생성까지만이다.
 
-- `prod/project.yaml`: prod overlay가 만드는 종류(Deployment·Service·HTTPRoute)와 Gateway JWT 검증용 SecurityPolicy만 허용한다. HPA는 prod 범위에서 제외해 허용하지 않는다(팀 결정 11/26).
-- `prod/*-service.yaml`, `prod/web-frontend.yaml`: dev와 달리 **자동 동기화를 두지 않는다.** prod 반영 순서는 "dev 검증 → prod overlay PR → 리뷰·승인 → Argo CD 화면에서 수동 Sync"다.
+- `prod/project.yaml`: AppProject `peakorder-prod`. 허용 종류는 Deployment·Service·HTTPRoute·SecurityPolicy(서비스), StatefulSet·NetworkPolicy(공통 인프라). HPA는 prod 범위에서 제외(팀 결정 11/26: 서비스당 Pod 1개, metrics-server 없음).
+- `prod/*-service.yaml`, `prod/web-frontend.yaml`: 서비스 Application 7개.
+- `prod/rabbitmq.yaml`, `prod/network-policies.yaml`: 공통 인프라 Application. 매니페스트는 `deploy/platform/prod/rabbitmq`·`deploy/platform/prod/network-policies`(Gateway·플랫폼 담당).
+- 반영 순서: dev 검증 → prod overlay PR → 리뷰·승인·병합 → GitOps 담당이 Application을 하나씩 수동 Sync → 각 서비스 담당이 기능 확인. 병합만으로는 prod가 바뀌지 않는다.
 
-### 선행 조건 (2026-11-26 확인 기준)
+### 현재 상태 (2026-11-27)
 
-prod 클러스터는 노드 3개가 Ready이고 `argocd`·`monitoring`·`peakorder` namespace만 있다(워크로드·Secret·NetworkPolicy 없음, 읽기 전용 확인).
-
-| 항목 | 현재 상태 | 담당 |
+| 항목 | 상태 | 담당 |
 | --- | --- | --- |
-| prod 접속 | `t2-prod-cp` SSH 호스트 키 지문을 플랫폼 담당과 대조해 등록 완료(11/25) | 플랫폼(Gateway) |
-| prod Argo CD | **설치 완료(11/26 15:21 KST)**. 강사님 예외 승인(11/26, 범위: Argo CD 설치와 서비스별 Secret 생성) 후 공식 `install.yaml` v3.6.1을 `--server-side`로 적용. dev와 같은 구성(Pod 7개 Running, CRD 3개, 외부 노출 없음). AppProject·Application은 아직 등록하지 않음 | CI/CD |
-| prod Gateway | `peakorder-gateway`(`10.10.22.200`) Programmed, HTTPRoute 없음. Gateway 자체는 보존한다 | 플랫폼(Gateway) |
-| 이미지 태그 | Menu·web-frontend prod 태그가 `sha-REPLACE…` 자리표시자. 나머지도 dev보다 오래된 태그. 각 서비스 담당이 dev 검증 태그로 prod overlay PR을 올린다 | 각 서비스 |
-| DB·Secret | prod DB 6개와 서비스별 Secret(값은 Git 밖) 준비 여부 미확인 | DB·각 서비스 |
-| **Gateway JWT (보안)** | Order 고객 HTTPRoute는 JWT 경로라 신원 헤더 `remove`가 없고, JWT 검증(SecurityPolicy)은 **dev overlay에만** 있다. prod SecurityPolicy 없이 Order를 Sync하면 클라이언트가 보낸 `X-User-Id`·`X-User-Role`이 그대로 서비스에 전달된다. **prod SecurityPolicy가 준비되기 전에는 `order-service-prod`를 Sync하지 않는다.** 관리자 API는 prod에서도 연다(팀 결정 11/26). dev와 같이 Gateway JWT(SecurityPolicy)와 서비스의 역할 검사를 모두 거친다 | Gateway·Order |
-| NetworkPolicy | prod 미적용. Git PR → Argo CD 경로로 별도 적용 | 플랫폼 |
-| HTTPS | prod 도메인 없음(HTTP만). Auth Refresh 쿠키(Secure)는 HTTPS에서만 저장된다(#287). dev처럼 HTTPS 도메인이 필요하다 | 플랫폼(Gateway) |
-| prod 회원가입 | **연다(팀 결정 11/26).** dev·프론트와 같은 시연용 약관 버전 `demo-v1`을 Auth prod overlay에 넣었다 | Auth |
+| Argo CD | v3.6.1 설치(11/26 15:21 KST, `install.yaml` `--server-side`). AppProject·서비스 Application 7개 등록(11/26) | CI/CD |
+| Gateway·도메인 | `peakorder-gateway`(`10.10.22.200`) Programmed, `https://peakorder.jpexstudio.com` 인증서 정상. Gateway 자체는 보존한다 | 플랫폼(Gateway) |
+| Secret | 9개 준비. Auth 3개·서비스별 DB 5개(DB 담당, 6개 DB 계정 실제 로그인 확인), `rabbitmq-secret`(플랫폼 담당). 값은 Git·문서·채팅에 남기지 않는다 | DB·Auth·플랫폼 |
+| Auth | 11/27 동기화 완료(Synced/Healthy, Flyway V1·V2, JWKS 200) | Auth |
+| JWT 값 | issuer `https://peakorder.jpexstudio.com`(끝 슬래시 없음), audience `peakorder-api-prod`, JWKS `http://auth-service.peakorder.svc.cluster.local:8080/api/v1/auth/jwks`. 각 서비스 prod SecurityPolicy는 이 값과 글자까지 같아야 한다(다르면 전부 401) | Auth·각 서비스 |
+| 관리자 API | prod에서도 연다(팀 결정 11/26). dev와 같이 Gateway JWT(SecurityPolicy)와 서비스 역할 검사를 함께 둔다. Order는 SecurityPolicy가 적용되기 전에는 Sync하지 않는다(고객 경로가 신원 헤더를 지우지 않음) | 각 서비스·Gateway 리뷰 |
+| 회원가입 | 연다(팀 결정 11/26). 시연용 약관 버전 `demo-v1` | Auth |
+| 연결 풀 | prod 6개 서비스 Hikari 4/1(t2-db `max_connections` 150, 보수적 합계 dev 120 + prod 24 = 144) | 각 서비스·DB |
 
-### Auth prod (이 초안에 포함)
+### 동기화 순서 (11/30 예정)
 
-- `deploy/apps/auth-service/overlays/prod/session-patch.yaml`: dev와 같은 구조로 DB·서명 키·issuer·허용 Origin을 prod Secret에서 읽는다. 시연용 약관 버전 `demo-v1`을 넣어 prod 회원가입을 연다(팀 결정 11/26). 실제 약관이 정해지면 값을 바꾸는 PR을 올린다.
-- prod 이미지는 현재 dev에서 검증한 `sha-6219d6b…`(#369)로 올린다.
-- prod 클러스터 `peakorder` namespace에 아래 Secret을 **prod 전용 값으로** 만든 뒤에만 Sync한다. 값은 Git·문서·채팅에 남기지 않고, dev 서명 키·issuer를 복사하지 않는다.
+1. Auth(완료) → Menu → Inventory
+2. RabbitMQ(`rabbitmq-prod`) → Payment → Cooking → Order(SecurityPolicy 포함)
+3. web-frontend
+4. 모든 서비스 기능 확인 후 NetworkPolicy(`network-policies-prod`)
 
-| Secret | 키 | 내용 |
+한 번에 하나씩 Sync하고, Synced/Healthy·Pod Ready·재시작 0을 확인한 뒤 다음으로 넘어간다. DB 연결 수는 DB 담당이 동기화 전후로 확인한다.
+
+### prod Secret 계약 (이름·키만, 값은 Git 밖)
+
+| Secret | 키 | 읽는 서비스 |
 | --- | --- | --- |
-| `auth-service-db` | `DB_URL`, `DB_USER`, `DB_PASSWORD` | prod Auth DB 접속 정보 |
-| `auth-service-runtime` | `issuer`, `audience`, `key-id`, `allowed-origins` | prod issuer(prod Gateway 주소 기준)·audience·서명 키 ID·허용 Origin |
-| `auth-service-jwt` | `private-key.pem`, `public-key.pem` | prod 전용 RSA 서명 키 쌍 |
+| `auth-service-db` | `DB_URL`, `DB_USER`, `DB_PASSWORD` | Auth |
+| `auth-service-runtime` | `issuer`, `audience`, `key-id`, `allowed-origins` | Auth |
+| `auth-service-jwt` | `private-key.pem`, `public-key.pem` (prod 전용 RSA 2048, dev 키 복사 금지) | Auth |
+| `menu-service-db` | `MENU_DB_URL`, `MENU_DB_USERNAME`, `MENU_DB_PASSWORD` | Menu |
+| `inventory-service-db`, `order-service-db`, `payment-service-db`, `cooking-service-db` | `DB_URL`, `DB_USER`, `DB_PASSWORD` | 각 서비스 |
+| `rabbitmq-secret` | `username`, `password` (RabbitMQ 첫 기동 때만 계정에 반영) | RabbitMQ·Order·Payment·Cooking |
 
-- prod issuer·audience가 정해지면 prod SecurityPolicy(Gateway·각 서비스 담당)도 같은 값으로 맞춰야 한다. 한쪽만 다르면 해당 서비스 요청이 모두 401이 된다.
+- `DB_URL`은 `jdbc:postgresql://10.10.22.10:5432/<서비스>_prod`, `DB_USER`는 `<서비스>_prod_user`. t2-db는 prod 노드(`10.10.22.21~23`)에서만 prod DB 접속을 허용한다.
