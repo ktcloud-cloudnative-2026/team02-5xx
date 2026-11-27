@@ -50,6 +50,7 @@ Menu·Frontend 및 관련 서비스 소스/테스트·배포·CI 입력은 동�
 | RUN-20261126-01 | 2026-11-26 15:00~15:21 KST | t2-dev / https://peakorder-dev.jpexstudio.com / Chromium 151.0.7922.34 / 1440×1000 | main d4e2212, 실제7개 이미지·digest는 9절 | #407 미반영, monitoring-dev OutOfSync | 이은제 승인 실행, 계정은 사용자 직접 입력 | 9절·QA 산출물 |
 | RUN-20261126-02 | 2026-11-26 15:40~15:50 KST | 동일 dev HTTPS / 실제 Chromium | main d4e2212, 1차 종료 대비7개 이미지·digest 동일 | 모니터링 작업15:45~16:15 예정, 쓰기 보류 | 이은제 승인 실행, 자격 증명은 사용자 직접 입력 | 9절 2차 RUN·별도 QA |
 | RUN-20261127-01 | 2026-11-27 사전 확인09:02~09:12 / 실제 기능09:12:33~09:13:38 KST | 동일 dev HTTPS / 실제 Chromium | fetch main2b773f4, Menu46d1801·digest동일 | 공유 작업 없음 사용자 확인, Menu1 Pod | 이은제 승인 실행, 관리자 일회성 마스킹 입력 | 9절 M-02 재개·별도 QA |
+| RUN-20261127-02 | 2026-11-27 09:49~09:59 KST (기존 실측 재사용) | 동일 dev HTTPS / t2-dev / Chromium | main·반영revision53f0ef7, Menu46d1801·동일digest | #407 자동Sync/롤링 관찰, 최종cp1001.3MiB | 승인된 실행 결과 기록, 추가 환경 조회 없음 | 9절·#407 postmerge QA |
 
 ## 3. 선행 조건
 
@@ -98,12 +99,12 @@ F-06에서 Order 상태와 Cooking 상태의 표현을 실제 응답·화면 계
 | ------------------- | ------- | ------- | ----------- | ----- | ----- | ------- | ------ | ------- |
 | Menu M-01~05        | 5       | 0       | 3           | 2     | 0     | 0       | 0      | 0       |
 | Frontend F-01~08    | 8       | 4       | 4           | 0     | 0     | 0       | 0      | 0       |
-| 배포·관측성 D-01~04 | 4       | 0       | 2           | 0     | 0     | 2       | 0      | 0       |
+| 배포·관측성 D-01~04 | 4       | 0       | 2           | 2     | 0     | 0       | 0      | 0       |
 | 공동 J-01~05        | 5       | 5       | 0           | 0     | 0     | 0       | 0      | 0       |
 | 최종 회귀 R-01      | 1       | 1       | 0           | 0     | 0     | 0       | 0      | 0       |
-| **합계**            | **23**  | **10**  | **9**       | **2** | **0** | **2**   | **0**  | **0**   |
+| **합계**            | **23**  | **10**  | **9**       | **4** | **0** | **0**   | **0**  | **0**   |
 
-부분 성공과 미실행을 합쳐 그룹 PASS로 만들지 않는다. 최신 집계는 NOT RUN 10 / IN PROGRESS 9 / PASS 2 / BLOCKED 2, 그 외 0이다. 실행 이후 그룹 상태·이 집계·9절 실행 기록을 함께 갱신한다.
+부분 성공과 미실행을 합쳐 그룹 PASS로 만들지 않는다. 최신 집계는 NOT RUN 10 / IN PROGRESS 9 / PASS 4, 그 외 0이다. 실행 이후 그룹 상태·이 집계·9절 실행 기록을 함께 갱신한다.
 
 ## 5. 테스트 상태 및 우선순위 정의
 
@@ -296,7 +297,7 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
   3. Menu requests100m/384Mi·limits1/768Mi·JVM60%·Hikari4/1, Frontend dev25m/32Mi·250m/128Mi 및 HPA/Argo replicas 정책을 선언/실상태와 비교한다.
 - **기대 결과·통과 기준:** 게시 이미지·반영 revision·설정 일치, Synced/Healthy·필요 Pod Ready. 기동 CPU와 정상 부하를 구분. prod placeholder나 미반영 PR을 운영값으로 기록하지 않음.
 - **재사용·관련:** #394/#367/#186 결과 참조, 동일 HPA 부하 실측 반복 최소화. CT-07/09, #281/#354/#357/#366/#372/#367/#388.
-- **현재 상태:** IN PROGRESS. **실제 결과·검증 근거:** RUN-20261126-01 (9절), 7개 업무 앱/배포/이미지 일치·Ready·설정 확인. 공통 monitoring-dev OutOfSync·자원 여유는 후속 확인 필요. Payment Pod 교체는 담당자가 계획된 P-04 시험으로 설명했으며 9절 정정 기록 참조. **결함·재검증:** 확정 신규 제품 결함 없음. 선행 차단/운영 관찰은 9절 참조.
+- **현재 상태:** PASS. **실제 결과·검증 근거:** RUN-20261127-02 (9절). 실제7개 서비스 이미지/게시SHA·소스·설정·revision53f0ef7 일치, 전체58 Pod Ready·업무7 및 monitoring/logging Synced/Healthy. **결함·재검증:** 신규 제품 결함 없음. 최종cp1001.3MiB의 자원 변동은 별도 운영 관찰이며 추가 배포 전1GiB 재확인 필요.
 
 ### D-02. Gateway·HTTPRoute·NetworkPolicy 연동
 
@@ -315,12 +316,12 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
 - **우선순위·선행 조건:** P0. #407 리뷰·병합·반영 확인과 별도 실dev 실행 승인. Pod 삭제/롤링은 담당자와 시간·복원 합의.
 - **대상·방법·계약:** [#402/#407][pr407], Menu/Frontend Deployment, #186. 읽기 확인과 승인 후 담당 실행 증거.
 - **세부 실행 절차:**
-  1. main과 실제 Pod Probe를 확인한다. 현main Menu는 TCP. #407 반영 뒤에만 startup/liveness=`/actuator/health/liveness`, readiness=`/actuator/health/readiness`를 기대한다.
+  1. main과 실제 Pod Probe를 확인한다. 원계획의 Menu TCP에서 #407 반영 후 HTTP로 전환됐으며 startup/liveness=`/actuator/health/liveness`, readiness=`/actuator/health/readiness`를 기대한다.
   2. Menu의 단일 HTTP handler·named port http·startup5초×24/readiness10초/liveness20초를 확인한다. Frontend는 `/index.html`과8080을 유지한다.
   3. 조율한 Pod 재생성/롤링을 담당자가 실행하고 Ready 복구·이벤트·재시작·OOM·대표 고객/관리자/내부 API를 확인한다. 설정/이미지를 임의 변경하지 않는다.
 - **기대 결과·통과 기준:** 새 Pod Probe 성공, 지속적 실패/재시작/HTTP 악화 없음. 종료 보호·HPA·풀 보존. **readiness UP은 DB 정상 보장이 아님**. DB를 liveness에 넣거나 health group을 바꾸지 않음. HTTP 전환 미병합/미반영이면 해당 검증 BLOCKED.
 - **재사용·관련:** #407 로컬630/JAR health200은 선행 근거로만 사용, kubelet 성공과 구분. 기존 복구 시험도 버전 일치 범위만 사용. CT-07/08/09, #402/#407/#186/#354.
-- **현재 상태:** BLOCKED. **실제 결과·검증 근거:** RUN-20261126-01 (9절), 현재 Ready/기존 Probe·health200 확인. #407 미병합/미반영으로 HTTP 전환 차단. Pod 재생성·복구 실험은 이번 범위 제외. **결함·재검증:** 확정 신규 제품 결함 없음. 선행 차단/운영 관찰은 9절 참조.
+- **현재 상태:** IN PROGRESS. **실제 결과·검증 근거:** RUN-20261127-02에서 실제 Menu HTTP Probe·kubelet 성공 계수·자동롤링/정상종료 확인. 초기startup3회 실패 후 정상화, 재시작/OOM0. **결함·재검증:** Menu 전환 소항목PASS. 별도 Pod 삭제·장애 주입·Frontend 재생성/복구는 미실행이므로 전체 장애복구PASS로 확대하지 않음.
 
 ### D-04. Menu Health·HTTP·JVM·Hikari 지표 및 로그
 
@@ -333,7 +334,7 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
   4. ECS UTC timestamp/level/service.name/message, 같은 Pod/시간대 Loki 조회·롤링 전후 로그를 비교한다. 비밀값·본문이 지표/로그/첨부에 없는지 확인한다.
 - **기대 결과·통과 기준:** 지표 제공과 실제 수집 확인, Hikari max4·Pod 연결 예산 설명 가능. JVM/런처 출력을 앱JSON과 구분. stdout 표본만으로 Loki 성공 처리하지 않음. 전체health DB검사와 readiness/liveness DB제외 의미 보존.
 - **재사용·관련:** #361 격리DB·#389/392 JSON 시험 재사용, 공유DB 중단 반복 없음. 수집·로그 보존은 새 근거 필요. CT-07/08, #361/#365/#389/#392/#400/#401.
-- **현재 상태:** BLOCKED. **실제 결과·검증 근거:** RUN-20261126-01의 지표·Hikari4/1·ECS·현재/이전 Pod Loki 성공 및 당시 target 부재 이력 보존. 이후 #401 담당자 수집 성공 보고(7절)를 연결했으나 개인 자체 재확인 전까지 완료 처리하지 않음. **결함·재검증:** 신규 제품 결함 없음. 김지윤 CT-08 근거와 현재 Menu target/지표를 후속 대조한다.
+- **현재 상태:** PASS. **실제 결과·검증 근거:** RUN-20261127-02에서 정상 경로 health·HTTP/JVM/GC/Hikari·실제Prometheus up=1 및 롤링 전후 Loki/ECS·민감정보 표본 검사 확인. **결함·재검증:** CT-08 장애/알림 발화 시험 전체완료는 아님. DB장애 시 readiness UP 및 Menu5xx 알림 미구현 감시 공백은 별도 후속이며 이번에 해소했다고 기록하지 않음.
 
 ### J-01. 마지막 재고 동시 주문 및 초과 판매 방지
 
@@ -434,7 +435,7 @@ CT-02·CT-09는 이태훈, CT-04는 정진혁, CT-05·CT-07은 김민규, CT-06�
 | CT-05. 주문 취소·재고 복원·환불 | F-06/07, J-02/03 | **김민규 주관 확정**, 관련 담당자 교차 검증 | [#411 최신 공동 근거][order-final] CT-05 IN PROGRESS, 환불 실패 후 자동 재시도 복구 보고 |
 | CT-06. 이벤트 중복·지연·FIFO·조리 상태 | M-05, F-03/06/07, J-04/05 | **김지윤 주관 확정**, Order 담당과 실행 조율 | [#408][i408]/[#412][pr412] [공동 정본][cooking-final], CT-06 NOT RUN 보고 |
 | CT-07. 다중 Pod·HPA·DB 연결 예산 | M-02, D-01/03/04 | **김민규 주관 확정**, 최신 이미지 재확인 및 Menu 다중 Pod 쓰기 후속 | [#411 최신 공동 근거][order-final] CT-07 IN PROGRESS. M-02 단일 Pod 결과와 구분 |
-| CT-08. 장애 복구·로그·메트릭·알림 | M-04, F-08, D-02/03/04, J-04 | **김지윤 주관 확정**, 클러스터/각 서비스 담당과 조율 | [#408][i408]/[#412][pr412] [공동 정본][cooking-final], [#401 수집 성공 보고][ev401-success]. D-04 자체 재확인 대기 |
+| CT-08. 장애 복구·로그·메트릭·알림 | M-04, F-08, D-02/03/04, J-04 | **김지윤 주관 확정**, 클러스터/각 서비스 담당과 조율 | [#408][i408]/[#412][pr412] [공동 정본][cooking-final], [#401 수집 성공 보고][ev401-success]. RUN-20261127-02 D-04 정상 경로 자체 재확인 PASS |
 | CT-09. 순차 배포·롤링 업데이트·롤백     | D-01/03                            | **이태훈 주관 확정**, 11/30 오후 예정·CT-07과 시간 조율             | [Auth·CI/CD 초안][auth-cicd], Git PR→Argo CD 순차 반영/롤백·원래 버전 복원 |
 | CT-10. 최종 회귀 테스트 및 prod 검증    | M-01/02, F-01/02/04/05/08, R-01    | 개인 회귀는 본인, 팀CT주관/prod 범위 미합의                         | R-01 및 prod 읽기 증거 분리                                                |
 
@@ -680,6 +681,38 @@ UI 도구 초기2건은 상세 로딩 화면을 일찍 읽은 도구 판정 오�
 - 기존 RUN-01/02 QA63파일의 해시는 동일하다. 다른7개 worktree 중 주 작업 경로1곳에서 외부 브랜치/HEAD·미추적 이미지 파일 진행이 관찰됐으며 이 RUN은 해당 경로를 수정·복원하지 않았다. 기존 bin·서버를 종료하거나 변경하는 명령은 실행하지 않았다.
 - 전체23개 그룹은 **NOT RUN10 / IN PROGRESS9 / PASS2 / BLOCKED2**, FAIL/RETEST/SKIPPED0. M-02만 BLOCKED→IN PROGRESS로 변경했고 기존 RUN-02의95 PASS·당시 집계는 유지한다. 나머지 그룹 ID·CT 매핑·판정은 유지한다.
 
+#### RUN-20261127-02 — #407 자동 배포·HTTP Probe 및 관측성
+
+기존 `Peak_Order-407-qa/postmerge-20261127-094939/`의 09:49~09:59 실측을 신규 RUN으로 기록한다. **이번 문서 반영·Commit 단계에서는 추가 실환경 조회/테스트를 하지 않았다.** 앞선 RUN-02의95 PASS, RUN-20261127-01의42 PASS·메뉴14/15 정리·DB 대조는 그대로 보존한다.
+
+- 기준/반영: #407 squash `53f0ef79d02fb6050d6dc342887c9585902b93a7`. 병합09:48:41, 팀 사전 공지·09:47 GO는 병합 전 근거다. Argo operation.initiatedBy.automated=true로 **09:53:42~09:53:43 자동 Sync**를 확인했으며 수동 refresh/Sync는 하지 않았다.
+- 새 RS `menu-service-69c96c664f`/Pod `menu-service-69c96c664f-42wpn` 생성09:53:42, 컨테이너 시작09:53:43, **09:54:03 Ready(생성 후21초)**. 이전 RS는09:54:03에0, 기존 Pod 정상종료/Hikari종료 로그는09:54:13, 09:54:27 조회에서 이전 Pod없음. HPA 지표 회복 후 **09:54:36 Argo Healthy**, Sync 시작부터54초. apply 완료와 롤링 완료 시각을 구분한다.
+- 최종 업무7개·monitoring/logging은53f0ef7 기준 Synced/Healthy, 전체58 Pod Running/Ready. 다른 업무 Pod의 UID·이미지·재시작 수는 병합 전과 동일했다. Payment는 #427 `sha-aebac79…` 반영 완료 상태이며 구 ReplicaSet은0이다.
+- Menu 이미지 `sha-46d1801215997aa767ab12fa53249acd06b710d1`, digest `sha256:de53bf04d895785dcdc2ad18d767af7658ca585b58acdb6922314b8ef46ab417` 동일. 실제7개 이미지SHA부터53f0ef7까지 각 서비스 소스diff0은 보관 근거 및 이번 로컬Git 비교로 확인했다(실환경 재조회 아님).
+
+| 검증 | 실제 근거·결과 | 판정/구분 |
+| --- | --- | --- |
+| 실제 Probe 설정 | Deployment/Pod 모두 startup liveness경로5초×24, readiness readiness경로10초, liveness liveness경로20초. named port http(8080), 각httpGet1개·tcpSocket0 | Menu 전환 소항목PASS |
+| kubelet 동작 | `prober_probe_total`: Startup successful1/failed3, Readiness successful33, Liveness successful16. started/Ready=true, 재시작0·OOM없음 | 직접 HTTP 응답과 별도의 실제kubelet 성공 근거 |
+| 초기 경고·회복 | startup 연결 거부09:53:48~58 총3회 후 정상화(임계24 이내). HPA 지표 미수집으로09:54:06 일시Degraded→09:54:36 Healthy, 경고 횟수 추가 증가 없음 | 실패0/경고0으로 기록하지 않음. 별도 장애 주입 복구와 구분 |
+| 직접 Health·보안 | health/liveness/readiness200 UP·details/components미노출. 내부 env/beans/configprops/heapdump/loggers404. 외부Actuator 및 MI-02 모두404 | PASS. DB장애 준비성 보장을 의미하지 않음 |
+| 설정 보존 | 이미지/digest·HPA1~3/CPU70%·Hikari4/1·CPU100m/1·메모리384/768Mi·JVM60%·preStop10초/grace50초·관리자true·ECS·Secret참조·Gateway/Policy/NetworkPolicy 동일 | 세 Probe 외 Deployment 컨테이너 설정 동일. HPA최종current/desired1 |
+| API·Frontend | 고객 목록/상세200, 무토큰401, CUSTOMER403, STORE_ADMIN200, 기존 허용 경로 MI-02 존재true/ON_SALE. 실제 HTTPS 메뉴카드10·상세 정상, pageerror0 | PASS. 사용자 일회성 마스킹 계정 사용, 주문/결제/취소 및 기존 데이터 변경 없음 |
+| Prometheus | 신규 Menu target up=1·scrape 오류없음·재시작0. application=menu-service·HTTP count/status/템플릿URI·histogram·JVM/GC/Hikari 확인 | 정상 경로 관측성PASS. 메뉴목록count4·상세count2, GC pause count4 표본 |
+| Hikari/연결 예산 | max4/min1·pending0(표본idle2). 현재1 Pod 최대4, 교체 중2 Pod 최대8, HPA3+surge1이면Menu최대16으로 설명 | 설정·예산 확인. 실제 롤링 중 DB최대 연결 수 새 계측은 아님 |
+| Loki·민감정보 | 신규Pod30/이전Pod5 JSON, UTC·level·service.name·message·ECS8.11 일치. JVM런처 비JSON1행 별도 분류, 알 수 없는 비JSON앱행0 | 검사 표본 JWT/Bearer값/이메일/비밀값 대입 패턴0·본문필드없음. 전체기간 전수 보장 아님 |
+| 알림·공백 | Menu CPUThrottlingHigh(info) pending은09:59:40 해소. RabbitMQ CPU throttling(info) firing/InfoInhibitor는 별도 운영 관찰. 업무 TargetDown/반복재시작/가용Pod0 규칙inactive | Menu배포와 RabbitMQ알림 인과 미확정. 장애 알림 발화/해제 시험 미실행 |
+
+**최종 cp MemAvailable는09:59:40 표본1001.3MiB**다. 관찰 중 약947~1107MiB로 변동했으며 추가 배포·Sync·부하·장애 전1GiB 재확인이 필요하다. 300MiB 중단 기준에는 도달하지 않았다. 이번 문서 작업 시점의 현재값으로 새로 조회한 결과가 아니다.
+
+**완료 조건 대조:** D-01은 게시/실행 이미지·서비스 소스·배포 설정·revision·Pod/Argo 상태 조건을 충족해PASS로 확정한다. cp 자원 변동은 명시된 운영 관찰로 남긴다. D-03은 Menu HTTP 전환·자동롤링 소항목이 통과했지만 별도 Pod 삭제·장애 주입·Frontend 재생성/복구가 남아IN PROGRESS다. D-04는 정의된 정상 경로의health/메트릭·실제수집·로그보존·표본 민감정보 조건을 충족해PASS로 확정하며 CT-08 전체 장애/알림 시험과 구분한다. **D-02는 기존IN PROGRESS 및 근거를 유지**한다.
+
+DB장애에서 readiness/liveness가UP일 수 있는 기존 의미는 동일 이미지·과거 격리시험 근거로 보존한다. 이번 DB장애 시험은 없었고 실제 활성 규칙에 Menu5xx 비율 알림이 없는 감시 공백도 기록한다. 이 후속을 구현/검증 완료로 처리하지 않는다. #402는 실제 배포·회귀 근거를 확보했지만 초기startup3회와 HPA회복 이력을 반영해 종료를 검토할 사항이며 이번에는 이슈를 종료하지 않았다. 확정 신규 제품 결함0, 즉시 Git 롤백을 요구하는 지속 오류는 관찰되지 않았다.
+
+근거: 위 postmerge QA의 `rollout-01~06.json`, `rollout-final.json`, `cluster-initial/final.json`, `auth-results.json`, `public-results.json`, `observability.json`, `observability-final-03.json`, `preservation.json`, `report.md`/`summary.json`. 원문 로그·계정·토큰·쿠키값은 보관하지 않았고 관리 문서에는 상태·시각·비민감ID만 기록한다. 수동Sync·Pod조작·스케일변경·DB장애·부하·prod 접근 없음.
+
+이번 갱신은 기존 개인23그룹을 유지하며 **NOT RUN10 / IN PROGRESS9 / PASS4 / BLOCKED0**, FAIL/RETEST/SKIPPED0으로 변경한다. 과거 RUN의 당시 집계는 보존하고 세부 성공 횟수를 그룹 합계에 더하지 않는다.
+
 ### 결함 관리
 
 이번Smoke의 문제는 #414 관리 문서에 먼저 취합한다. 신규 결함은 **BUG-001부터 순차 발급**하며 이번에는 확정된 신규 제품 결함이 없어 미발급이다. P0 발견 시 영향 테스트를 중단하고, 일반 결함은 독립적인 시험을 계속한다.
@@ -777,9 +810,9 @@ CT-09는 이태훈 주관으로 11/30 오후 예정이며 CT-07 부하와 중첩
 
 | 항목                                | 결과                                                                     |
 | ----------------------------------- | ------------------------------------------------------------------------ |
-| 최종 판정                           | 최종미판정. M-02 기능/DB/단일Pod42 PASS, NOT RUN10 / IN PROGRESS9 / PASS2 / BLOCKED2 |
-| 최종 일시·dev/prod 대상 버전        | 전체최종판정 대기. 최신RUN11/27 09:12:33~09:13:38 dev/Menu46d1801·main2b773f4, prod 미접근   |
-| 필수/권장 PASS·FAIL·BLOCKED·SKIPPED | 4절 최신 집계 참조. M-01/M-03 PASS, FAIL/RETEST/SKIPPED0                        |
+| 최종 판정                           | 최종미판정. Menu 배포/관측성 기록 반영, NOT RUN10 / IN PROGRESS9 / PASS4 / BLOCKED0 |
+| 최종 일시·dev/prod 대상 버전        | 전체최종판정 대기. 최신RUN11/27 09:49~09:59 dev/Menu46d1801·revision53f0ef7, prod 미접근   |
+| 필수/권장 PASS·FAIL·BLOCKED·SKIPPED | 4절 최신 집계 참조. M-01/M-03/D-01/D-04 PASS, FAIL/RETEST/SKIPPED0                        |
 | 핵심E2E/공동CT 근거                 | 이번 주문E2E 미실행. 기존공동근거와 9절 Smoke를 구분                     |
 | 미해결 결함/제외 승인/잔여 위험     | 신규제품결함0. PRE-01/02·OBS-01/02 및 미실행 범위는9절                   |
 | 공유 설정 복원/데이터 정리          | RUN-02 변경0 유지. RUN-20261127-01 전용메뉴14/15 HIDDEN 정리·DB대조 완료, 공유설정 변경0          |
@@ -795,6 +828,7 @@ CT-09는 이태훈 주관으로 11/30 오후 예정이며 CT-07 부하와 중첩
 | 2026-11-26 | RUN-20261126-02 Menu 조회·인증·내부계약 검증, 모니터링 작업창에 따른 쓰기 보류 및 #404 최신 대조 | 세부95 PASS/신규결함0, 전체10/8/2/3, 지정문서만 갱신·Commit안함 |
 | 2026-11-27 | RUN-20261127-01 M-02 전용 CRUD·DB 읽기·단일 Pod 동시 수정 및 HIDDEN 정리, Markdown 표 두 곳 복구 | 42 PASS/신규결함0. 다중 Pod 쓰기 미검증, 전체 NOT RUN10/IP9/PASS2/BLOCKED2, Commit안함 |
 | 2026-11-27 | Menu 결과 확정·김지윤 CT-06/08 및 담당자 수집/환불 재시도/고객 격리 근거 연결 | 개인95/42 PASS·23그룹10/9/2/2 유지, 자체 재시험 없이 지정 문서만 Commit |
+| 2026-11-27 | RUN-20261127-02로 #407 자동배포/HTTP Probe·API·관측성 실측 기록, D-01/04 PASS·D-03 IN PROGRESS 확정 | 추가 실환경 조회 없이 기존 근거 재사용, D-02 유지·집계10/9/4/0, 지정 문서만 Commit |
 
 <!-- 공통 링크. 실행 전 대상SHA와 소스 차이를 다시 확인한다. -->
 
