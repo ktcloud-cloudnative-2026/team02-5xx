@@ -23,8 +23,8 @@
 | A-01 | 회원가입·이메일 중복 확인·약관 동의(정상·누락·중복) | PASS | 정상 가입 2건(admin-demo id 4, customer-demo id 5, 약관 `demo-v1`) 201. 실패 경우(계정 생성 없음): 중복 이메일 409 `EMAIL_ALREADY_EXISTS`, 약관 누락 400 `REQUIRED_AGREEMENT_MISSING`, 약관 버전 틀림 400 `INVALID_AGREEMENT_VERSION`, 비밀번호 11자 400 `INVALID_REQUEST`. 이메일 중복 확인: 사용 중 `available=false`, 새 주소 `true`. 모두 Auth 등록 설계 문서의 오류 코드와 일치 | dev 도메인 경유 curl, #379 | 11/26 |
 | A-02 | 로그인·내 정보 조회·닉네임 변경 | PASS | dev 도메인 경유 로그인 성공, 응답의 권한(CUSTOMER·STORE_ADMIN) 일치. 두 계정 모두 `GET /api/v1/auth/me` 200. 닉네임 변경(customer-demo): 변경 전 null, 공백만 400, 51자 400, `고객데모` 200 후 재조회 일치(공용 계정이라 의미 있는 값으로 유지) | 로그인·내 정보·`PATCH /api/v1/auth/me` 응답(토큰 값은 기록하지 않음) | 11/26 |
 | A-03 | Access 만료 후 자동 재발급, 새로고침 시 로그인 유지(Refresh 쿠키) | NOT RUN | | 브라우저 확인(#287) | |
-| A-04 | 로그아웃·비밀번호 변경 시 세션 폐기(다른 브라우저 포함) | NOT RUN | | 별도 가입 계정 사용 | |
-| A-05 | Refresh 재사용 탐지·동시 재발급(한 번만 성공)·세션 전체 폐기 | NOT RUN | | | |
+| A-04 | 로그아웃·비밀번호 변경 시 세션 폐기(다른 브라우저 포함) | PASS | 같은 계정으로 세션 A·B·C 로그인. A 로그아웃 204 → A의 Refresh 재사용 401, B Refresh 200(다른 세션 유지). B로 비밀번호 변경 204 → B·C Refresh 모두 401(전체 폐기), 옛 비밀번호 로그인 401, 새 비밀번호 200. 참고: 변경 전 Access는 만료(900초) 전까지 `/me` 200 — 계약 문서의 알려진 동작 | 전용 시험 계정 `it-session-1127101726@peakorder.test`(무작위 비밀번호, 기록 안 함), dev 도메인 경유 curl | 11/27 |
+| A-05 | Refresh 재사용 탐지·동시 재발급(한 번만 성공)·세션 전체 폐기 | PASS | R1으로 재발급 200(R2 받음) → 이미 쓴 R1 재사용 401 → 같은 세션의 R2도 401(세션 폐기), 다른 세션 E Refresh 200(유지). 같은 Refresh로 동시 재발급 2회 → 200 하나·401 하나 | 같은 시험 계정, dev 도메인 경유 curl(쿠키 값은 기록하지 않음) | 11/27 |
 | A-06 | Origin 검사(dev 도메인·로컬 허용, 그 외 403), 쿠키 속성 | PASS | 로그인: 허용 안 된 Origin 403 `FORBIDDEN`, Origin·Referer 없음 403, dev 도메인 Origin은 검사 통과(없는 계정 401). 재발급: 허용 안 된 Origin 403. 로그인 응답 쿠키 `peakorderRefreshToken`: `Path=/api/v1/auth; Secure; HttpOnly; SameSite=Strict`(CUSTOMER·STORE_ADMIN 모두) | dev 도메인 경유 curl·PowerShell(쿠키 값은 기록하지 않음) | 11/26 |
 
 ## 2. 인증 연동 (Gateway·서비스)
@@ -41,9 +41,9 @@
 
 | ID | 내용 | 상태 | 실제 결과 | 근거 | 일시 |
 |---|---|---|---|---|---|
-| C-01 | PR 검사(빌드·테스트·포맷·이미지 빌드) 및 CI Final 판정 | NOT RUN | | | |
+| C-01 | PR 검사(빌드·테스트·포맷·이미지 빌드) 및 CI Final 판정 | PASS | PR마다 Service readiness → Java service CI(`spotlessCheck`·`test`·`build`)·React service CI(`format:check`·`build`) → Image build → CI Final 순으로 판정. 최근 #407·#429·#415 모두 CI Final pass. main에서는 Image build and GHCR·Dev image tag PR이 추가로 실행 | `.github/workflows/pr-ci.yml`, `.github/ci/run-services.mjs`, PR checks | 11/27 |
 | C-02 | main 병합 → GHCR 이미지 게시 → dev 태그 PR 자동 생성 | PASS(관찰) | 병합마다 GHCR 이미지 게시 후 자동 태그 PR 생성 확인(#364, #390·#391·#394). 한계: main 병합마다 열린 자동 PR을 새 PR로 대체함(배포 파일만 바꾼 병합 포함) — 후속 개선 대상 | Actions 실행 기록, 자동 PR | 11/26 |
-| C-03 | 결함 수정 시 수정 PR → CI → 태그 PR → dev 반영 재배포 경로와 소요 시간 | NOT RUN | | 첫 결함 수정 때 측정 | |
+| C-03 | 결함 수정 시 수정 PR → CI → 태그 PR → dev 반영 재배포 경로와 소요 시간 | PASS | Payment 변경(#397) 반영으로 측정: main 병합(07:27:58Z, #420 포함) → main CI·GHCR 이미지 11분(07:39:03Z) → 자동 태그 PR #427 생성(07:38:56Z) → 리뷰·병합 10분(07:48:45Z) → Argo CD 자동 Sync·새 Pod 기동 3분(07:51:42Z). 합계 약 24분(사람 리뷰 10분 포함). 한계: 이미지 빌드가 Maven Central 429로 실패할 수 있음(11/26 3회) → 실패한 최신 main 실행만 재실행 | Actions 실행 45775517061, #427, Pod 시작 시각 | 11/26 측정 |
 
 ## 4. Argo CD·GitOps
 
@@ -67,14 +67,14 @@
 
 | ID | 내용 | 상태 | 비고 |
 |---|---|---|---|
-| CT-02 | 인증·세션·권한·고객 간 정보 격리 | IN PROGRESS | 11/26 완료: 가입·닉네임·Origin·쿠키 속성(A-01·A-02·A-06), 잘못된·만료 토큰(G-01), 위조 헤더 차단(G-02), 관리자 권한 5개 서비스 경로(G-04). 남음: 세션 폐기·재사용 탐지(A-04·A-05), 고객 간 격리(G-03). A·G 항목 결과를 모은다. 공유 환경을 바꾸지 않아 다른 테스트와 병행 가능. 고객 간 격리는 고객 계정 2개로 서로의 주문 조회가 막히는지 확인(김민규 O-03과 근거 공유). 관리자 권한은 각 서비스 담당과 결과 확인 |
+| CT-02 | 인증·세션·권한·고객 간 정보 격리 | IN PROGRESS | 11/26 완료: 가입·닉네임·Origin·쿠키 속성(A-01·A-02·A-06), 잘못된·만료 토큰(G-01), 위조 헤더 차단(G-02), 관리자 권한 5개 서비스 경로(G-04). 11/27 완료: 세션 폐기·재사용 탐지(A-04·A-05). 남음: 고객 간 격리(G-03). A·G 항목 결과를 모은다. 공유 환경을 바꾸지 않아 다른 테스트와 병행 가능. 고객 간 격리는 고객 계정 2개로 서로의 주문 조회가 막히는지 확인(김민규 O-03과 근거 공유). 관리자 권한은 각 서비스 담당과 결과 확인 |
 | CT-09 | 순차 배포·롤링 업데이트·롤백 | IN PROGRESS | 순차 재배포는 J-03으로 확인. 롤링·롤백은 11/30 오후 결함 수정·재배포 시간에 맞춰 시작 전 Discord 공지 후 진행. 한 번에 한 서비스만 바꾸고(#186), 롤백도 Git 되돌림 PR → Argo CD로만 한다(`kubectl` 직접 변경 금지). 김민규 CT-07 부하 시간과 겹치지 않게 한다. 끝나면 원래 버전으로 복원 |
 
 ## 7. prod 확인
 
 | ID | 내용 | 상태 | 실제 결과 | 근거 | 일시 |
 |---|---|---|---|---|---|
-| P-01 | prod 배포 준비 상태(Argo CD 설치·Secret·SecurityPolicy) 점검 | IN PROGRESS | 읽기 전용 확인: 노드 3개 Ready, Argo CD 미설치, 워크로드·Secret·NetworkPolicy 없음, Gateway `10.10.22.200` Programmed·HTTPRoute 없음. prod 진행 여부는 팀 결정 대기 | `kubectl get` (prod, 조회만) | 11/26 |
+| P-01 | prod 배포 준비 상태(Argo CD 설치·Secret·SecurityPolicy) 점검 | IN PROGRESS | 11/26 prod 시연 확정. Argo CD v3.6.1 설치(강사 예외 승인), AppProject·Application 7개 등록(#419, 수동 동기화). 11/27 prod Secret 8개 생성(Auth 3개, 서비스별 DB 5개 — 6개 DB 계정 실제 로그인 확인, 값은 기록 안 함). Auth prod 동기화: Synced/Healthy, Flyway V1·V2 적용, `https://peakorder.jpexstudio.com`에서 JWKS 200·로그인 Origin 검사(prod 401·dev 403)·회원가입 켜짐 확인. 남음: `rabbitmq-secret`·prod SecurityPolicy(정진혁), 서비스별 prod 태그 PR, 순차 동기화(11/30) | `kubectl` (prod), Argo CD Application 상태, t2-db 로그인 확인 | 11/27 |
 
 ## 8. 최종 회귀 테스트
 
