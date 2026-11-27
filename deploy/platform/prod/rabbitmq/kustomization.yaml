@@ -1,0 +1,6 @@
+# prod RabbitMQ (Argo CD rabbitmq-prod, #440·#441). dev deploy/platform/rabbitmq.yaml과 같은 내용이다.
+# rabbitmq-secret은 prod에 먼저 만들어 두었다(11/27). RabbitMQ는 첫 기동 때만 이 계정을 읽는다.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - rabbitmq.yaml
