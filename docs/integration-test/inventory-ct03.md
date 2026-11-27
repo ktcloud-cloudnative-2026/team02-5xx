@@ -30,24 +30,24 @@
 | I-02 | 확정(II-02) 정상·멱등·거절 | PASS | 정상 `200`, `stock_qty`·`reserved_qty` 함께 차감·예약 `CONFIRMED`. 재호출 `200`(변화 없음). 해제·만료된 확보 `409 HOLD_NOT_ACTIVE`, 없는 holdId `404 HOLD_NOT_FOUND` | 11/27 15:46 확정 140 `200`(재고 20→18, `reserved_qty` 2 차감), 재호출 `200`(수량 변화 없음), 확정된 확보 해제 `409 HOLD_NOT_ACTIVE`, 해제된 141 확정 `409 HOLD_NOT_ACTIVE`, 없는 holdId `404 HOLD_NOT_FOUND`. 예약 140 `CONFIRMED` | `ij` 응답, `inventories`·`inventory_reservations` 조회 | 11/27 15:46 |
 | I-03 | 해제(II-03) 정상·멱등·거절 | PASS | 정상 `200`, `reserved_qty`만 차감·`RELEASED`. 재호출 `200`. 이미 `EXPIRED`도 `200`. 확정된 확보 `409 HOLD_NOT_ACTIVE`, 없는 holdId `404` | 11/27 15:46 해제 141 `200`(`reserved_qty`만 2 차감, `stock_qty` 불변), 재호출 `200`(변화 없음), 없는 holdId `404 HOLD_NOT_FOUND`. 예약 141 `RELEASED`. 만료(`EXPIRED`) 예약 해제는 I-07에서 확인 | `ij` 응답, `inventories`·`inventory_reservations` 조회 | 11/27 15:46 |
 | I-04 | 복원(II-04) 정상·멱등·거절 | PASS | 확정된 확보 `200 {restored:true}`, `stock_qty`만 증가·`RESTORED`. 재호출 `200`. 확정되지 않은 확보·없는 주문 `409 RESTORE_NOT_APPLICABLE`. 주문 연동 경로는 CT-05(Order 쪽)에서 확인 | 11/27 15:48 복원 920001 `200 {restored:true}`(재고 18→20), 재호출 `200`(22로 늘지 않음), 해제된 예약·없는 주문·확정 전(`RESERVED`) 예약 복원 모두 `409 RESTORE_NOT_APPLICABLE`. 예약 920001 `RESTORED`. 시험 뒤 메뉴 11 `stock_qty 20`·`reserved_qty 0`으로 원복 | `ij` 응답, `inventories`·`inventory_reservations` 조회 | 11/27 15:48 |
-| I-05 | 이미 해제된 orderId로 재확보(경계 관찰) | NOT RUN | 코드상 같은 `orderId`의 기존 확보를 상태와 무관하게 반환한다(해제된 확보를 `200`으로 돌려줄 수 있음). Order는 orderId를 재사용하지 않으므로 업무 영향은 없는지 확인해 기록(결함이 아닌 관찰) | | | |
+| I-05 | 이미 해제된 orderId로 재확보(경계 관찰) | PASS(관찰) | 코드상 같은 `orderId`의 기존 확보를 상태와 무관하게 반환한다(해제된 확보를 `200`으로 돌려줄 수 있음). Order는 orderId를 재사용하지 않으므로 업무 영향은 없는지 확인해 기록(결함이 아닌 관찰) | 11/27 15:48 해제된 order 920003을 다시 확보 요청 → `200`으로 옛 확보(`holdId 141`, 상태 `RELEASED` 그대로)를 반환, 새 확보·`reserved_qty` 증가 없음. 호출자에게는 성공으로 보이지만 해제된 예약이므로, 같은 orderId로 재확보를 요청하는 호출자가 있다면 오해할 수 있음. Order는 orderId를 재사용하지 않아 업무 영향 없음(결함 아님, 기록) | `ij` 응답, `inventory_reservations` 조회 | 11/27 15:48 |
 
 ## 2. TTL·만료 (II-01 만료, HoldExpiryScheduler)
 
 | ID | 내용 | 상태 | 기대 결과 | 실제 결과 | 근거 | 일시 |
 |---|---|---|---|---|---|---|
-| I-06 | TTL 만료 | NOT RUN | 확보 5분 뒤 스케줄러(5초 간격)가 예약을 `EXPIRED`로 바꾸고 `reserved_qty`를 되돌림. 11/27 12:50 Order 시험에서 Inventory `reserved_qty 0` 복귀는 확인했고, 여기서는 예약 상태·시각을 직접 기록 | | | |
-| I-07 | 만료 뒤 확정·해제 | NOT RUN | `expiresAt`이 지난 확보의 확정은 스케줄러가 처리하기 전에도 `409 HOLD_NOT_ACTIVE`(코드의 `isExpired` 검사). 만료 후 해제는 `200`(멱등) | | | |
-| I-08 | 만료 경계 경쟁(확정 vs 스케줄러) | NOT RUN | `expiresAt` −0.3~+0.3초에 확정을 보내면 한쪽만 이긴다. 확정 성공이면 `CONFIRMED`·`stock_qty` 차감, 거절이면 `EXPIRED`·`reserved_qty` 복귀이고 두 결과가 섞이지 않음 | | | |
+| I-06 | TTL 만료 | PASS | 확보 5분 뒤 스케줄러(5초 간격)가 예약을 `EXPIRED`로 바꾸고 `reserved_qty`를 되돌림. 11/27 12:50 Order 시험에서 Inventory `reserved_qty 0` 복귀는 확인했고, 여기서는 예약 상태·시각을 직접 기록 | 11/27 15:52~15:58 확보 5건(order 920501~920505, 5분 TTL)을 만들어 만료 시각(15:57:37)을 지나게 둠 → 확정을 받지 못한 3건(159·160·161)이 `EXPIRED`, 메뉴 11 `reserved_qty` 0으로 복귀(스케줄러 5초 주기, 확인 15:58) | `bound.py`(만료 경계 스크립트) 출력, `inventory_reservations`·`inventories` 조회 | 11/27 15:58 |
+| I-07 | 만료 뒤 확정·해제 | PASS | `expiresAt`이 지난 확보의 확정은 스케줄러가 처리하기 전에도 `409 HOLD_NOT_ACTIVE`(코드의 `isExpired` 검사). 만료 후 해제는 `200`(멱등) | 만료 시각 도달 이후(0.0·+0.2·+0.5초) 확정은 모두 `409 HOLD_NOT_ACTIVE`, 만료된(`EXPIRED`) 확보 해제는 `200 OK`(멱등, 159·160·161), 확정된 확보 해제는 `409`. 만료 전 확보(143·144)에 확정 `200`·해제 `409`도 별도 확인(이후 복원으로 원복) | `bound.py` 출력, `ij` 응답 | 11/27 15:52~15:58 |
+| I-08 | 만료 경계 경쟁(확정 vs 스케줄러) | PASS | `expiresAt` −0.3~+0.3초에 확정을 보내면 한쪽만 이긴다. 확정 성공이면 `CONFIRMED`·`stock_qty` 차감, 거절이면 `EXPIRED`·`reserved_qty` 복귀이고 두 결과가 섞이지 않음 | 만료 시각 기준 −0.5·−0.2초 확정은 `200`(`CONFIRMED`, 재고 20→18), 0.0·+0.2·+0.5초는 `409`(`EXPIRED`, `reserved_qty` 0). 만료 시각에 정확히 도달한 순간부터 거절되며 한 확보에서 확정과 만료가 섞이지 않음. 시험 뒤 확정 2건(920501·920502)을 복원해 메뉴 11을 20으로 원복 | `bound.py` 출력, `inventory_reservations`·`inventories` 조회 | 11/27 15:57 |
 
 ## 3. 동시성
 
 | ID | 내용 | 상태 | 기대 결과 | 실제 결과 | 근거 | 일시 |
 |---|---|---|---|---|---|---|
-| I-09 | 같은 메뉴 동시 확보(초과 판매 방지) | NOT RUN | 메뉴 7(가용 2)에 서로 다른 order_id 8건을 동시에 확보 요청 → 정확히 2건 `200`, 6건 `409 INSUFFICIENT_STOCK`, `reserved_qty 2`(가용 0). 이후 전부 해제해 원복 | | | |
-| I-10 | 같은 orderId 동시 확보 | NOT RUN | 같은 orderId 8건 동시 → 모두 같은 holdId, 예약 1행, `reserved_qty` 한 번만 증가(500 없음) | | | |
-| I-11 | 같은 확보에 확정·해제 경쟁 | NOT RUN | 확정과 해제를 동시에 → 한쪽만 성공하고 반대쪽은 `409 HOLD_NOT_ACTIVE`(또는 멱등 `200`), 최종 상태가 한 가지(`CONFIRMED` 또는 `RELEASED`)이고 `stock_qty`·`reserved_qty`와 일치 | | | |
-| I-12 | 여러 메뉴 동시 확보(교착 방지) | NOT RUN | 두 메뉴를 서로 반대 순서로 담은 요청을 동시에 → 교착·타임아웃 없이 완료(코드는 메뉴 ID 순서로 잠금) | | | |
+| I-09 | 같은 메뉴 동시 확보(초과 판매 방지) | PASS | 메뉴 7(가용 2)에 서로 다른 order_id 8건을 동시에 확보 요청 → 정확히 2건 `200`, 6건 `409 INSUFFICIENT_STOCK`, `reserved_qty 2`(가용 0). 이후 전부 해제해 원복 | 11/27 15:50 메뉴 7(가용 2: `stock_qty 2`·`reserved_qty 0`)에 서로 다른 order_id 8건(920101~920108)을 동시에 확보 요청 → 정확히 2건 `200`(145·146), 6건 `409 INSUFFICIENT_STOCK`, 500 없음. 성공 2건을 해제한 뒤 `stock_qty 2`·`reserved_qty 0`으로 원복 | `conc.py`(동시 요청 스크립트, 내부 API 포트 포워딩) 출력, `inventories` 조회 | 11/27 15:50 |
+| I-10 | 같은 orderId 동시 확보 | PASS | 같은 orderId 8건 동시 → 모두 같은 holdId, 예약 1행, `reserved_qty` 한 번만 증가(500 없음) | 11/27 15:50 같은 order 920201을 8건 동시 확보 → 8건 모두 `200`, 같은 `holdId 147`, 예약 한 행, 500 없음. 시험 뒤 해제 | `conc.py` 출력, `inventory_reservations` 조회 | 11/27 15:50 |
+| I-11 | 같은 확보에 확정·해제 경쟁 | PASS | 확정과 해제를 동시에 → 한쪽만 성공하고 반대쪽은 `409 HOLD_NOT_ACTIVE`(또는 멱등 `200`), 최종 상태가 한 가지(`CONFIRMED` 또는 `RELEASED`)이고 `stock_qty`·`reserved_qty`와 일치 | 11/27 15:50 같은 확보(148)에 확정 3건·해제 3건을 동시에 요청 → 확정 3건 모두 `200`(멱등), 해제 3건 모두 `409 HOLD_NOT_ACTIVE`, 최종 `CONFIRMED` 한 가지, 재고는 한 번만 차감(20→19). 복원으로 20 원복 | `conc.py` 출력, `inventory_reservations`·`inventories` 조회 | 11/27 15:50 |
+| I-12 | 여러 메뉴 동시 확보(교착 방지) | PASS | 두 메뉴를 서로 반대 순서로 담은 요청을 동시에 → 교착·타임아웃 없이 완료(코드는 메뉴 ID 순서로 잠금) | 11/27 15:50 메뉴 10·11을 서로 반대 순서로 담은 확보 8건(920401~920408)을 동시에 요청 → 8건 모두 `200`, 교착·타임아웃 없음(요청 순서와 무관하게 메뉴 ID 순서로 잠금). 전부 해제해 `RELEASED`, 메뉴 10·11 `reserved_qty` 원복 | `conc.py` 출력, `inventory_reservations`·`inventories` 조회 | 11/27 15:50 |
 | I-13 | 2 Pod 동시 확보·확정 | NOT RUN | Pod별 포트 포워딩으로 같은 메뉴를 두 Pod에서 동시에 확보·확정 → I-09와 같은 결과. 11/25에 2 Pod PASS(HPA 시험)이며 최신 이미지로 재확인 | | | |
 
 ## 4. 관리자 API와 조회 (IN-01~IN-06)
@@ -81,3 +81,5 @@
 ## 8. 기타 기록
 
 (시험 중 관찰한 것을 이 절에 추가한다.)
+
+- 11/27 15:52 확보 143(order 920010)·144(order 920011)가 만료되기 전에 확정을 보내 `200`(확정)·해제 `409`가 나왔다. 정상 확정·해제 경로 재확인이며 만료 시험은 I-06~I-08에서 새 확보로 수행. 확정된 두 건은 복원(`200`)해 재고를 원복했다.
