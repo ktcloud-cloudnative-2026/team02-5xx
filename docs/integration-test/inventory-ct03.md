@@ -75,6 +75,8 @@
 
 ## 6. 관련 시험 참조(다른 문서)
 
+- Menu 연동(재고 연결 시 메뉴 존재·숨김 확인, MI-02): 이 문서 I-15(`200`·`404 MENU_NOT_FOUND`·`409 MENU_NOT_LINKABLE`).
+- 공동 테스트 범위: Inventory와 실제로 연동되는 서비스는 Order(확보·확정·해제·복원)와 Menu(메뉴 연결 확인)이며, Order 쪽은 `order-hpa.md` CT-05·O-04, Menu 쪽은 I-15에서 확인했다. Cooking·Payment는 Inventory를 호출하지 않는다. 작성자가 Order·Inventory를 함께 맡고 있어 별도 공동 확인 없이 결과를 공지하고 이의를 받는 방식으로 진행.
 - 주문 취소 시 재고 복원(`RESTORED`)·조리 시작 후 거절 시 `CONFIRMED` 유지: `order-hpa.md`의 O-04·CT-05(11/27, 취소 성공 5건·거절 3건 DB 일치).
 - 임시 주문 확보 TTL 해제(`reserved_qty 0`): `order-hpa.md` 기타 기록(11/27 12:50).
 - Inventory 2 Pod·HPA(1→3→1): 11/25 시험(`DEV_186_PROGRESS.md`), CT-07 주관 김민규.
@@ -83,7 +85,7 @@
 
 | 항목 | 내용 | 상태 |
 |---|---|---|
-| `inventory_histories` 이력 미기록 | ERD(3-7)·README는 재고 변동 이력 테이블을 설계·설명하지만(`RESERVE`·`CONFIRM`·`RELEASE`·`RESTORE`·`RESTOCK`·`ADJUST`) main에는 이 테이블에 쓰는 코드가 없고 어떤 API도 읽거나 쓰지 않는다. 요구사항·API 명세에는 포함되지 않은 기능이라 발표 전에는 구현하지 않고 별도 후속 Issue로 관리한다 | 알려진 한계(팀장 확인 11/27) |
+| `inventory_histories` 이력 미기록 | ERD(3-7)·README는 재고 변동 이력 테이블을 설계·설명하지만(`RESERVE`·`CONFIRM`·`RELEASE`·`RESTORE`·`RESTOCK`·`ADJUST`) main에는 이 테이블에 쓰는 코드가 없고 어떤 API도 읽거나 쓰지 않는다. 요구사항·API 명세에는 포함되지 않은 기능이라 발표 전에는 구현하지 않고 별도 후속 Issue로 관리한다 | 알려진 한계(팀장 확인 11/27), 후속 Issue #461 |
 | Inventory 로그 형식·업무 로그 없음 | dev 로그가 일반 텍스트이고 업무 로그가 없음(I-18). `docs/observability.md` 3절 제안(ECS JSON, `orderId` 키 로그)과 다름. 발표 전 필수 여부를 팀장에게 확인 요청 | 확인 대기 |
 
 ## 8. 기타 기록
