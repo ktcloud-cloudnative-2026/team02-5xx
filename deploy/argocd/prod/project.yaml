@@ -2,6 +2,8 @@
 # - prod overlay 렌더링 결과: Deployment·Service·HTTPRoute (2026-11-25 kubectl kustomize 확인)
 # - SecurityPolicy(Gateway JWT 검증)는 prod에서도 고객·관리자 JWT 경로에 쓰므로 미리 허용한다(팀 결정 11/26).
 #   허용만 할 뿐, 정책 자체는 각 서비스 prod overlay PR(Gateway 담당 리뷰)로 들어온다.
+# - StatefulSet(RabbitMQ)·NetworkPolicy는 prod 공통 인프라 Application(rabbitmq-prod·network-policies-prod)용으로 허용한다(11/27).
+#   매니페스트는 deploy/platform/prod/rabbitmq·network-policies에 Gateway·플랫폼 담당 PR로 들어온다.
 # - HPA는 prod 범위에서 제외(팀 결정 11/26: 서비스당 Pod 1개, metrics-server 없음)라 허용하지 않는다.
 # - prod 클러스터의 Argo CD 설치·접속(SSH 호스트 키 확인)이 끝나기 전에는 적용하지 않는다(README 참고).
 apiVersion: argoproj.io/v1alpha1
@@ -29,3 +31,7 @@ spec:
       kind: HTTPRoute
     - group: gateway.envoyproxy.io
       kind: SecurityPolicy
+    - group: apps
+      kind: StatefulSet
+    - group: networking.k8s.io
+      kind: NetworkPolicy
