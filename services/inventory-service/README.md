@@ -44,6 +44,14 @@ export DB_USER=<사용자> DB_PASSWORD=<비밀번호>
 | `MENU_SERVICE_URL` | Menu 서비스 주소. IN-05에서 MI-02(메뉴 존재 확인) 호출에 사용. 연결 2초·응답 3초 제한 | `http://localhost:8081` |
 | `INVENTORY_ADMIN_ENABLED` | 관리자 API(IN-02~06) 등록 여부. `STORE_ADMIN` 권한 검사는 적용됐고, 공유 dev에서 켜는 것은 Gateway JWT 검증 확인 뒤. 꺼져 있으면 관리자 경로 404 | `false` |
 
+## 로그
+
+- K8s에서는 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`(base Deployment)로 stdout에 ECS JSON 한 줄씩 남긴다(docs/observability.md 3절). 로컬은 기존 텍스트 로그.
+- 재고 상태가 **실제로 바뀐 경우에만**, 트랜잭션이 **커밋된 뒤** INFO 한 줄을 남긴다(문장 + `key=value`). 같은 호출의 재시도(멱등)·거절·조회는 남기지 않는다.
+  - II-01~04·만료: `재고 확보 orderId=1 holdId=10 items=11x2`, `재고 확보 확정|해제|만료 orderId=1 holdId=10`, `재고 복원 orderId=1 holdId=10`
+  - 관리자: `재고 항목 등록 stockItemId=5 stockQty=10`, `재고 추가 stockItemId=5 quantity=3 stockQty=13`, `재고 메뉴 연결 stockItemId=5 menuId=7`, `재고 메뉴 연결 해제 stockItemId=5 previousMenuId=7`, `재고 항목 삭제 stockItemId=5 previousMenuId=7`
+- Loki에서는 `{app="inventory-service"} |= "orderId=1"`로 따라간다.
+
 ## 외부 API (프론트 → Inventory)
 
 | ID | Method | 경로 | 동작 |

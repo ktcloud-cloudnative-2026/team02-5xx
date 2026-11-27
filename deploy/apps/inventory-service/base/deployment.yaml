@@ -57,6 +57,9 @@ spec:
             # 컨테이너 메모리 제한 안에서 힙이 차지할 비율(나머지는 메타스페이스·스레드용)
             - name: JAVA_TOOL_OPTIONS
               value: -XX:MaxRAMPercentage=60.0
+            # docs/observability.md 3-1 (#459): Spring Boot 내장 ECS JSON 로그(stdout 한 줄에 JSON 하나).
+            - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+              value: ecs
           lifecycle:
             preStop:
               # Pod가 Service 엔드포인트에서 빠져 Gateway·Service가 새 요청 보내기를 멈출 때까지

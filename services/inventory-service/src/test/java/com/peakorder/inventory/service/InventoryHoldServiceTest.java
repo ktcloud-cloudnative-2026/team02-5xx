@@ -9,6 +9,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.peakorder.inventory.dto.HoldRequest;
 import com.peakorder.inventory.dto.HoldResponse;
 import com.peakorder.inventory.dto.RestoreResponse;
@@ -27,8 +30,11 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 class InventoryHoldServiceTest {
 
@@ -341,5 +347,190 @@ class InventoryHoldServiceTest {
 
     assertThat(reservation.getStatus()).isEqualTo("RESERVED");
     verify(inventoryRepository, never()).findByMenuIdForUpdate(any());
+  }
+
+  // ===== 상태 변경 로그(#459): 실제로 바뀐 경우에만, 커밋 뒤에 =====
+
+  private ListAppender<ILoggingEvent> captureLogs() {
+    Logger logger = (Logger) LoggerFactory.getLogger(InventoryHoldService.class);
+    ListAppender<ILoggingEvent> logs = new ListAppender<>();
+    logs.start();
+    logger.addAppender(logs);
+    return logs;
+  }
+
+  private void stopCapturing(ListAppender<ILoggingEvent> logs) {
+    ((Logger) LoggerFactory.getLogger(InventoryHoldService.class)).detachAppender(logs);
+  }
+
+  private List<String> messages(ListAppender<ILoggingEvent> logs) {
+    return logs.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+  }
+
+  private void stubActiveHold(InventoryReservation reservation, Inventory inventory) {
+    ReflectionTestUtils.setField(reservation, "id", 100L);
+    when(reservationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(reservation));
+    when(itemRepository.findByReservationId(100L))
+        .thenReturn(List.of(new InventoryReservationItem(100L, 10L, 3)));
+    when(inventoryRepository.findByMenuIdForUpdate(10L)).thenReturn(Optional.of(inventory));
+  }
+
+  @Test
+  void hold_logs_order_hold_and_items_once() {
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    try {
+      when(reservationRepository.findByOrderId(1L)).thenReturn(Optional.empty());
+      when(inventoryRepository.findByMenuIdForUpdate(10L))
+          .thenReturn(Optional.of(inventoryOf(10, 0)));
+      when(reservationRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+
+      service.hold(
+          new HoldRequest(1L, List.of(new HoldRequest.Item(10L, 2), new HoldRequest.Item(10L, 1))));
+
+      assertThat(messages(logs)).containsExactly("재고 확보 orderId=1 holdId=null items=10x3");
+    } finally {
+      stopCapturing(logs);
+    }
+  }
+
+  @Test
+  void hold_does_not_log_for_existing_or_rejected_requests() {
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    try {
+      when(reservationRepository.findByOrderId(1L)).thenReturn(Optional.of(activeReservation()));
+      service.hold(requestOf(1L, 10L, 3));
+
+      when(reservationRepository.findByOrderId(2L)).thenReturn(Optional.empty());
+      when(inventoryRepository.findByMenuIdForUpdate(10L))
+          .thenReturn(Optional.of(inventoryOf(2, 0)));
+      assertThatThrownBy(() -> service.hold(requestOf(2L, 10L, 3)))
+          .isInstanceOf(BusinessException.class);
+
+      assertThat(logs.list).isEmpty();
+    } finally {
+      stopCapturing(logs);
+    }
+  }
+
+  @Test
+  void hold_logs_only_after_commit_and_not_on_rollback() {
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    TransactionSynchronizationManager.initSynchronization();
+    try {
+      when(reservationRepository.findByOrderId(1L)).thenReturn(Optional.empty());
+      when(inventoryRepository.findByMenuIdForUpdate(10L))
+          .thenReturn(Optional.of(inventoryOf(10, 0)));
+      when(reservationRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+
+      service.hold(requestOf(1L, 10L, 3));
+      assertThat(logs.list).isEmpty();
+
+      TransactionSynchronizationManager.getSynchronizations()
+          .forEach(TransactionSynchronization::afterCommit);
+      assertThat(messages(logs)).hasSize(1);
+    } finally {
+      TransactionSynchronizationManager.clearSynchronization();
+      stopCapturing(logs);
+    }
+
+    ListAppender<ILoggingEvent> rolledBack = captureLogs();
+    TransactionSynchronizationManager.initSynchronization();
+    try {
+      when(reservationRepository.findByOrderId(3L)).thenReturn(Optional.empty());
+      service.hold(requestOf(3L, 10L, 3));
+      // 롤백이면 afterCommit이 호출되지 않는다
+      assertThat(rolledBack.list).isEmpty();
+    } finally {
+      TransactionSynchronizationManager.clearSynchronization();
+      stopCapturing(rolledBack);
+    }
+  }
+
+  @Test
+  void confirm_logs_only_on_actual_transition() {
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    try {
+      InventoryReservation reservation = activeReservation();
+      stubActiveHold(reservation, inventoryOf(10, 3));
+
+      service.confirm(100L);
+      service.confirm(100L); // 이미 CONFIRMED: 아무것도 바뀌지 않는다
+
+      assertThat(messages(logs)).containsExactly("재고 확보 확정 orderId=1 holdId=100");
+    } finally {
+      stopCapturing(logs);
+    }
+  }
+
+  @Test
+  void confirm_does_not_log_when_rejected() {
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    try {
+      InventoryReservation reservation =
+          new InventoryReservation(1L, OffsetDateTime.now().minusMinutes(1));
+      when(reservationRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(reservation));
+
+      assertThatThrownBy(() -> service.confirm(100L)).isInstanceOf(BusinessException.class);
+
+      assertThat(logs.list).isEmpty();
+    } finally {
+      stopCapturing(logs);
+    }
+  }
+
+  @Test
+  void release_logs_only_on_actual_transition() {
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    try {
+      InventoryReservation reservation = activeReservation();
+      stubActiveHold(reservation, inventoryOf(10, 3));
+
+      service.release(100L);
+      service.release(100L); // 이미 RELEASED
+
+      assertThat(messages(logs)).containsExactly("재고 확보 해제 orderId=1 holdId=100");
+    } finally {
+      stopCapturing(logs);
+    }
+  }
+
+  @Test
+  void restore_logs_only_on_actual_transition() {
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    try {
+      InventoryReservation reservation = confirmedReservation();
+      when(reservationRepository.findByOrderIdForUpdate(1L)).thenReturn(Optional.of(reservation));
+      when(itemRepository.findByReservationId(100L))
+          .thenReturn(List.of(new InventoryReservationItem(100L, 10L, 3)));
+      when(inventoryRepository.findByMenuIdForUpdate(10L))
+          .thenReturn(Optional.of(inventoryOf(7, 0)));
+
+      service.restore(1L);
+      service.restore(1L); // 이미 RESTORED
+
+      assertThat(messages(logs)).containsExactly("재고 복원 orderId=1 holdId=100");
+    } finally {
+      stopCapturing(logs);
+    }
+  }
+
+  @Test
+  void expire_logs_only_when_actually_expired() {
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    try {
+      InventoryReservation overdue =
+          new InventoryReservation(1L, OffsetDateTime.now().minusMinutes(1));
+      stubActiveHold(overdue, inventoryOf(10, 3));
+      service.expire(100L);
+
+      InventoryReservation notYet = activeReservation();
+      ReflectionTestUtils.setField(notYet, "id", 101L);
+      when(reservationRepository.findByIdForUpdate(101L)).thenReturn(Optional.of(notYet));
+      service.expire(101L); // 아직 시간이 안 됐다
+
+      assertThat(messages(logs)).containsExactly("재고 확보 만료 orderId=1 holdId=100");
+    } finally {
+      stopCapturing(logs);
+    }
   }
 }

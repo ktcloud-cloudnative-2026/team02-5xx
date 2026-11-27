@@ -10,6 +10,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.peakorder.inventory.client.MenuClient;
 import com.peakorder.inventory.client.MenuClient.MenuExistence;
 import com.peakorder.inventory.dto.MenuLinkRequest;
@@ -26,6 +29,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -306,5 +310,100 @@ class InventoryAdminServiceTest {
         .isInstanceOf(BusinessException.class)
         .extracting("errorCode")
         .isEqualTo(ErrorCode.INVENTORY_NOT_FOUND);
+  }
+
+  // ===== 상태 변경 로그(#459): 실제로 바뀐 경우에만 =====
+
+  private ListAppender<ILoggingEvent> captureLogs() {
+    Logger logger = (Logger) LoggerFactory.getLogger(InventoryAdminService.class);
+    ListAppender<ILoggingEvent> logs = new ListAppender<>();
+    logs.start();
+    logger.addAppender(logs);
+    return logs;
+  }
+
+  private void stopCapturing(ListAppender<ILoggingEvent> logs) {
+    ((Logger) LoggerFactory.getLogger(InventoryAdminService.class)).detachAppender(logs);
+  }
+
+  private List<String> messages(ListAppender<ILoggingEvent> logs) {
+    return logs.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+  }
+
+  @Test
+  void create_and_restock_log_the_change() {
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    try {
+      Inventory saved = stockItem(5L, 10, 0);
+      when(inventoryRepository.save(any())).thenReturn(saved);
+      service.create(new StockItemCreateRequest(10, 2));
+
+      when(inventoryRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(saved));
+      service.restock(5L, new StockRestockRequest(3));
+
+      assertThat(messages(logs))
+          .containsExactly(
+              "재고 항목 등록 stockItemId=5 stockQty=10", "재고 추가 stockItemId=5 quantity=3 stockQty=13");
+    } finally {
+      stopCapturing(logs);
+    }
+  }
+
+  @Test
+  void link_and_unlink_log_only_when_the_link_changes() {
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    try {
+      Inventory item = stockItem(5L, 10, 0);
+      when(menuClient.checkExistence(7L)).thenReturn(new MenuExistence(7L, true, "ON_SALE"));
+      when(inventoryRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(item));
+      when(inventoryRepository.findByMenuId(7L)).thenReturn(Optional.empty());
+
+      service.linkMenu(5L, new MenuLinkRequest(7L));
+      service.linkMenu(5L, new MenuLinkRequest(7L)); // 같은 메뉴: 바뀐 것이 없다
+      service.linkMenu(5L, new MenuLinkRequest(null));
+      service.linkMenu(5L, new MenuLinkRequest(null)); // 이미 해제: 바뀐 것이 없다
+
+      assertThat(messages(logs))
+          .containsExactly(
+              "재고 메뉴 연결 stockItemId=5 menuId=7", "재고 메뉴 연결 해제 stockItemId=5 previousMenuId=7");
+    } finally {
+      stopCapturing(logs);
+    }
+  }
+
+  @Test
+  void rejected_changes_do_not_log() {
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    try {
+      Inventory item = linkedStockItem(5L, 7L);
+      when(inventoryRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(item));
+      when(itemRepository.existsHoldOrConfirmedForMenu(7L)).thenReturn(true);
+
+      assertThatThrownBy(() -> service.delete(5L)).isInstanceOf(BusinessException.class);
+      assertThatThrownBy(() -> service.linkMenu(5L, new MenuLinkRequest(null)))
+          .isInstanceOf(BusinessException.class);
+      assertThatThrownBy(() -> service.restock(99L, new StockRestockRequest(1)))
+          .isInstanceOf(BusinessException.class);
+
+      assertThat(logs.list).isEmpty();
+    } finally {
+      stopCapturing(logs);
+    }
+  }
+
+  @Test
+  void delete_logs_the_removed_item() {
+    ListAppender<ILoggingEvent> logs = captureLogs();
+    try {
+      Inventory item = linkedStockItem(5L, 7L);
+      when(inventoryRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(item));
+      when(itemRepository.existsHoldOrConfirmedForMenu(7L)).thenReturn(false);
+
+      service.delete(5L);
+
+      assertThat(messages(logs)).containsExactly("재고 항목 삭제 stockItemId=5 previousMenuId=7");
+    } finally {
+      stopCapturing(logs);
+    }
   }
 }
