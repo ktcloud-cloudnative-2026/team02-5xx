@@ -429,7 +429,7 @@ API 예시의 ID는 전용 테스트 데이터로 바꾼다. 내부 API는 허�
   3. CT-10 결과를 정리하고 prod는 승인한 읽기만 별도 환경 기록으로 남긴다. 미준비/미승인이면 사유·영향을 BLOCKED로 기록한다.
 - **기대 결과·통과 기준:** 대상 최신 버전에서 필수 자동화/핵심E2E 성공, 미해결P0 없음. DB skip을PASS에 합산하지 않음. dev/fixture/prod를 구분하고 미검증을 숨기지 않음.
 - **재사용·관련:** 동일 소스/입력 Menu630 PASS(실DB93)는 반복하지 않음. 옛UI 수치를 현재 합계로 가정하지 않음. CT-10, #409/#403/#407 및 발생 후 Fix PR.
-- **현재 상태:** NOT RUN. **실제 결과·검증 근거:** 미실행 / —. **결함·재검증:** —.
+- **현재 상태:** NOT RUN. **실제 결과·검증 근거:** 최종 회귀 미실행. 11/28 사전 검토는 아래 「R-01 사전 검증」에 기록하며 최종 배포·공동 검증 완료 후 판정한다. **결함·재검증:** Inventory #460 새 이미지/상태 로그, CT-08 요약 정합성 및 CT-09 롤백 근거 대기.
 
 ## 7. 서비스 간 공동 테스트 연계
 
@@ -1091,6 +1091,49 @@ DB 정합성 단언 **20/20 PASS**. 두 주문 환불/취소 없음·확정 수�
 근거는 저장소 밖 `C:\M\Peak_Order-409-qa\run-20261127-10`의 초기 보류 기록과 `resume-20261128/`의 `results.json`, `checkpoint.json`, `write-journal.jsonl`, `final-db.json`, `document-validation.json`이다. 원문 비밀번호/토큰/쿠키·raw 로그는 기록하지 않았다. 사용한 격리 브라우저·메모리 참조·로컬 worker는 종료했고 다른 worktree·bin·기존 미리보기 서버는 변경하지 않았다.
 
 **최신 판정:** M-02/J-04는 승인된 기준 조정으로 PASS, F-04/F-07/J-01은 최소 대표 시험과 기존 근거 결합으로 PASS. 전체23그룹 **NOT RUN1 / IN PROGRESS0 / PASS22**, FAIL/BLOCKED/RETEST/SKIPPED0. **R-01은 NOT RUN 유지**하며 미완료 공동 CT-08 장애/관측성·CT-09 롤백 및 남은 최종 검증 버전/근거를 모아 별도로 판정한다. 이번 실행으로 전체 프로젝트/공동 시험·최종 prod 검증을 완료 처리하지 않는다. 기존 RUN 기록과 Python403/Chromium8 PASS·cp 기준 미충족 관찰도 보존한다. 사용자가 개인 추가 기능 시험 종료와 결과 확정·Commit을 승인했다. 추가 시험/제품 수정 없이 지정 문서만 Commit하며 Push하지 않는다.
+
+#### R-01 사전 검증 — 2026-11-28
+
+**기준·방법:** #414 head `03cb4cda343308ed2394917245056b98e644f508`, fetch 후 main `6d22f538fb0e6455d12a3b84460fae39336ffefb`. 13:03~13:04 KST 기존 dev SSH 경로로 Deployment/Pod/Application과 제한된 Loki 조회만 수행했다. 최종 회귀 RUN이나 신규 기능 시험으로 집계하지 않는다. 주문·데이터/설정 변경·배포·전체 시험 재실행·Commit/Push·prod 접근 없음.
+
+**변경 범위와 기존 근거 재사용**
+
+| 비교 대상 | 실제 확인 | 최종 회귀 영향 |
+| --- | --- | --- |
+| 이전 확인 main `533aeaf`→현재 `6d22f53` | Inventory ECS env 및 #460의 AfterCommit/관리·예약 상태 로그와 해당 시험 변경. 나머지는 Order prod 관리자/이미지·Frontend prod 이미지/README 및 공동 문서 | Menu/Frontend 업무 계약 변경 없음. prod Git 변경을 실제 prod 검증으로 간주하지 않음 |
+| Menu `c864533`의630 PASS 입력 및 실제 이미지 `46d1801`→main | `src`(시험/설정 포함), build.gradle/settings.gradle, Wrapper 스크립트·gradle 디렉터리 변경0. prod seed SQL/문서만 모듈 밖 실행 자료로 구분 | 기존630 PASS·실제 PostgreSQL93·Spotless/build 재사용. 기존 DB 시험과 dev 결과를 새 실행으로 합산하지 않음 |
+| Frontend 자동화 `8c319af`→실제 `6219d6b` | src/tests/package·lock/Vite/Dockerfile/index 입력 변경0 | 기존 Node766·브라우저28스크립트438시나리오/별도 연속 계정 근거와 RUN-03~10 재사용. fixture를 실제 장애 성공으로 바꾸지 않음 |
+| Frontend 실제 `6219d6b`→main | `menuImages.js`, `staticImages.test.js`, 메뉴 WebP5개 및 이미지 README만 변경 | 현 배포 기능 회귀 반복 불필요. 최종 이미지에 이 변경이 포함되면 기존 #431 근거의 버전 확인 후 부족한 정적 이미지 시험·대표 이미지 HTTP/화면 확인만 수행 |
+| 다른 실제 서비스 이미지→main | Auth/Cooking/Order/Payment의 src·build.gradle 변경0. Inventory는 AfterCommit·관리/예약 서비스·관련 시험5파일 차이 | 현재 정상 E2E/인증/결제/복구 근거는 유지. Inventory 신규 로그는 이전 이미지에서 검증한 것으로 처리하지 않음 |
+
+`03cb4cd` 브랜치는 예전 main 기반이므로 단순 endpoint 간 전체 diff에는 이미 검증한 #407 HTTP Probe와 prod 준비 등이 포함된다. 기존 RUN의 main/실행 이미지와 나눠 비교했으며 새 회귀로 중복 분류하지 않았다. 브랜치 merge/rebase는 수행하지 않았다.
+
+**실제 dev 스냅샷:** 7개 Deployment desired/updated/ready 각1, 업무 Pod 모두 Running/Ready·재시작0. 이미지 태그는 Auth/Frontend/Cooking `6219d6b`, Menu `46d1801`, Inventory `f4201cc`, Order `7ba14a6`, Payment `aebac79`로 RUN-10과 동일하다. 전체 digest는 외부 `current-dev.json`에 보존했다. Menu digest `de53bf04…417`, Frontend `c04582f1…515`, Inventory `31bf6fd9…abf`. 7개 서비스 및 monitoring/logging Application은 main `6d22f53` 포함 Synced/Healthy·진행 중 operation 없음. main revision 일치가 모든 새 업무 코드의 이미지 반영을 뜻하지 않는다. Menu HTTP Probe/관리 활성화·Hikari4/1·JVM60 및 자원, Frontend25m/250m·32Mi/128Mi는 유지된다.
+
+**CT-08 최신 공동 근거:** [#412의 고정 버전][r01-cooking] `0f36115`에서 F-02/F-03/F-04·M-05·O-02가 PASS이고 11/27 17:40~18:12로 시험을 앞당겨 완료했다는 기록을 확인했다. 이번 개인 재시험이 아닌 김지윤 담당자의 결과를 재사용한다.
+
+- F-02: Cooking 중단 중 큐3건 보존, 복구 시112→113→114 등록·유실0 및 기존 조리 이어받기. F-03: 장애 중 취소503 후113 취소/환불·재고 복원,110은 이미 조리 시작되어 취소 불가 확정. 복구 직후 조리 시작과30초 취소 재확인의 경계 관찰은 남긴다.
+- F-04: 주문115의 CookingCompleted Outbox1/PENDING→RabbitMQ 복구→같은 eventId로 Order 반영·Outbox0/큐4개 유지. 기존 #411의 OrderConfirmed 방향 복구와 구분한다.
+- M-05/O-02: DLQ 알림 firing17:44:39→해제17:46:40, 가용 Pod0 알림 firing17:54:40~17:55:45 사이→해제17:57:25, CookingOutboxPending firing18:09:41→복구 후 해제18:12:00. 종료 시 원래 Cooking 이미지·Pod1/1/RabbitMQ1/1·DLQ0/Outbox0, 시작 cp1088Mi·최저945Mi는 담당자 기록이다. 직접 kubectl 장애 조작은 기존 공동 시험의 방법이며 CT-09 GitOps 롤백 성공 근거가 아니다.
+- **문서 정합성 유보:** 같은 #412의 CT-08 요약 행은 아직 IN PROGRESS·11/30 예정으로 남아 세부 PASS/일정과 불일치한다. 세부 결과는 확보했으나 주관자의 요약 정정/종료 확인과 Inventory I-20을 별도 남긴다. WARN 반복·Loki500줄 조회 한도, Menu DB 장애 readiness UP 및 미구현5xx 알림 공백도 해소됐다고 기록하지 않는다.
+
+**CT-09:** #415 최신 head `84033d4`는 변함없다. J-03 순차 배포 PASS, D-04 롤백 NOT RUN·CT-09 IN PROGRESS이며 11/30 오후 계획이다. Git 되돌림 PR→Argo 반영→이전 버전 복구→원래 버전 복원, revision/image/digest·Ready·Probe·API 및 소요 시간 증거가 필요하다. 기존 정상 롤링이나 CT-08의 직접 이미지 복원으로 대체하지 않는다. CT-07 부하/CT-08 장애 시간 분리 원칙 유지.
+
+**#460 배포·수집 구분:** #460은11/27 17:43:33 KST `23a47d5`로 병합됐다. 실제 Inventory에는 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`가 있고, 기존 Grafana sidecar를 통해 Loki 최근24시간의 기존 Pod 로그40줄을 제한 조회하여 JSON 파싱·service.name=inventory-service·level/message 및 토큰 패턴0을 확인했다(최근6시간 조회는0줄이므로 수집 실패로 단정하지 않음). 그러나 Git dev 태그/실행 이미지 모두 `f4201cc`로 **#460 이전**이다. ECS 형식/수집 성공과 신규 커밋 후 상태 로그의 배포/주문 추적 성공은 별개다. 신규 AfterCommit 상태 로그의 실제 실행·Loki orderId/holdId 추적 및 I-20은 미검증이며, 새로운 변경 요청을 만들어 로그를 유발하지 않았다. 제한 표본의 비노출 검사는 전체 로그 보증이 아니다.
+
+**최소 최종 실행·선행 조건**
+
+| 항목 | 필요한 최소 근거/실행 | 현재 판단 |
+| --- | --- | --- |
+| 최종 버전 확정 | 최종 dev 이미지/digest 및 해당 서비스 입력 차이만 다시 대조. 동일 입력의630/93·766/브라우저 및 기존 실제 주문32/33·116~119 결과 재사용 | 아직 최종 배포 버전 확정 전. 전체 빌드/주문 반복 자동 추가 없음 |
+| Inventory I-20 | 담당자의 #460 포함 이미지 GitOps 반영·Ready/수집 근거와 기존/공동 시험 orderId·holdId 상태 로그를 대조 | 새 이미지 미반영. 필요 시 별도 조율된 최소 대표 변경1건만 후속 판단 |
+| Frontend 이미지 변경분 | 새 이미지에 #431 포함 시 정적 이미지 관련 기존 시험 근거와 대표 이미지/메뉴 렌더링만 확인 | 현재 이미지에는 미포함. 인증·주문 전체 반복 불필요 |
+| 공동 종료/롤백 | CT-08 세부/요약 정합성·I-20, CT-09 GitOps 롤백 및 원래 버전 복원 근거 확보 | CT-09 미실행. CT-08 범위 축소 없음 |
+| 안전·최종 판정 | 영향 시험 전 cp1GiB 이상·일정 합의,300MiB 미만 중단. 최종 미해결P0/필수 결함 및 승인된 prod 읽기 범위/담당·환경 준비 확인 | 이번 표본1042.2→927.3MiB로 시작 기준 미달 상태 재현. 신규 영향 시험 GO 아님. prod 미접근/검증 미완료를 성공으로 처리하지 않음 |
+
+**결론·집계:** 사전 검토만 완료했다. 개인22 PASS / R-01 NOT RUN1, 나머지0 및 기존23개 그룹/승인된 제외·잔여 위험 유지. 신규 제품 결함 판정/BUG 발급 없음. #414는 Draft/Open, React CI 성공·Java CI 진행 중(13:04 조회)이므로 최종 CI 완료 확인도 남긴다. 증거는 저장소 외부 `Peak_Order-409-qa/r01-precheck-20261128`의 `input-comparison.json`, `current-dev.json`, `reference-pr-412.md`에 저장했으며 원본 로그/비밀값은 저장하지 않았다.
+
+[r01-cooking]: https://github.com/ktcloud-cloudnative-2026/team02-5xx/blob/0f3611552ed70322d696dc4dcaad8c894da958ef/docs/integration-test/cooking-mq-obs.md
 
 ### 결함 관리
 
